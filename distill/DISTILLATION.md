@@ -10,10 +10,9 @@ inside the phone app.
 We *generate* fake labels from known pieces, so we already know the correct
 answer for every one — no labelling needed. Med7's real jobs are (1) it defines
 the 7 categories we use, and (2) it's the **yardstick** we measure our new model
-against. You *can* literally have Med7 do the labelling (`make_dataset.py
---labels med7`), but then the new model also copies Med7's mistakes — like Med7
-missing drug names in ALL CAPS. Using the generator's own answers ("gold" labels)
-avoids that and is less work. We keep Med7 as the thing to beat.
+against. Using the generator's own answers ("gold" labels) rather than Med7's
+avoids copying Med7's mistakes (e.g. missing drug names in ALL CAPS) and is less
+work. We keep Med7 as the thing to beat.
 
 **"Setting weights" — you don't.**
 The base model (DistilBERT or MobileBERT) already knows English from Google's
@@ -33,27 +32,36 @@ size), and watch the score on held-out examples.
 ## The pipeline
 
 ```
-label_generator.py   make fake labels + know every answer  ─┐
+label_generator.py   fake labels + exact answers. Vocab is pre-split into a
+                     TRAIN pool and a disjoint HELD-OUT pool (drugs, pharmacies,
+                     phrasings) so the test set contains things never trained on.
+                                                            ─┐
+make_dataset.py      run generator ×N -> train / val /       │  Med7 also scored
+                     test_seen / test_unseen  (JSONL)        │  here on both test
+                     + holdout_manifest.json                 │  sets = baseline
                                                             │
-make_dataset.py       run generator ×N, split into           │  Med7 also runs here,
-                      train / val / test  (JSONL)            │  scored vs gold = baseline
+train_ner.py         fine-tune DistilBERT/MobileBERT on      │
+                     train; pick best epoch on val           │
                                                             │
-train_ner.py          fine-tune DistilBERT/MobileBERT on     │
-                      train; check val after each epoch      │
+evaluate.py          score on test_seen AND test_unseen,    ─┘
+                     next to Med7.  The seen->unseen drop is the headline number.
                                                             │
-evaluate.py           score the trained model on test,      ─┘
-                      side by side with Med7   ← the table for your report
+(optimum-cli)        export model -> ONNX -> quantise (~4× smaller)
                                                             │
-(optimum-cli)         export model -> ONNX -> quantise (~4× smaller)
-                                                            │
-Flutter app           run the .onnx file on the phone
+Flutter app          run the .onnx file on the phone
 ```
+
+**Why two test sets:** `test_seen` uses training-pool vocab (fresh instances) —
+"can it handle labels like the ones it trained on?". `test_unseen` uses the
+held-out drugs / pharmacies / phrasings — "does it *generalise*, or did it just
+memorise the drug list?". A model that scores 0.99 on seen and 0.70 on unseen has
+memorised. Small gap = real learning.
 
 ### Run it
 
 ```bash
 cd distill
-python make_dataset.py --n 4000 --out data/
+python make_dataset.py --n-train 4000 --out data/          # add --noise 0.02 for OCR-style corruption
 python train_ner.py    --data data/ --base-model distilbert-base-uncased --epochs 4
 python evaluate.py      --model ner-model --data data/
 ```
@@ -63,9 +71,8 @@ runs end to end, try `--base-model google/mobilebert-uncased` (smaller, ~25M vs
 66M params) and compare size vs accuracy. MobileBERT can be fussier — if it won't
 learn, lower the learning rate (`--lr 5e-5` or `1e-4`) and add an epoch.
 
-Training on a laptop CPU works but is slow. Free option: paste these into a
-Google Colab notebook, set Runtime → Change runtime type → GPU, and it's ~10–20
-minutes.
+Runs on the homelab 3060 Ti in well under a minute (see SERVER.md). Laptop CPU
+works but takes ~15–20 min per run.
 
 ### Convert for the phone (after you're happy with accuracy)
 
@@ -80,21 +87,25 @@ You ship `model.quant.onnx` + the tokenizer's vocab file in the app.
 
 ## What "good" looks like
 
-- Med7's published score is F1 ≈ 0.89. On our synthetic labels Med7 scores about
-  the same **except DRUG**, where its recall is low (~0.3) because our labels are
-  often ALL CAPS.
-- A target: match Med7 overall (F1 ~0.85–0.90) and **beat it on DRUG**, because
-  the gold labels teach the small model the ALL-CAPS cases Med7 misses.
-- If the small model is close to Med7 at a fraction of the size and runs on a
-  phone — that's the result, and the report writes itself.
+- Med7 scores F1 ≈ 0.86 on our synthetic labels (about the same on seen and
+  unseen — it never trained on any of it), but its **DRUG** score is low because
+  our labels are often ALL CAPS.
+- Targets for the distilled model:
+  - `test_unseen` F1 within ~0.05 of `test_seen` F1  → it generalises
+  - overall F1 on `test_unseen` ≥ Med7's ≈ 0.86      → it's a real replacement
+  - **beat Med7 on DRUG**, because the gold labels teach the ALL-CAPS cases
+- Small model close to Med7 on held-out data, at a fraction of the size, running
+  on a phone — that's the result.
 
 ## The honest risks
 
-1. **Synthetic-data gap.** If real OCR'd labels look very different from our fake
-   ones, the model won't transfer. Mitigation: photograph ~20 real (or realistic
-   mock) labels, OCR them, hand-check the fields, and add them to `test.jsonl`.
-   If the score holds up there, you're fine. Also: add OCR-style noise to the
-   generator (random character swaps, missing spaces) so training sees messiness.
+1. **Synthetic-data gap.** Even `test_unseen` is still *generated* text. If real
+   OCR'd labels look very different, the model won't transfer. Mitigations:
+   (a) `--noise 0.02` so training sees OCR-style corruption;
+   (b) photograph ~20–50 real or realistic mock labels, OCR them, hand-correct
+   the fields, save as `data/real_test.jsonl` — `evaluate.py` picks it up
+   automatically. That score is the one that actually matters, and it doubles as
+   the spec's required user-testing data.
 2. **On-phone tokenizer.** The model needs its text split into tokens the exact
    same way in Dart as in Python. DistilBERT/MobileBERT use "WordPiece", which is
    simpler to port than most; some Flutter ONNX packages bundle it.

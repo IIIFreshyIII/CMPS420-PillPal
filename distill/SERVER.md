@@ -63,18 +63,19 @@ Check what's on the card any time: `nvidia-smi`.
 cd ~/med-tracker/distill
 V=../.venv-gpu/bin/python
 
-$V make_dataset.py --n 6000 --out data/
+$V make_dataset.py --n-train 6000 --out data/          # add --noise 0.02 for OCR corruption
 $V train_ner.py   --data data/ --base-model distilbert-base-uncased --epochs 5 --batch-size 64
 $V evaluate.py     --model ner-model --data data/
 
-# then try the smaller target and compare size vs accuracy:
+# then the smaller target, compare size vs accuracy:
 $V train_ner.py   --data data/ --base-model google/mobilebert-uncased --epochs 6 --lr 5e-5 --batch-size 64 --out ner-mobilebert
 $V evaluate.py     --model ner-mobilebert --data data/
 ```
 
-With the GPU you can afford bigger runs: `--n 6000`+, more epochs, and quick
-experiments with `bert-base-uncased` or `roberta-base` as a "how good could it
-get" ceiling. Batch size 64 fits easily in 8 GB for these models.
+`evaluate.py` reports F1 on `test_seen` and `test_unseen` plus the generalisation
+gap. With the GPU you can afford `--n-train 6000`+, more epochs, and quick
+experiments with `bert-base-uncased` / `roberta-base` as a "how good could it
+get" ceiling. Batch size 64 fits easily in 8 GB.
 
 ## 5. Long runs without babysitting the SSH session
 
