@@ -1,0 +1,12 @@
+# Distillation pipeline (train a small on-device NER model, measured against Med7).
+# Install on top of the parent requirements.txt (which has spaCy + Med7).
+
+transformers>=4.40
+torch>=2.2            # CPU build is fine: pip install torch --index-url https://download.pytorch.org/whl/cpu
+datasets>=2.19
+accelerate>=1.1
+seqeval>=1.2
+gliner>=0.2.13       # zero-shot backup model for the Month-1 bake-off
+
+# For the ONNX export step (install when you get there):
+# optimum[exporters,onnxruntime]

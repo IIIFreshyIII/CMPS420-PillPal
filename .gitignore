@@ -1,0 +1,27 @@
+# Python environments
+.venv/
+.venv-gpu/
+__pycache__/
+*.pyc
+
+# Generated training data + model checkpoints (regenerate with the scripts; too big for git)
+distill/data/
+distill/data_smoke/
+distill/ner-model/
+distill/ner-mobilebert/
+distill/ner-onnx/
+distill/runs/
+
+# Pipeline output
+profile.json
+
+# Label photos (never commit real prescription images)
+*.jpg
+*.jpeg
+*.png
+!sample_labels/*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

@@ -1,0 +1,11 @@
+# Core NER
+spacy==3.8.14
+click>=8.1          # transitive dep of spaCy's CLI; pin so `spacy.load` doesn't ImportError
+en-core-med7-lg @ https://huggingface.co/kormilitzin/en_core_med7_lg/resolve/main/en_core_med7_lg-1.1.0-py3-none-any.whl
+
+# OCR (photo -> text). Needs the system binary too: sudo apt install tesseract-ocr
+pytesseract==0.3.13
+Pillow>=10.0
+
+# Date math for refill-date calculation
+python-dateutil>=2.9
