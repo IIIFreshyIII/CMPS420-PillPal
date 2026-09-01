@@ -369,15 +369,58 @@ def _merge_adjacent(text: str, spans):
     return out
 
 
-# --- optional OCR-style corruption (length-preserving) ------------ #
+# --- OCR-style corruption ---------------------------------------- #
+# Tesseract's dominant failure on real label photos is dropping whole lines /
+# regions it can't segment (testing showed it losing entire sig lines). So the
+# primary effect here is line dropout; light character swaps are secondary.
 _CONFUSE = {
     "0": "O", "O": "0", "1": "l", "l": "1", "I": "l", "5": "S", "S": "5",
     "8": "B", "B": "8", "2": "Z", "Z": "2", "6": "b", "g": "9", "9": "g",
 }
 
 
-def add_ocr_noise(text: str, spans, rate: float = 0.02, seed: int | None = None):
+def _drop_lines(text: str, spans, prob: float, rng) -> tuple[str, list]:
+    """Delete whole non-empty lines at `prob` each and remap the spans. A span
+    that sat on a dropped line is removed (the field is simply gone, as when OCR
+    loses the sig line)."""
+    ranges, i = [], 0
+    for ln in text.splitlines(keepends=True):
+        ranges.append([i, i + len(ln), ln.strip() != ""])
+        i += len(ln)
+
+    nonempty = [k for k, r in enumerate(ranges) if r[2]]
+    drop = {k for k in nonempty if rng.random() < prob}
+    if drop and len(drop) >= len(nonempty):        # never drop every real line
+        drop.discard(min(drop))
+
+    new_text, remap, cur = "", [], 0
+    for k, (a, b, _) in enumerate(ranges):
+        if k in drop:
+            continue
+        remap.append((a, b, cur))
+        new_text += text[a:b]
+        cur += b - a
+
+    new_spans = []
+    for s, e, lab in spans:
+        for a, b, ns in remap:
+            if a <= s < b and e <= b:
+                new_spans.append([ns + s - a, ns + e - a, lab])
+                break
+    return new_text, new_spans
+
+
+def add_ocr_noise(text: str, spans, rate: float = 0.02, seed: int | None = None,
+                  line_drop: float | None = None):
+    """Corrupt text the way Tesseract does: drop whole lines (primary), plus a
+    few length-preserving character swaps (secondary). Spans are remapped.
+    `line_drop` defaults to `rate` when not given."""
     rng = random.Random(seed)
+    if line_drop is None:
+        line_drop = rate
+    if line_drop > 0:
+        text, spans = _drop_lines(text, spans, line_drop, rng)
+
     chars = list(text)
     for i, ch in enumerate(chars):
         if ch == "\n" or rng.random() > rate:

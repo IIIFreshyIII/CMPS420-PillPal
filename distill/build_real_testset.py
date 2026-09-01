@@ -87,7 +87,7 @@ def _pii_scan(rows: list[dict]) -> list[str]:
 
 
 # --------------------------------------------------------------------------- #
-def ocr_image(path: Path) -> str:
+def ocr_image(path: Path, psm: int = 6) -> str:
     import pytesseract
     from PIL import Image, ImageOps
 
@@ -97,7 +97,11 @@ def ocr_image(path: Path) -> str:
     if max(w, h) < 2000:
         s = 2000 / max(w, h)
         img = img.resize((int(w * s), int(h * s)))
-    return pytesseract.image_to_string(img)
+    # psm 6 = "assume a single uniform block of text". Pharmacy labels ARE one
+    # block; the tesseract default (psm 3, auto layout) tends to silently drop
+    # lines it can't fit into a detected column — testing showed it losing whole
+    # sig lines that psm 6 recovers.
+    return pytesseract.image_to_string(img, config=f"--psm {psm}")
 
 
 def med7_preannotate(text: str) -> str:
@@ -198,6 +202,8 @@ def main() -> None:
     ap.add_argument("--texts", help="folder of .txt files (already OCR'd / typed)")
     ap.add_argument("--finalize", help="path to the edited real_test.draft.txt")
     ap.add_argument("--out", default="data", help="output directory")
+    ap.add_argument("--psm", type=int, default=6,
+                    help="tesseract page-seg mode (6 = single text block, the default here)")
     args = ap.parse_args()
     out = Path(args.out)
 
@@ -214,7 +220,7 @@ def main() -> None:
         for p in sorted(Path(args.images).iterdir()):
             if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}:
                 print(f"OCR {p.name}...")
-                sources.append((p.name, ocr_image(p)))
+                sources.append((p.name, ocr_image(p, args.psm)))
     if args.texts:
         for p in sorted(Path(args.texts).glob("*.txt")):
             sources.append((p.name, p.read_text()))
