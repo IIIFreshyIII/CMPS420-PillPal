@@ -5,7 +5,9 @@ __pycache__/
 *.pyc
 
 # Generated training data + model checkpoints (regenerate with the scripts; too big for git)
-distill/data/
+distill/data/*
+# keep the hand-curated real-label eval set in git (gitignore has no inline comments)
+!distill/data/real_test.jsonl
 distill/data-*/
 distill/data_smoke/
 distill/ner-model/

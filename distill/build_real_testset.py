@@ -17,20 +17,29 @@ data/real_test.draft.txt — plain text, one label per block, entities marked as
 [some text](LABEL).
 
 STEP 2 — you fix the brackets by hand (fast: you're correcting, not starting
-cold), then:
+cold). Where OCR garbled a field, put the correct value on that block's "@true"
+line, e.g.   @true drug=metformin hcl; strength=500 mg
+Then:
 
     python build_real_testset.py --finalize data/real_test.draft.txt --out data/
 
--> writes data/real_test.jsonl, which evaluate.py picks up automatically.
+-> writes data/real_test.jsonl (kept in git via a .gitignore exception), which
+evaluate.py picks up automatically. Each row also carries "true_values", so you
+can later split errors into "OCR's fault" vs "the model's fault".
+
+Re-running --images after you've started annotating APPENDS new labels to the
+draft; blocks already in it are left untouched.
 
 Labels: DRUG STRENGTH DOSAGE FORM ROUTE FREQUENCY DURATION
 (mark the drug name, the strength like "500 mg", the dose like "1", the form like
 "tablet", the route like "by mouth", the frequency, the duration. Ignore
 everything else — pharmacy name, patient info, Rx number, dates.)
 
-PRIVACY: real labels carry patient names / addresses / Rx numbers. We never label
-those, and the images stay out of git (.gitignore). Only the finalised text goes
-in the repo — scrub any patient identifier from the draft before finalising.
+PRIVACY: real labels carry patient names / addresses / Rx / phone numbers. Never
+label those. The raw images and the .draft.txt stay out of git (.gitignore). But
+before finalising, REPLACE identifiers with realistic fakes rather than deleting
+them — the model needs the surrounding noise to learn to ignore it. --finalize
+runs a PII pattern check and warns if something looks unscrubbed.
 """
 
 from __future__ import annotations
@@ -41,7 +50,40 @@ import re
 from pathlib import Path
 
 LABELS = ["DRUG", "STRENGTH", "DOSAGE", "FORM", "ROUTE", "FREQUENCY", "DURATION"]
+_FIELDS = [l.lower() for l in LABELS]
 _BRACKET = re.compile(r"\[([^\]\n]+?)\]\(([A-Z_]+)\)")
+_TRUE_RE = re.compile(r"^@true[ \t]*(.*)$", re.MULTILINE)
+
+# rough patterns that suggest an identifier survived scrubbing
+_PII_HINTS = [
+    (re.compile(r"\(?\d{3}\)?[ .\-]\d{3}[ .\-]\d{4}"), "phone number"),
+    (re.compile(r"\bR[Xx]\s*#?\s*\d{5,}"), "Rx number"),
+    (re.compile(r"\b\d{7,}\b"), "long digit string (account / Rx #)"),
+]
+
+
+def _parse_true_line(body: str) -> dict:
+    """Read an optional  '@true drug=...; strength=...'  line into {field: value}."""
+    m = _TRUE_RE.search(body)
+    out: dict[str, str] = {}
+    if m:
+        for pair in re.split(r"[;,]", m.group(1)):
+            if "=" in pair:
+                k, v = pair.split("=", 1)
+                if k.strip().lower() in _FIELDS:
+                    out[k.strip().lower()] = v.strip()
+    return out
+
+
+def _pii_scan(rows: list[dict]) -> list[str]:
+    """Warn if a finalised label still looks like it holds an identifier."""
+    hits = []
+    for r in rows:
+        for rx, what in _PII_HINTS:
+            if rx.search(r["text"]):
+                hits.append(f"{r['source']}: still has a {what} — swap it for a fake before committing")
+                break
+    return hits
 
 
 # --------------------------------------------------------------------------- #
@@ -76,12 +118,25 @@ def med7_preannotate(text: str) -> str:
 def cmd_draft(sources: list[tuple[str, str]], out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     draft = out / "real_test.draft.txt"
-    with open(draft, "w") as fh:
-        for name, text in sources:
+    existing = draft.read_text() if draft.exists() else ""
+    have = {n.strip() for n in re.findall(r"^### (.+)$", existing, flags=re.MULTILINE)}
+    fresh = [(n, t) for n, t in sources if n.strip() not in have]
+
+    if not fresh:
+        print(f"{draft} already covers all {len(sources)} label(s) — nothing to add.")
+        return
+
+    with open(draft, "a") as fh:
+        if existing and not existing.endswith("\n\n"):
+            fh.write("\n\n")
+        for name, text in fresh:
             text = re.sub(r"\n{3,}", "\n\n", text.strip())
-            fh.write(f"### {name}\n{med7_preannotate(text)}\n\n")
-    print(f"wrote {draft}  ({len(sources)} labels)")
-    print("\nNext: open it, fix the [text](LABEL) marks, remove any patient info, then:")
+            fh.write(f"### {name}\n{med7_preannotate(text)}\n@true \n\n")
+
+    print(f"added {len(fresh)} label(s) to {draft}"
+          + (f"  ({len(have)} already there, left untouched)" if have else ""))
+    print("\nNext: fix the [text](LABEL) marks; where OCR mangled a field add the")
+    print("      real value on the '@true' line; swap any patient identifiers for fakes; then:")
     print(f"  python build_real_testset.py --finalize {draft} --out {out}")
 
 
@@ -91,7 +146,8 @@ def cmd_finalize(draft: Path, out: Path) -> None:
     rows, warnings = [], []
 
     for name, body in zip(blocks[0::2], blocks[1::2]):
-        body = body.strip("\n")
+        overrides = _parse_true_line(body)
+        body = _TRUE_RE.sub("", body).strip("\n")
         clean, spans, pos = "", [], 0
         for m in _BRACKET.finditer(body):
             clean += body[pos:m.start()]
@@ -103,9 +159,20 @@ def cmd_finalize(draft: Path, out: Path) -> None:
                 warnings.append(f"{name}: unknown label {lab!r}")
             pos = m.end()
         clean += body[pos:]
-        rows.append({"source": name.strip(), "text": clean, "entities": spans})
+
+        # true_values: default to the (possibly garbled) span text, @true line wins
+        true_values: dict[str, str] = {}
+        for s, e, lab in spans:
+            true_values.setdefault(lab.lower(), re.sub(r"\s+", " ", clean[s:e]).strip().lower())
+        true_values.update(overrides)
+
+        rows.append({"source": name.strip(), "text": clean,
+                     "entities": spans, "true_values": true_values})
         if not spans:
             warnings.append(f"{name}: no entities marked")
+
+    for h in _pii_scan(rows):
+        warnings.append(h)
 
     path = out / "real_test.jsonl"
     with open(path, "w") as fh:
