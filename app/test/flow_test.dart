@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pillpal/main.dart';
@@ -23,7 +23,11 @@ void main() {
 
   testWidgets('capture -> confirm -> save adds a medication to the list',
       (tester) async {
-    // start from a clean store
+    // tall surface so the confirm screen fits without scrolling
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
     for (final m in MedStore.instance.meds.toList()) {
       MedStore.instance.remove(m.id);
     }
