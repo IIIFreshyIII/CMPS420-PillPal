@@ -6,11 +6,18 @@ __pycache__/
 
 # Generated training data + model checkpoints (regenerate with the scripts; too big for git)
 distill/data/
+distill/data-*/
 distill/data_smoke/
 distill/ner-model/
 distill/ner-mobilebert/
 distill/ner-onnx/
+distill/model-*/
 distill/runs/
+distill/run-*.log
+
+# Label images: mock ones regenerate from the script; real ones must never be committed (patient info)
+distill/mock_labels/
+distill/real_labels/
 
 # Pipeline output
 profile.json

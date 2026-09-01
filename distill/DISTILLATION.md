@@ -98,17 +98,33 @@ python -m onnxruntime.quantization.preprocess --input ner-onnx/model.onnx --outp
 
 You ship `model.quant.onnx` + the tokenizer's vocab file in the app.
 
-## What "good" looks like
+## The real evaluation
 
-- Med7 scores F1 ≈ 0.86 on our synthetic labels (about the same on seen and
-  unseen — it never trained on any of it), but its **DRUG** score is low because
-  our labels are often ALL CAPS.
-- Targets for the distilled model:
-  - `test_unseen` F1 within ~0.05 of `test_seen` F1  → it generalises
-  - overall F1 on `test_unseen` ≥ Med7's ≈ 0.86      → it's a real replacement
-  - **beat Med7 on DRUG**, because the gold labels teach the ALL-CAPS cases
-- Small model close to Med7 on held-out data, at a fraction of the size, running
-  on a phone — that's the result.
+The synthetic `test_seen` / `test_unseen` scores saturate near 1.0 — a 66M-param
+model learns any ~5-template generator, so those numbers do NOT predict
+real-world performance. They're only good for *relative* comparisons on a fixed
+set (noise on/off, DistilBERT vs MobileBERT, training-set size).
+
+The number that matters comes from real label photos the generator never made:
+
+```bash
+# optional warm-up: mock label IMAGES to test the OCR path end to end
+python make_mock_label_images.py --n 18 --out mock_labels/
+python build_real_testset.py --images mock_labels/ --out data/     # needs tesseract-ocr
+#   -> edit data/real_test.draft.txt (fix the [text](LABEL) marks)
+python build_real_testset.py --finalize data/real_test.draft.txt --out data/
+python evaluate.py --model model-run --data data/                  # reads real_test.jsonl
+
+# then the same with 30-50 REAL label photos in place of mock_labels/
+```
+
+Mock images have template text, so they mostly test OCR robustness + tooling. Real
+photos are the deliverable — target ~30-50, varied pharmacies/layouts/capture
+conditions. That F1 doubles as the spec's required user-testing data.
+
+Med7 as the baseline: F1 ≈ 0.79 on our label-format text (it's trained on clinical
+prose, not labels) — a citable reason you're not just shipping Med7. The distilled
+model should beat that on the *real* test set, especially on DRUG.
 
 ## The honest risks
 
