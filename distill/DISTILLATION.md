@@ -44,27 +44,32 @@ train_ner.py         fine-tune DistilBERT/MobileBERT on      │
                      train; pick best epoch on val           │
                                                             │
 evaluate.py          score on test_seen AND test_unseen,    ─┘
-                     next to Med7.  The seen->unseen drop is the headline number.
+                     next to Med7  (+ real_test.jsonl if present).
                                                             │
 (optimum-cli)        export model -> ONNX -> quantise (~4× smaller)
                                                             │
 Flutter app          run the .onnx file on the phone
 ```
 
-**Why two test sets:** `test_seen` uses training-pool vocab (fresh instances) —
-"can it handle labels like the ones it trained on?". `test_unseen` uses the
-held-out drugs / pharmacies / phrasings — "does it *generalise*, or did it just
-memorise the drug list?". A model that scores 0.99 on seen and 0.70 on unseen has
-memorised. Small gap = real learning.
+**Why two synthetic test sets:** `test_seen` uses training-pool vocab (fresh
+instances); `test_unseen` uses the held-out drugs / pharmacies / phrasings. The
+seen→unseen gap is a *memorisation check* — a big drop means it memorised the drug
+list. In practice both saturate near 1.0 (see "The real evaluation" below), so
+this gap is a sanity check, not the deliverable.
 
 ### Run it — one command
 
 ```bash
 cd distill
 bash run.sh                                  # distilbert, 5000 labels, 5 epochs
-bash run.sh --noise 0.02 --name noisy        # + OCR-style corruption
+bash run.sh --noise 0.02 --name noisy        # + OCR-style corruption (see below)
 bash run.sh --base google/mobilebert-uncased --name mobilebert --lr 5e-5 --epochs 6
 ```
+
+`--noise 0.02` makes the generator mimic real OCR: it **drops whole lines**
+(Tesseract's dominant failure — it silently loses regions it can't segment) and
+adds a few character swaps. Spans on a dropped line are removed, so the model
+learns to cope when OCR loses a field entirely.
 
 `run.sh` builds the dataset, fine-tunes, evaluates, and writes everything to
 `run-<name>-<timestamp>.log`. Each `--name` gets its own `data-<name>/` and
@@ -101,22 +106,30 @@ You ship `model.quant.onnx` + the tokenizer's vocab file in the app.
 ## The real evaluation
 
 The synthetic `test_seen` / `test_unseen` scores saturate near 1.0 — a 66M-param
-model learns any ~5-template generator, so those numbers do NOT predict
-real-world performance. They're only good for *relative* comparisons on a fixed
-set (noise on/off, DistilBERT vs MobileBERT, training-set size).
+model learns a template generator no matter how much vocab or structural variety
+we add, so those numbers do NOT predict real-world performance. They're only good
+for *relative* comparisons on a fixed set (noise on/off, DistilBERT vs MobileBERT,
+training-set size).
 
 The number that matters comes from real label photos the generator never made:
 
 ```bash
 # optional warm-up: mock label IMAGES to test the OCR path end to end
 python make_mock_label_images.py --n 18 --out mock_labels/
-python build_real_testset.py --images mock_labels/ --out data/     # needs tesseract-ocr
-#   -> edit data/real_test.draft.txt (fix the [text](LABEL) marks)
-python build_real_testset.py --finalize data/real_test.draft.txt --out data/
+python build_real_testset.py --images mock_labels/ --out data/     # needs tesseract-ocr; Med7 pre-annotates
+#   -> edit data/real_test.draft.txt:
+#      - fix the [text](LABEL) marks
+#      - where OCR garbled a field, add its real value on the block's "@true" line
+#      - replace any patient identifiers (name / Rx # / phone) with realistic fakes
+python build_real_testset.py --finalize data/real_test.draft.txt --out data/   # runs a PII check
 python evaluate.py --model model-run --data data/                  # reads real_test.jsonl
 
 # then the same with 30-50 REAL label photos in place of mock_labels/
+# re-running --images APPENDS new photos; it won't clobber your annotations
 ```
+
+Only `data/real_test.jsonl` is committed (a `.gitignore` exception) — the raw
+images and the `.draft.txt` stay local.
 
 Mock images have template text, so they mostly test OCR robustness + tooling. Real
 photos are the deliverable — target ~30-50, varied pharmacies/layouts/capture

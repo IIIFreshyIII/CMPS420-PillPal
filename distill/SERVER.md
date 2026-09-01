@@ -9,35 +9,28 @@ machine — it trains the model and can host Med7 as the reference. The phone ap
 still runs the finished model fully on-device. This is the same as using Google
 Colab, just your own hardware.
 
-## 1. Move the code
+## 1. Get / update the code
 
-Don't copy `.venv/`, `data/`, `ner-model/`, or the HuggingFace cache — regenerate
-those on the server. The generator is seeded, so `make_dataset.py` produces the
-exact same data on any machine.
+The repo is on GitHub. First time on the server:
 
-**Quick way (rsync over SSH):**
 ```bash
-rsync -av --exclude .venv --exclude .venv-gpu --exclude 'distill/data' \
-      --exclude 'distill/data_smoke' --exclude 'distill/ner-model' \
-      "CMPS 420/" user@homelab:~/med-tracker/
+# add an SSH key once: ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+#   then paste ~/.ssh/id_ed25519.pub at github.com -> Settings -> SSH keys
+git clone git@github.com:IIIFreshyIII/CMPS420-PillPal.git ~/Projects/CMPS420-PillPal
 ```
 
-**Better way for a team — put it in git:**
-```bash
-cd "CMPS 420"
-git init && git add -A && git commit -m "Med-Tracker: extraction prototype + distillation pipeline"
-# push to GitHub / your Gitea, then on the server:  git clone ...
-```
-(`.gitignore` already excludes the venvs and generated data.)
+After that, just `git pull`. The venvs, generated `data-*/`, `model-*/`, and run
+logs are gitignored — regenerate them on the server. The generator is seeded, so
+`make_dataset.py` produces identical data on any machine.
 
 ## 2. One-time server setup
 
 ```bash
-cd ~/med-tracker/distill
+cd ~/Projects/CMPS420-PillPal/distill
 nvidia-smi                       # note the "CUDA Version" top-right
 bash setup_gpu.sh                # or:  CUDA=cu124 bash setup_gpu.sh
 ```
-This makes `.venv-gpu/` and prints whether PyTorch sees the GPU.
+This makes `.venv-gpu/` (at the repo root) and prints whether PyTorch sees the GPU.
 
 ## 3. Free up the GPU during training runs
 
@@ -87,8 +80,17 @@ bash run.sh --name baseline
 The run also streams to `run-baseline-<timestamp>.log`, so even if the session
 dies you get the full output with `cat run-baseline-*.log`.
 
-## 6. Optional: remote development
+## 6. The app lane also lives here
 
-VS Code's "Remote - SSH" extension lets you edit and run on the server from your
-laptop as if the files were local. Good for the model lane; the app lane keeps
-working in Flutter locally.
+Flutter is installed on this server too (`snap install flutter`). `flutter test`
+and `flutter analyze` run headless. To *see* the UI without a phone or emulator:
+
+```bash
+cd ~/Projects/CMPS420-PillPal/app
+flutter run -d web-server --web-port 8080
+```
+
+then open `http://<server-ip>:8080` from the laptop browser.
+
+VS Code's "Remote - SSH" extension lets you edit and run on the server from the
+laptop as if the files were local.

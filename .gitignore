@@ -35,4 +35,3 @@ profile.json
 .idea/
 .DS_Store
 distill/*.log
-distill/*.log

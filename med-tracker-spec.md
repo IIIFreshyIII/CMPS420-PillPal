@@ -14,7 +14,7 @@
 ## 1. Core Pipeline (Photo → Data)
 
 1. User takes a photo using a guided on-screen frame (helps line up the label correctly)
-2. Photo goes through a **NER model** (Named Entity Recognition — a model that pulls out specific pieces of info like "drug name" or "dosage" from text, rather than a general-purpose AI that writes/guesses text). This is *not* a generative LLM, specifically to avoid made-up info.
+2. Photo goes through **on-device OCR** (photo → text), then a **NER model** (Named Entity Recognition — a model that pulls out specific pieces of info like "drug name" or "dosage" from text, rather than a general-purpose AI that writes/guesses text). This is *not* a generative LLM, specifically to avoid made-up info. The NER model is a small transformer distilled from Med7 and run on-device via ONNX (see `distill/DISTILLATION.md`); dates and days-supply come from plain regex, not the model.
 3. **Every extraction requires human confirmation** — no matter how confident the model is, the user checks and confirms the fields before anything is saved. No confidence-based shortcuts.
 4. Once confirmed, the photo is **deleted immediately**. If the user doesn't confirm right away, the photo auto-deletes after a short period of inactivity.
 5. Refill date is **not** predicted by AI — it's basic math: `fill date + days supply = refill date`. Anything that can be calculated with plain logic should be, not inferred by a model.
@@ -39,11 +39,16 @@
 - **Option A**: Multiple people's medication profiles can live under one shared device/account (like a family member managing profiles for a parent and a child)
 - Planned (not yet built): a way to **migrate a profile to its own independent install** later, using a local encrypted transfer (QR code scan or the phone's built-in share feature) — no cloud round-trip needed for the transfer itself
 
-## 5. Tech Stack (Open Decisions)
+## 5. Tech Stack (Decided)
 
-- **Not yet decided:** native (separate iOS/Android codebases) vs. cross-platform (one codebase, e.g. React Native or Flutter)
-- **Blocked on above:** choice of encrypted local database — likely candidates are SQLCipher (encrypted SQLite) vs. whatever the platform natively offers
-- This is the next major decision to make before implementation can start in earnest
+- **Cross-platform: Flutter** (one Dart codebase for iOS + Android). Android is
+  the day-to-day target; a team Mac handles the iOS builds.
+- **On-device extraction:** ML Kit for OCR; a small transformer (DistilBERT →
+  MobileBERT for size) fine-tuned on synthetic labels and distilled from Med7,
+  run via ONNX Runtime. Med7 itself can't run on a phone (spaCy has no mobile
+  export), so it serves as the reference we train against and measure against.
+- **Encrypted local database:** SQLCipher (encrypted SQLite) via the `drift`
+  package; encryption key in the platform keystore.
 
 ---
 
@@ -55,6 +60,9 @@
 
 ## Remaining Work
 
-- User interviews
-- Technical documentation on the specific NER model chosen
-- Everything else above has been translated into the proposal narrative already
+- User interviews (not yet started)
+- Real-label evaluation set: ~30–50 photographed prescription labels, OCR'd and
+  hand-corrected, for measuring the on-device model (doubles as user-testing data)
+- Technical documentation on the NER model — in progress, `distill/DISTILLATION.md`
+- Build out the app past the confirm-and-save loop: camera, OCR, real extractor,
+  encrypted storage, reminders

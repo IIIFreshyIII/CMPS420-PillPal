@@ -1,92 +1,60 @@
-# Med-Tracker — Phase 1 extraction prototype
+# PillPal — Med-Tracker (CMPS 420, Phase 1)
 
-Turns a prescription-label photo into a draft medication profile using **Med7**
-(`en_core_med7_lg`, a spaCy NER model — *not* a generative LLM) plus deterministic
-regex for the fields Med7 doesn't cover (fill date, days supply, quantity).
+Photograph a prescription label → the app extracts the fields → you confirm every
+one → it becomes a tracked medication with refill reminders. Fully on-device.
 
-See `med-tracker-spec.md` for the design rules this implements:
-- NER only, no generative model in the extraction path
-- refill date is arithmetic (`fill_date + days_supply`), never predicted
-- every field is human-confirmed before anything is "saved"
+Read **`med-tracker-spec.md`** for the design and the non-negotiables:
+
+- NER only, no generative LLM in the extraction path (avoid made-up info)
+- refill date is arithmetic (`fill date + days supply`), never predicted
+- every field is human-confirmed before anything is saved
 - the source photo is deleted right after confirmation
+- local-first — the whole pipeline runs on the phone
 
-## What Med7 gives you
+## Repo layout
 
-Seven entity labels: `DRUG`, `STRENGTH`, `DOSAGE`, `DURATION`, `FREQUENCY`,
-`FORM`, `ROUTE`. F1 ≈ 0.889 on its held-out split. Runs fine on CPU.
+| path | what it is |
+|------|-----------|
+| `app/` | **The Flutter app.** The product. See `app/README.md`. |
+| `distill/` | **Trains the on-device NER model.** Generates synthetic labels, distils Med7 into a small (DistilBERT / MobileBERT) model, evaluates it, exports to ONNX. See `distill/DISTILLATION.md` and `distill/SERVER.md`. |
+| `med7_pipeline.py` | The original computer-only prototype: OCR → Med7 → regex → confirm → refill math. Kept as a reference and a quick way to eyeball Med7. |
+| `compare_models.py` | One-off: Med7 vs candidate on-device models on the sample labels. |
+| `notebooks/med7_colab.ipynb` | Med7 quickstart in Colab (synthetic labels only). |
+| `sample_labels/` | A couple of synthetic label texts for testing. |
 
-## Run locally
+## Key decisions so far
+
+- **Everything runs on the phone.** No backend. (Med7 itself can't — spaCy has no
+  mobile export — so Med7 became the *reference* we distil from and measure against.)
+- **App framework: Flutter.**
+- **On-device model:** a small transformer (start DistilBERT, try MobileBERT for
+  size) fine-tuned on synthetic labels whose gold answers come from a generator,
+  with Med7 as the baseline. Runs via ONNX Runtime in the app.
+- **Encrypted storage:** SQLCipher via `drift` (not yet built).
+
+## Where to start
+
+- **App lane:** `cd app`, then `app/README.md`. First runnable slice (list →
+  capture → confirm → save) is done and tested.
+- **Model lane:** `cd distill`, then `DISTILLATION.md`. Pipeline is done; the
+  blocker is collecting ~30–50 real label photos for the evaluation that counts
+  (`build_real_testset.py`).
+- **Research lane:** user interviews (spec's "Remaining Work"); the NER-model
+  write-up is `distill/DISTILLATION.md`.
+
+## The original prototype (`med7_pipeline.py`)
+
+Runs on a computer, not the phone. Useful for seeing what Med7 does.
 
 ```bash
-cd "CMPS 420"
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+sudo apt install tesseract-ocr          # only needed for --image
 
-# OCR backend (only needed for --image):
-sudo apt install tesseract-ocr
-```
-
-Text in, no OCR:
-
-```bash
 python med7_pipeline.py --text "$(cat sample_labels/example1.txt)"
-```
-
-Photo in:
-
-```bash
 python med7_pipeline.py --image path/to/label.jpg --delete-image --out profile.json
 ```
 
-`--no-confirm` skips the interactive review (dev only — the spec requires confirmation).
-
-## Run in Google Colab
-
-Open `notebooks/med7_colab.ipynb` in Colab, or paste this into a cell:
-
-```python
-!pip -q install "en-core-med7-lg @ https://huggingface.co/kormilitzin/en_core_med7_lg/resolve/main/en_core_med7_lg-1.1.0-py3-none-any.whl"
-# If Colab complains about spaCy version, Runtime > Restart session, then re-run.
-
-import spacy
-nlp = spacy.load("en_core_med7_lg")
-doc = nlp("Take 1 tablet of Metformin 500mg by mouth twice daily for 30 days.")
-for ent in doc.ents:
-    print(f"{ent.label_:<10} {ent.text}")
-```
-
-Note: Colab uploads your text to Google. Fine for synthetic test labels;
-for real prescription data use the local path (the spec is local-first).
-
-## Files
-
-| file | purpose |
-|------|---------|
-| `med7_pipeline.py` | OCR → Med7 NER + regex → human confirm → profile + refill math |
-| `requirements.txt` | pinned deps incl. the Med7 wheel URL |
-| `sample_labels/` | synthetic label text for testing |
-| `notebooks/med7_colab.ipynb` | Colab quickstart |
-
-## What we learned testing it
-
-- **Med7-lg is trained on clinical prose, not label layout.** A bare noun phrase like
-  `METFORMIN HCL 500 MG TABLET` yields no `DRUG` tag; `take metformin hcl 500 mg tablet`
-  does. `med7_pipeline.py` works around this by lowercasing/collapsing the OCR text and
-  retrying each line with a `take ` lead-in — recovered `metformin hcl` on the sample.
-  Still flagged "low confidence — verify" for the human step.
-- Salt suffixes (`hcl`, `hydrochloride`) and adjacent strengths hurt `DRUG` recall.
-  `en_core_med7_trf` (transformer variant) is more robust — worth trying if the lg
-  model's drug misses are too frequent: needs `spacy-transformers` + `torch`.
-- Fill date / days supply / quantity are **not** Med7 labels — they come from regex in
-  `_regex_fields()`. Watch for the "Qty 60 ... Days supply 30" trap (fixed: colon-form
-  pattern is tried first).
-
-## Known gaps / next steps
-
-- Tesseract is weak on angled/curved label photos — try EasyOCR (`pip install easyocr`)
-  as a drop-in for `ocr_image()`.
-- No persistence layer yet (spec calls for an encrypted local DB — SQLCipher TBD).
-- "Auto-delete photo after inactivity" is not implemented here (belongs in the app layer).
-- Consider a small deterministic drug lexicon (RxNorm subset) as a backstop for Med7 —
-  fits the spec's "deterministic where possible" principle better than a second model.
+Known limits: Med7 (`en_core_med7_lg`) is trained on clinical prose, so it misses
+drug names in ALL-CAPS label layout and scores ~0.79 F1 on label-format text —
+which is the whole reason the `distill/` pipeline exists.
