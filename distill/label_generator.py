@@ -1,37 +1,31 @@
 """
-Synthetic prescription-label generator — held-out-split version.
+Synthetic prescription-label generator — held-out split + template variety.
 
-Produces label text plus the exact character spans of every field it inserts
-(DRUG / STRENGTH / DOSAGE / FORM / ROUTE / FREQUENCY / DURATION).
+Two kinds of variety, on purpose:
 
-Why "held-out split": to prove the trained model *generalises* instead of just
-memorising, the test set must contain drugs / pharmacies / phrasings the model
-never saw in training. So the vocabularies are partitioned up front into a
-"train" pool and a disjoint "test" pool, and generate() draws from one or the
-other depending on `split`:
+  * VOCABULARY holdout: drugs / pharmacies / phrasings are pre-split into a
+    "train" pool and a disjoint "test" pool. generate(split="unseen") draws only
+    from the held-out pool, so the test set contains words the model never saw.
 
-    generate(seed=0, split="train")     # only training-pool vocab
-    generate(seed=0, split="unseen")    # only held-out vocab (drugs, pharmacies,
-                                        #   frequencies, durations the model
-                                        #   never trained on)
+  * STRUCTURAL variety: the drug line, the sig ("Take ...") line, the header and
+    the footer each have several templates / orderings / optional fields, chosen
+    at random. This stops the model from cheating with "the token after 'Take' is
+    always the dose" — it has to actually read the language.
 
-Optional OCR-style corruption (length-preserving, so spans stay valid):
-
-    text, spans = generate(seed=0)
+    text, spans = generate(seed=0, split="train")
     text, spans = add_ocr_noise(text, spans, rate=0.02, seed=0)
 
-Run directly to eyeball both splits:  python label_generator.py
+Run directly to eyeball it:  python label_generator.py
 """
 
 from __future__ import annotations
 
 import random
 
-# Med7's seven entity types.
 LABELS = ["DRUG", "STRENGTH", "DOSAGE", "FORM", "ROUTE", "FREQUENCY", "DURATION"]
 
-# --- ingredient lists ----------------------------------------------------- #
-# (drug, salt or "", [plausible strengths], [plausible forms])
+# --- ingredient lists --------------------------------------------------- #
+# (drug, salt or "", [strengths], [forms])
 DRUGS = [
     ("metformin", "hcl", ["500 mg", "850 mg", "1000 mg"], ["tablet", "ER tablet"]),
     ("lisinopril", "", ["5 mg", "10 mg", "20 mg", "40 mg"], ["tablet"]),
@@ -118,11 +112,24 @@ DRUGS = [
     ("memantine", "hcl", ["5 mg", "10 mg"], ["tablet"]),
     ("guaifenesin", "", ["400 mg", "600 mg", "1200 mg"], ["ER tablet"]),
     ("benzonatate", "", ["100 mg", "200 mg"], ["capsule"]),
+    ("latanoprost", "", ["0.005%"], ["eye drops"]),
+    ("timolol", "maleate", ["0.25%", "0.5%"], ["eye drops"]),
 ]
 
+BRANDS = {
+    "metformin": "Glucophage", "atorvastatin": "Lipitor", "lisinopril": "Prinivil",
+    "amlodipine": "Norvasc", "omeprazole": "Prilosec", "sertraline": "Zoloft",
+    "escitalopram": "Lexapro", "duloxetine": "Cymbalta", "gabapentin": "Neurontin",
+    "montelukast": "Singulair", "losartan": "Cozaar", "rosuvastatin": "Crestor",
+    "bupropion": "Wellbutrin", "pregabalin": "Lyrica", "tamsulosin": "Flomax",
+    "quetiapine": "Seroquel", "zolpidem": "Ambien", "sumatriptan": "Imitrex",
+    "tadalafil": "Cialis", "sildenafil": "Viagra", "apixaban": "Eliquis",
+}
+
 DOSE_AMOUNTS = ["1", "2", "3", "one", "two", "1 to 2", "1-2", "one-half", "1/2", "one to two"]
-ROUTES = ["by mouth", "by mouth", "by mouth", "orally", "PO",
-          "by mouth", "into the affected eye", "by inhalation", "in each nostril"]
+ROUTES = ["by mouth", "by mouth", "by mouth", "orally", "PO", "by mouth",
+          "into the affected eye", "in each eye", "by inhalation", "in each nostril",
+          "sublingually", "topically"]
 FREQ = [
     "once daily", "twice daily", "three times daily", "four times daily",
     "every morning", "every evening", "at bedtime", "every 8 hours",
@@ -131,7 +138,7 @@ FREQ = [
     "as needed for pain", "as needed for anxiety", "with meals", "before meals",
     "in the morning and evening", "at the first sign of migraine",
     "BID", "TID", "QID", "QHS", "daily", "weekly", "every night at bedtime",
-    "2 times per day", "3 times per day", "once weekly",
+    "2 times per day", "3 times per day", "once weekly", "q6h", "q8h",
 ]
 DURATION = [
     "", "", "", "for 3 days", "for 5 days", "for 7 days", "for 10 days",
@@ -156,29 +163,30 @@ PRESCRIBERS = ["DR A PATEL", "DR SARAH KIM", "DR J RODRIGUEZ", "DR M OKAFOR",
 STREETS = ["MAIN", "OAK", "ELM", "1ST", "2ND", "PARK", "CEDAR", "MAPLE", "HILL", "RIVER"]
 WARNINGS = ["MAY CAUSE DROWSINESS", "TAKE WITH FOOD", "DO NOT DRINK ALCOHOL",
             "AVOID PROLONGED SUN EXPOSURE", "DO NOT CRUSH OR CHEW",
-            "TAKE ON AN EMPTY STOMACH"]
+            "TAKE ON AN EMPTY STOMACH", "KEEP REFRIGERATED"]
+
+_FORM_ABBREV = {"tablet": "tab", "capsule": "cap", "ER tablet": "ER tab",
+                "ER capsule": "ER cap", "DR capsule": "DR cap", "DR tablet": "DR tab"}
+_ORAL_ROUTES = {"by mouth", "orally", "PO"}
 
 
-# --- vocabulary partition (train pool vs held-out pool) ------------------- #
+# --- vocabulary partition --------------------------------------------- #
 def _split_pool(items, holdout_frac: float, seed: int):
-    """Return (train_pool, test_pool) — disjoint."""
     xs = list(items)
     random.Random(seed).shuffle(xs)
     n_hold = max(1, round(len(xs) * holdout_frac))
     return xs[n_hold:], xs[:n_hold]
 
 
-# Fixed seeds so the partition is identical on every machine / rerun.
 DRUG_TRAIN, DRUG_TEST = _split_pool(DRUGS, 0.25, seed=1001)
 PHARM_TRAIN, PHARM_TEST = _split_pool(PHARMACIES, 0.30, seed=1002)
 FREQ_TRAIN, FREQ_TEST = _split_pool(FREQ, 0.30, seed=1003)
 DUR_TRAIN, DUR_TEST = _split_pool([d for d in DURATION if d], 0.30, seed=1004)
-DUR_TRAIN += ["", "", ""]          # keep "no duration" available in both splits
+DUR_TRAIN += ["", "", ""]
 DUR_TEST += ["", "", ""]
 
 
 def holdout_manifest() -> dict:
-    """What was held out — save this alongside the dataset for the writeup."""
     return {
         "drugs_held_out": [d[0] for d in DRUG_TEST],
         "drugs_in_training": [d[0] for d in DRUG_TRAIN],
@@ -188,7 +196,7 @@ def holdout_manifest() -> dict:
     }
 
 
-# --- span-tracking string builder --------------------------------------- #
+# --- span-tracking string builder ------------------------------------ #
 class _Builder:
     def __init__(self) -> None:
         self.text = ""
@@ -200,6 +208,9 @@ class _Builder:
         if label:
             self.spans.append((start, len(self.text), label))
 
+    def sp(self) -> None:
+        self.text += " "
+
     def line(self, s: str = "") -> None:
         self.text += s + "\n"
 
@@ -208,14 +219,112 @@ def _casing(s: str, mode: str) -> str:
     return {"upper": s.upper(), "lower": s.lower(), "title": s.title(), "as-is": s}[mode]
 
 
-# --- generation --------------------------------------------------------- #
-def generate(seed: int | None = None, split: str = "train"):
-    """Return (label_text, gold_spans).
+def _sig_verb(route: str, rng) -> str:
+    if "eye" in route:
+        return rng.choice(["Instill", "Place"])
+    if "nostril" in route:
+        return rng.choice(["Spray", "Instill"])
+    if "inhal" in route:
+        return rng.choice(["Inhale", "Take"])
+    if route == "topically":
+        return rng.choice(["Apply", "Use"])
+    if route == "sublingually":
+        return rng.choice(["Place", "Dissolve"])
+    return rng.choice(["Take", "Take", "Use"])
 
-    split="train"  -> draw only from the training vocab pools
-    split="unseen" -> draw only from the held-out pools (drugs / pharmacies /
-                      frequencies / durations the model never trained on)
-    """
+
+# --- section templates ---------------------------------------------- #
+def _emit_header(b, pharm, phone, case, rng):
+    b.line(_casing(pharm, "as-is"))
+    if rng.random() < 0.6:
+        b.line(f"{rng.randint(100, 4999)} {rng.choice(STREETS)} ST")
+    if rng.random() < 0.5:
+        b.line(phone)
+    rx = rng.choice(["Rx", "Rx #", "RX", "RX NO."])
+    df = rng.choice(["Date filled:", "Filled", "Date:", "FILL DATE", "Filled on"])
+    m, d, y = rng.randint(1, 12), rng.randint(1, 28), 2026
+    sep = rng.choice(["   ", "    ", "  "])
+    b.line(f"{rx} {rng.randint(1_000_000, 9_999_999)}{sep}{df} {m:02d}/{d:02d}/{y}")
+    b.line()
+    return m, d, y
+
+
+def _emit_drug_line(b, drug, salt, strength, form, case, rng):
+    style = rng.choice(["full", "full", "no_salt", "brand", "glued", "dash"])
+    b.add(_casing(drug, case), "DRUG")
+    if salt and style in ("full", "brand") and rng.random() < 0.85:
+        b.sp()
+        b.add(_casing(salt, case), "DRUG")
+    if style == "dash":
+        b.add("-")
+        b.add(_casing(strength.replace(" ", ""), case), "STRENGTH")
+    elif style == "glued":
+        b.sp()
+        b.add(_casing(strength.replace(" ", ""), case), "STRENGTH")
+    else:
+        b.sp()
+        b.add(_casing(strength, case), "STRENGTH")
+    b.sp()
+    b.add(_casing(form, case), "FORM")
+    if style == "brand" and drug in BRANDS:
+        b.add(" (")
+        b.add(_casing(BRANDS[drug], case))
+        b.add(")")
+    b.line()
+
+
+def _emit_sig_line(b, dose, form, route, freq, dur, case, rng):
+    t = rng.choice(["v_route_freq", "v_route_freq", "v_freq_route", "bare"])
+    form_s = _FORM_ABBREV.get(form, form) if rng.random() < 0.35 else form
+    route_s = "PO" if (route in _ORAL_ROUTES and rng.random() < 0.3) else route
+    include_route = rng.random() > 0.15
+
+    if t != "bare":
+        b.add(_casing(_sig_verb(route, rng) + " ", case))
+    b.add(_casing(dose, case), "DOSAGE")
+    b.sp()
+    b.add(_casing(form_s, case), "FORM")
+
+    order = ["freq", "route"] if t == "v_freq_route" else ["route", "freq"]
+    for part in order:
+        if part == "route" and include_route:
+            b.sp()
+            b.add(_casing(route_s, case), "ROUTE")
+        elif part == "freq":
+            b.sp()
+            b.add(_casing(freq, case), "FREQUENCY")
+    if dur:
+        b.sp()
+        b.add(_casing(dur, case), "DURATION")
+    b.line(rng.choice([".", "", ".", "; refill as needed"]))
+    b.line()
+
+
+def _emit_footer(b, rng, m, d, y):
+    supply = rng.choice([5, 7, 10, 14, 30, 30, 60, 90])
+    qty = supply * rng.choice([1, 1, 2, 3])
+    exp = f"{m:02d}/{d:02d}/{y + 1}"
+    lines = [
+        rng.choice([f"Qty: {qty}    Days supply: {supply}",
+                    f"Quantity {qty}   {supply} day supply",
+                    f"QTY {qty}     DAYS SUPPLY: {supply}"]),
+        rng.choice([f"Refills: {rng.randint(0, 11)} before {exp}",
+                    f"{rng.randint(0, 11)} refills remaining",
+                    f"REFILLS {rng.randint(0, 11)}"]),
+    ]
+    if rng.random() < 0.7:
+        lines.append(f"Prescriber: {rng.choice(PRESCRIBERS)}")
+    if rng.random() < 0.35:
+        lines.append(rng.choice(WARNINGS))
+    if rng.random() < 0.3:
+        lines.append(f"Discard after {exp}")
+    rng.shuffle(lines)
+    for ln in lines:
+        b.line(ln)
+
+
+# --- generation --------------------------------------------------- #
+def generate(seed: int | None = None, split: str = "train"):
     if split == "train":
         drugs, pharms, freqs, durs = DRUG_TRAIN, PHARM_TRAIN, FREQ_TRAIN, DUR_TRAIN
     elif split == "unseen":
@@ -223,7 +332,6 @@ def generate(seed: int | None = None, split: str = "train"):
     else:
         raise ValueError(f"split must be 'train' or 'unseen', got {split!r}")
 
-    # deterministic seeding; offset keeps the train / unseen streams disjoint
     rng = random.Random(None if seed is None else seed + (0 if split == "train" else 999_983))
     b = _Builder()
 
@@ -234,60 +342,23 @@ def generate(seed: int | None = None, split: str = "train"):
     route = rng.choice(ROUTES)
     freq = rng.choice(freqs)
     dur = rng.choice(durs)
-
-    case = rng.choice(["upper", "upper", "title", "as-is"])
+    case = rng.choice(["upper", "upper", "title", "as-is", "lower"])
     pharm, phone = rng.choice(pharms)
-    month, day, year = rng.randint(1, 12), rng.randint(1, 28), 2026
-    supply = rng.choice([5, 7, 10, 14, 30, 30, 60, 90])
-    qty = supply * rng.choice([1, 1, 2, 3])
 
-    # header
-    b.line(pharm)
-    if rng.random() < 0.6:
-        b.line(f"{rng.randint(100, 4999)} {rng.choice(STREETS)} ST")
-    b.line(f"Rx {rng.randint(1_000_000, 9_999_999)}    Date filled: {month:02d}/{day:02d}/{year}")
-    b.line()
-
-    # drug line:  NAME [SALT] STRENGTH FORM
-    b.add(_casing(drug, case), "DRUG")
-    if salt and rng.random() < 0.7:
-        b.add(" ")
-        b.add(_casing(salt, case), "DRUG")
-    b.add(" ")
-    b.add(_casing(strength, case), "STRENGTH")
-    b.add(" ")
-    b.add(_casing(form, case), "FORM")
-    b.line()
-
-    # sig line:  Take <dose> <form> <route> <freq> [duration]
-    b.add(_casing(rng.choice(["Take ", "Take ", "Use "]), case))
-    b.add(_casing(dose, case), "DOSAGE")
-    b.add(" ")
-    b.add(_casing(form, case), "FORM")
-    b.add(" ")
-    b.add(_casing(route, case), "ROUTE")
-    b.add(" ")
-    b.add(_casing(freq, case), "FREQUENCY")
-    if dur:
-        b.add(" ")
-        b.add(_casing(dur, case), "DURATION")
-    b.line(rng.choice([".", "", "."]))
-    b.line()
-
-    # footer
-    b.line(f"Qty: {qty}    Days supply: {supply}")
-    b.line(f"Refills: {rng.randint(0, 11)} before {month:02d}/{day:02d}/{year + 1}")
-    if rng.random() < 0.7:
-        b.line(f"Prescriber: {rng.choice(PRESCRIBERS)}")
-    if rng.random() < 0.35:
-        b.line(rng.choice(WARNINGS))
+    m, d, y = _emit_header(b, pharm, phone, case, rng)
+    # sig sometimes comes before the drug-strength line, sometimes after
+    if rng.random() < 0.85:
+        _emit_drug_line(b, drug, salt, strength, form, case, rng)
+        _emit_sig_line(b, dose, form, route, freq, dur, case, rng)
+    else:
+        _emit_sig_line(b, dose, form, route, freq, dur, case, rng)
+        _emit_drug_line(b, drug, salt, strength, form, case, rng)
+    _emit_footer(b, rng, m, d, y)
 
     return b.text, _merge_adjacent(b.text, b.spans)
 
 
 def _merge_adjacent(text: str, spans):
-    """Fold e.g. DRUG 'rosuvastatin' + DRUG 'calcium' into one DRUG span so it
-    becomes B- I- rather than B- B-."""
     spans = sorted(spans)
     out: list = []
     for s, e, lab in spans:
@@ -298,41 +369,38 @@ def _merge_adjacent(text: str, spans):
     return out
 
 
-# --- optional OCR-style corruption (length-preserving -> spans stay valid) - #
+# --- optional OCR-style corruption (length-preserving) ------------ #
 _CONFUSE = {
-    "0": "O", "O": "0", "o": "c", "1": "l", "l": "1", "I": "l", "i": "l",
-    "5": "S", "S": "5", "8": "B", "B": "8", "2": "Z", "Z": "2", "6": "b",
-    "g": "9", "9": "g", "rn": "m", "cl": "d", "vv": "w",
+    "0": "O", "O": "0", "1": "l", "l": "1", "I": "l", "5": "S", "S": "5",
+    "8": "B", "B": "8", "2": "Z", "Z": "2", "6": "b", "g": "9", "9": "g",
 }
 
 
 def add_ocr_noise(text: str, spans, rate: float = 0.02, seed: int | None = None):
-    """Corrupt roughly `rate` of characters the way OCR does, WITHOUT changing
-    string length, so the gold spans still line up. Returns (text, spans)."""
     rng = random.Random(seed)
     chars = list(text)
     for i, ch in enumerate(chars):
-        if ch in "\n" or rng.random() > rate:
+        if ch == "\n" or rng.random() > rate:
             continue
-        if ch in _CONFUSE and len(_CONFUSE[ch]) == 1:
+        if ch in _CONFUSE:
             chars[i] = _CONFUSE[ch]
         elif ch.isalpha():
             chars[i] = ch.upper() if ch.islower() else ch.lower()
     return "".join(chars), spans
 
 
-# --- preview ----------------------------------------------------------- #
+# --- preview ---------------------------------------------------- #
 def _preview() -> None:
-    print(f"held-out drugs ({len(DRUG_TEST)}):", [d[0] for d in DRUG_TEST])
-    print(f"training drugs ({len(DRUG_TRAIN)})")
-    print("held-out frequencies:", FREQ_TEST)
+    print(f"train drugs: {len(DRUG_TRAIN)}   held-out drugs: {len(DRUG_TEST)}")
+    print("held-out drugs:", [d[0] for d in DRUG_TEST])
+    print("held-out frequencies:", FREQ_TEST, "\n")
     for split in ("train", "unseen"):
-        text, spans = generate(seed=0, split=split)
-        print(f"\n{'='*64}\nsplit = {split}\n{'='*64}\n{text}")
-        for s, e, lab in spans:
-            print(f"  {lab:<10} {text[s:e]!r}")
-    noisy, _ = add_ocr_noise(*generate(seed=3, split="train"), rate=0.04, seed=3)
-    print(f"\n{'='*64}\nwith OCR noise (rate 0.04)\n{'='*64}\n{noisy}")
+        for s in (0, 1, 2):
+            text, spans = generate(seed=s, split=split)
+            print(f"{'='*64}\nsplit={split} seed={s}\n{'='*64}\n{text}")
+            for a, e, lab in spans:
+                print(f"  {lab:<10} {text[a:e]!r}")
+            print()
 
 
 if __name__ == "__main__":

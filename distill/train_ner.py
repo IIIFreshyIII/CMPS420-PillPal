@@ -140,7 +140,7 @@ def _eval_save_kwargs() -> dict:
     params = inspect.signature(TrainingArguments.__init__).parameters
     key = "eval_strategy" if "eval_strategy" in params else "evaluation_strategy"
     return {key: "epoch", "save_strategy": "epoch", "load_best_model_at_end": True,
-            "metric_for_best_model": "f1"}
+            "metric_for_best_model": "f1", "save_total_limit": 1}
 
 
 if __name__ == "__main__":

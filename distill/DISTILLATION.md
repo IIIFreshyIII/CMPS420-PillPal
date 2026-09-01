@@ -57,22 +57,35 @@ held-out drugs / pharmacies / phrasings — "does it *generalise*, or did it jus
 memorise the drug list?". A model that scores 0.99 on seen and 0.70 on unseen has
 memorised. Small gap = real learning.
 
-### Run it
+### Run it — one command
 
 ```bash
 cd distill
-python make_dataset.py --n-train 4000 --out data/          # add --noise 0.02 for OCR-style corruption
+bash run.sh                                  # distilbert, 5000 labels, 5 epochs
+bash run.sh --noise 0.02 --name noisy        # + OCR-style corruption
+bash run.sh --base google/mobilebert-uncased --name mobilebert --lr 5e-5 --epochs 6
+```
+
+`run.sh` builds the dataset, fine-tunes, evaluates, and writes everything to
+`run-<name>-<timestamp>.log`. Each `--name` gets its own `data-<name>/` and
+`model-<name>/` so runs don't clobber each other. It auto-picks `.venv-gpu` if
+present, else `.venv`.
+
+Or run the three stages by hand:
+
+```bash
+python make_dataset.py --n-train 4000 --out data/     # --noise 0.02 optional
 python train_ner.py    --data data/ --base-model distilbert-base-uncased --epochs 4
 python evaluate.py      --model ner-model --data data/
 ```
 
-DistilBERT first — it's the smoothest to get working. Once the whole pipeline
-runs end to end, try `--base-model google/mobilebert-uncased` (smaller, ~25M vs
-66M params) and compare size vs accuracy. MobileBERT can be fussier — if it won't
-learn, lower the learning rate (`--lr 5e-5` or `1e-4`) and add an epoch.
+DistilBERT first — smoothest to get working. Then try
+`--base google/mobilebert-uncased` (smaller, ~25M vs 66M params) and compare size
+vs accuracy; MobileBERT can be fussier, so lower the LR (`--lr 5e-5`) and add an
+epoch if it won't learn.
 
-Runs on the homelab 3060 Ti in well under a minute (see SERVER.md). Laptop CPU
-works but takes ~15–20 min per run.
+Runs on the homelab 3060 Ti in ~2 minutes (see SERVER.md). Laptop CPU works but
+takes ~15–20 min.
 
 ### Convert for the phone (after you're happy with accuracy)
 

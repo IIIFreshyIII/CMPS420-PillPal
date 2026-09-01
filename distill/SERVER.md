@@ -60,30 +60,32 @@ Check what's on the card any time: `nvidia-smi`.
 ## 4. Run the pipeline (GPU)
 
 ```bash
-cd ~/med-tracker/distill
-V=../.venv-gpu/bin/python
+cd ~/Projects/CMPS420-PillPal/distill
 
-$V make_dataset.py --n-train 6000 --out data/          # add --noise 0.02 for OCR corruption
-$V train_ner.py   --data data/ --base-model distilbert-base-uncased --epochs 5 --batch-size 64
-$V evaluate.py     --model ner-model --data data/
-
-# then the smaller target, compare size vs accuracy:
-$V train_ner.py   --data data/ --base-model google/mobilebert-uncased --epochs 6 --lr 5e-5 --batch-size 64 --out ner-mobilebert
-$V evaluate.py     --model ner-mobilebert --data data/
+bash run.sh                                              # baseline: distilbert, 5000 labels
+bash run.sh --noise 0.02 --name noisy                    # with OCR corruption
+bash run.sh --base google/mobilebert-uncased --name mobilebert --lr 5e-5 --epochs 6
 ```
 
-`evaluate.py` reports F1 on `test_seen` and `test_unseen` plus the generalisation
-gap. With the GPU you can afford `--n-train 6000`+, more epochs, and quick
-experiments with `bert-base-uncased` / `roberta-base` as a "how good could it
-get" ceiling. Batch size 64 fits easily in 8 GB.
+`run.sh` does dataset -> train -> evaluate in one shot, logs to
+`run-<name>-<timestamp>.log`, and auto-detects `../.venv-gpu`. Each `--name` keeps
+its own `data-<name>/` and `model-<name>/`. `evaluate.py` reports F1 on
+`test_seen` and `test_unseen` plus the generalisation gap.
+
+With the GPU you can afford `--n 8000`+, more epochs, and quick experiments with
+`--base bert-base-uncased` / `--base roberta-base` as a "how good could it get"
+ceiling. Batch 64 fits easily in 8 GB.
 
 ## 5. Long runs without babysitting the SSH session
 
 ```bash
 tmux new -s train
-#   ... start training ...
+bash run.sh --name baseline
 #   Ctrl-b then d  to detach;  tmux attach -t train  to come back
 ```
+
+The run also streams to `run-baseline-<timestamp>.log`, so even if the session
+dies you get the full output with `cat run-baseline-*.log`.
 
 ## 6. Optional: remote development
 
