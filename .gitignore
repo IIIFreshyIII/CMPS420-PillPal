@@ -34,3 +34,4 @@ profile.json
 .vscode/
 .idea/
 .DS_Store
+distill/*.log
