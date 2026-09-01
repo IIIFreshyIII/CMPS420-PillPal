@@ -1,0 +1,27 @@
+name: pillpal
+description: "PillPal — Med-Tracker Phase 1: photograph a prescription label, confirm the fields, get refill reminders."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.4.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+
+# Packages we'll add as the real features land (kept here as a roadmap):
+#   camera                          - camera preview + capture
+#   google_mlkit_text_recognition   - on-device OCR (photo -> text)
+#   onnxruntime / flutter_onnxruntime - run the distilled NER model on-device
+#   drift + sqlcipher_flutter_libs  - encrypted local database
+#   flutter_local_notifications     - reminders
+#   local_auth                      - biometric / PIN app lock
