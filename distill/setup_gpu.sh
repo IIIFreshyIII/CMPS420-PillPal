@@ -24,10 +24,10 @@ echo ">> installing PyTorch ($CUDA)"
 echo ">> installing the rest"
 "$VENV/bin/pip" install -q \
   "transformers>=4.40" "datasets>=2.19" "accelerate>=1.1" "seqeval>=1.2" gliner \
-  "spacy==3.8.14" "click>=8.1" python-dateutil "Pillow>=10" pytesseract \
+  "spacy==3.8.14" "click>=8.1" python-dateutil "Pillow>=10" "rapidocr-onnxruntime>=1.3" pytesseract \
   "en-core-med7-lg @ https://huggingface.co/kormilitzin/en_core_med7_lg/resolve/main/en_core_med7_lg-1.1.0-py3-none-any.whl"
 
-command -v tesseract >/dev/null || echo ">> NOTE: the OCR binary is missing -- run:  sudo apt install tesseract-ocr"
+command -v tesseract >/dev/null || echo ">> NOTE: tesseract binary missing (only the OCR fallback needs it):  sudo apt install tesseract-ocr"
 
 echo ">> checking GPU is visible to PyTorch"
 "$VENV/bin/python" - <<'PY'

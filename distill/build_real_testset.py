@@ -12,7 +12,8 @@ OCR'd / typed out):
     python build_real_testset.py --images real_labels/  --out data/
     python build_real_testset.py --texts  real_labels/  --out data/
 
-It OCRs each image (Tesseract), pre-annotates with Med7's best guess, and writes
+It OCRs each image (RapidOCR, or Tesseract if that's missing), pre-annotates
+with Med7's best guess, and writes
 data/real_test.draft.txt — plain text, one label per block, entities marked as
 [some text](LABEL).
 
@@ -54,6 +55,8 @@ _FIELDS = [l.lower() for l in LABELS]
 _BRACKET = re.compile(r"\[([^\]\n]+?)\]\(([A-Z_]+)\)")
 _TRUE_RE = re.compile(r"^@true[ \t]*(.*)$", re.MULTILINE)
 
+_RAPIDOCR = None  # lazily-built RapidOCR engine, reused across images
+
 # rough patterns that suggest an identifier survived scrubbing
 _PII_HINTS = [
     (re.compile(r"\(?\d{3}\)?[ .\-]\d{3}[ .\-]\d{4}"), "phone number"),
@@ -88,20 +91,36 @@ def _pii_scan(rows: list[dict]) -> list[str]:
 
 # --------------------------------------------------------------------------- #
 def ocr_image(path: Path, psm: int = 6) -> str:
-    import pytesseract
+    """OCR a label photo -> text, one detected line per row.
+
+    Prefers RapidOCR (ONNX PP-OCR). Pharmacy labels get photographed on curved
+    bottles at an angle; RapidOCR's detector copes with the rotation / blur /
+    wrap-around, whereas Tesseract silently drops most of a warped label. Falls
+    back to Tesseract (--psm 6 = single uniform block) if RapidOCR isn't
+    installed. RapidOCR is also closer to the app's on-device OCR (ML Kit), which
+    is rotation-robust like RapidOCR, not like Tesseract.
+    """
+    global _RAPIDOCR
     from PIL import Image, ImageOps
 
-    img = ImageOps.exif_transpose(Image.open(path)).convert("L")
-    img = ImageOps.autocontrast(img)
+    img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
     w, h = img.size
-    if max(w, h) < 2000:
-        s = 2000 / max(w, h)
+    if max(w, h) < 2200:
+        s = 2200 / max(w, h)
         img = img.resize((int(w * s), int(h * s)))
-    # psm 6 = "assume a single uniform block of text". Pharmacy labels ARE one
-    # block; the tesseract default (psm 3, auto layout) tends to silently drop
-    # lines it can't fit into a detected column — testing showed it losing whole
-    # sig lines that psm 6 recovers.
-    return pytesseract.image_to_string(img, config=f"--psm {psm}")
+
+    try:
+        import numpy as np
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError:
+        import pytesseract
+        gray = ImageOps.autocontrast(img.convert("L"))
+        return pytesseract.image_to_string(gray, config=f"--psm {psm}")
+
+    if _RAPIDOCR is None:
+        _RAPIDOCR = RapidOCR()
+    res, _ = _RAPIDOCR(np.array(img))
+    return "\n".join(txt for _box, txt, _conf in res) if res else ""
 
 
 def med7_preannotate(text: str) -> str:
