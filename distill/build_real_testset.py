@@ -57,6 +57,15 @@ _TRUE_RE = re.compile(r"^@true[ \t]*(.*)$", re.MULTILINE)
 
 _RAPIDOCR = None  # lazily-built RapidOCR engine, reused across images
 
+_IMG_EXT = {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp", ".heic", ".heif"}
+
+try:  # iPhone photos are .heic; this teaches PIL to open them
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+    _HEIF_OK = True
+except ImportError:
+    _HEIF_OK = False
+
 # rough patterns that suggest an identifier survived scrubbing
 _PII_HINTS = [
     (re.compile(r"\(?\d{3}\)?[ .\-]\d{3}[ .\-]\d{4}"), "phone number"),
@@ -233,13 +242,18 @@ def main() -> None:
     sources: list[tuple[str, str]] = []
     if args.images:
         try:
-            import pytesseract  # noqa: F401
+            import rapidocr_onnxruntime  # noqa: F401
         except ImportError:
-            raise SystemExit("Need OCR: pip install pytesseract  +  sudo apt install tesseract-ocr")
-        for p in sorted(Path(args.images).iterdir()):
-            if p.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp"}:
-                print(f"OCR {p.name}...")
-                sources.append((p.name, ocr_image(p, args.psm)))
+            try:
+                import pytesseract  # noqa: F401
+            except ImportError:
+                raise SystemExit("Need OCR: pip install rapidocr-onnxruntime  (or pytesseract + tesseract-ocr)")
+        imgs = sorted(p for p in Path(args.images).iterdir() if p.suffix.lower() in _IMG_EXT)
+        if not _HEIF_OK and any(p.suffix.lower() in {".heic", ".heif"} for p in imgs):
+            raise SystemExit("HEIC images need:  pip install pillow-heif")
+        for p in imgs:
+            print(f"OCR {p.name}...")
+            sources.append((p.name, ocr_image(p, args.psm)))
     if args.texts:
         for p in sorted(Path(args.texts).glob("*.txt")):
             sources.append((p.name, p.read_text()))

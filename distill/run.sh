@@ -63,6 +63,8 @@ hr() { printf '%.0s-' {1..60}; echo; }
 
   echo ">>> [1/3] make_dataset  ($(date +%T))"
   "$PY" make_dataset.py --n-train "$N" --noise "$NOISE" --out "$DATA" --base-model "$BASE"
+  # real-label eval set (hand-curated, committed) -> evaluate.py picks it up
+  [[ -f data/real_test.jsonl ]] && cp data/real_test.jsonl "$DATA"/ && echo "  + copied real_test.jsonl into $DATA/"
 
   echo; echo ">>> [2/3] train  ($(date +%T))"
   "$PY" train_ner.py --data "$DATA" --base-model "$BASE" \

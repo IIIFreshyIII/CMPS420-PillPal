@@ -9,6 +9,7 @@ en-core-med7-lg @ https://huggingface.co/kormilitzin/en_core_med7_lg/resolve/mai
 rapidocr-onnxruntime>=1.3
 pytesseract==0.3.13
 Pillow>=10.0
+pillow-heif>=0.16      # open iPhone .heic label photos
 
 # Date math for refill-date calculation
 python-dateutil>=2.9
