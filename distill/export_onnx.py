@@ -65,7 +65,9 @@ def make_fp16(fp32: Path) -> Path:
     from onnxconverter_common import float16
 
     dst = fp32.with_name("model_fp16.onnx")
-    m = float16.convert_float_to_float16(onnx.load(str(fp32)), keep_io_types=True)
+    # keep_io_types=True leaves stray fp32 Cast nodes that ORT rejects on load;
+    # False casts the whole graph (int64 id inputs are untouched, logits -> fp16)
+    m = float16.convert_float_to_float16(onnx.load(str(fp32)), keep_io_types=False)
     onnx.save(m, str(dst))
     print(f"   {dst.name}  {dst.stat().st_size/1e6:.1f} MB")
     return dst
@@ -164,14 +166,17 @@ def parity(model_dir: Path, onnx_dir: Path, data: Path, fp32, fp16, int8) -> Non
           f"{'DRUG':>6} {'STR':>6} {'lat ms':>7}")
     print("-" * 62)
     for name, mk, path in variants:
-        pipe, tok = mk()
-        size = path.stat().st_size / 1e6 if path else float("nan")
-        rf1, rrep = (score(pipe, tok, real) if real else (float("nan"), {}))
-        uf1, _ = (score(pipe, tok, unseen) if unseen else (float("nan"), {}))
-        drug = rrep.get("DRUG", {}).get("f1-score", float("nan"))
-        stg = rrep.get("STRENGTH", {}).get("f1-score", float("nan"))
-        lat = latency_ms(pipe, [r["text"] for r in (real or unseen)])
-        print(f"{name:11} {size:8.1f} {rf1:8.3f} {uf1:10.3f} {drug:6.2f} {stg:6.2f} {lat:7.1f}")
+        size = path.stat().st_size / 1e6 if path and path.exists() else float("nan")
+        try:
+            pipe, tok = mk()
+            rf1, rrep = (score(pipe, tok, real) if real else (float("nan"), {}))
+            uf1, _ = (score(pipe, tok, unseen) if unseen else (float("nan"), {}))
+            drug = rrep.get("DRUG", {}).get("f1-score", float("nan"))
+            stg = rrep.get("STRENGTH", {}).get("f1-score", float("nan"))
+            lat = latency_ms(pipe, [r["text"] for r in (real or unseen)])
+            print(f"{name:11} {size:8.1f} {rf1:8.3f} {uf1:10.3f} {drug:6.2f} {stg:6.2f} {lat:7.1f}")
+        except Exception as exc:  # noqa: BLE001 - one bad variant shouldn't kill the table
+            print(f"{name:11} {size:8.1f}   FAILED: {type(exc).__name__}: {str(exc)[:60]}")
     print("\npick: smallest variant with real F1 within ~0.03 of pytorch and >= 0.53")
 
 
