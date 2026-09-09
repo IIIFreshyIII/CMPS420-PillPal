@@ -98,22 +98,31 @@ def make_int8(fp32: Path) -> Path:
 
 
 # --------------------------------------------------------------------------- #
+def _prep_tok(tok, model):
+    """DistilBERT has no token_type_ids input but its tokenizer emits one; drop
+    it. Pin max_length so truncation matches training (make_dataset uses 256)."""
+    if getattr(model.config, "model_type", "") == "distilbert":
+        tok.model_input_names = [n for n in tok.model_input_names if n != "token_type_ids"]
+    tok.model_max_length = 256
+    return tok
+
+
 def _pipe_torch(model_dir: Path):
     from transformers import (AutoModelForTokenClassification, AutoTokenizer,
                               pipeline)
-    tok = AutoTokenizer.from_pretrained(model_dir)
     mdl = AutoModelForTokenClassification.from_pretrained(model_dir)
+    tok = _prep_tok(AutoTokenizer.from_pretrained(model_dir), mdl)
     return pipeline("token-classification", model=mdl, tokenizer=tok,
-                    aggregation_strategy="first"), tok
+                    aggregation_strategy="first", device=-1), tok
 
 
 def _pipe_onnx(onnx_dir: Path, file_name: str):
     from optimum.onnxruntime import ORTModelForTokenClassification
     from transformers import AutoTokenizer, pipeline
-    tok = AutoTokenizer.from_pretrained(onnx_dir)
     mdl = ORTModelForTokenClassification.from_pretrained(onnx_dir, file_name=file_name)
+    tok = _prep_tok(AutoTokenizer.from_pretrained(onnx_dir), mdl)
     return pipeline("token-classification", model=mdl, tokenizer=tok,
-                    aggregation_strategy="first"), tok
+                    aggregation_strategy="first", device=-1), tok
 
 
 def score(pipe, tok, rows: list[dict]) -> tuple[float, dict]:

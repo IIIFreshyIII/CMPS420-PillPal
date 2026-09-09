@@ -44,10 +44,13 @@ def _build_pipe(onnx_dir: Path):
 
     fname = next((f for f in ("model.quant.onnx", "model_int8.onnx", "model.onnx")
                   if (onnx_dir / f).exists()), "model.onnx")
-    tok = AutoTokenizer.from_pretrained(onnx_dir)
     mdl = ORTModelForTokenClassification.from_pretrained(onnx_dir, file_name=fname)
+    tok = AutoTokenizer.from_pretrained(onnx_dir)
+    if getattr(mdl.config, "model_type", "") == "distilbert":
+        tok.model_input_names = [n for n in tok.model_input_names if n != "token_type_ids"]
+    tok.model_max_length = 256
     return pipeline("token-classification", model=mdl, tokenizer=tok,
-                    aggregation_strategy="first"), tok
+                    aggregation_strategy="first", device=-1), tok
 
 
 def raw_spans(pipe, text: str):
