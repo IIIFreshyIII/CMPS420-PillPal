@@ -56,13 +56,15 @@ A fresh clone already has the platform folders — you just need the SDK + deps.
 | `lib/util/format.dart` | date formatting |
 | `lib/screens/` | list · capture (stub) · **confirm** · detail |
 | `test/flow_test.dart` | refill math + the capture→confirm→save flow |
+| `assets/ner/` | distilled NER model (`model.quant.onnx`) + tokenizer + RxNorm drug list; see its README |
 
 ## Next
 
 - Real camera + guided frame (`camera` package)
 - On-device OCR (`google_mlkit_text_recognition`) → real text into the extractor
-- Swap `StubExtractor` for a real one: regex for dates/supply now, the distilled
-  ONNX model (from `../distill/`) when it's trained
+- **`OnnxExtractor`** replacing `StubExtractor`: WordPiece tokenizer + BIO decode
+  in Dart running `assets/ner/model.quant.onnx`, then the RxNorm/closed-set
+  validation and the date/supply regex. Python reference: `../distill/infer.py`
 - Encrypted local storage (`drift` + `sqlcipher_flutter_libs`)
 - Reminders (`flutter_local_notifications`) + missed-dose logic
 - Photo auto-delete after confirm / on idle

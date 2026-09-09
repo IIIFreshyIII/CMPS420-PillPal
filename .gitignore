@@ -13,6 +13,7 @@ distill/data_smoke/
 distill/ner-model/
 distill/ner-mobilebert/
 distill/ner-onnx/
+distill/onnx-*/
 distill/model-*/
 distill/runs/
 distill/run-*.log

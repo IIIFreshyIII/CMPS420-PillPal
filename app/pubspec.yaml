@@ -17,6 +17,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    # distilled NER model + tokenizer + RxNorm drug list, produced by
+    # ../distill/export_onnx.py --emit assets/ner  (see assets/ner/README.md)
+    - assets/ner/
 
 # Packages we'll add as the real features land (kept here as a roadmap):
 #   camera                          - camera preview + capture

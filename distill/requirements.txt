@@ -8,5 +8,8 @@ accelerate>=1.1
 seqeval>=1.2
 gliner>=0.2.13       # zero-shot backup model for the Month-1 bake-off
 
-# For the ONNX export step (install when you get there):
-# optimum[exporters,onnxruntime]
+# ONNX export + quantization for the phone (export_onnx.py)
+optimum[exporters,onnxruntime]>=1.17
+onnx>=1.16
+onnxruntime>=1.17
+onnxconverter-common>=1.14   # fp16 conversion

@@ -104,16 +104,61 @@ epoch if it won't learn.
 Runs on the homelab 3060 Ti in ~2 minutes (see SERVER.md). Laptop CPU works but
 takes ~15–20 min.
 
-### Convert for the phone (after you're happy with accuracy)
+### Convert for the phone
+
+PyTorch can't run in a Flutter app; ONNX Runtime can. `export_onnx.py` exports
+the checkpoint to ONNX, makes **fp16** and **int8-dynamic** variants, and scores
+all three next to the PyTorch parent on the real-label set so we know
+quantization didn't wreck the number.
 
 ```bash
-pip install "optimum[exporters,onnxruntime]"
-optimum-cli export onnx --model ner-model ner-onnx/
-python -m onnxruntime.quantization.preprocess --input ner-onnx/model.onnx --output ner-onnx/model-infer.onnx
-# then dynamic int8 quantisation -> ner-onnx/model.quant.onnx  (see optimum docs)
+# on the server (.venv-gpu has the checkpoints)
+python export_onnx.py --model model-mobile  --data data-mobile
+python export_onnx.py --model model-noisy2  --data data-noisy2
 ```
 
-You ship `model.quant.onnx` + the tokenizer's vocab file in the app.
+Prints a table: per-variant real F1 / test_unseen F1 / DRUG F1 / **file size MB** /
+**CPU latency ms**. Pick the **smallest variant whose real F1 stays within ~0.03
+of PyTorch and ≥ 0.53** (still clears Med7). Expected winner: MobileBERT int8
+(~25 MB). Contingency: MobileBERT fp16 (~50 MB, full accuracy — but phone CPUs
+have no fast fp16 path, so it's the same speed as fp32) or DistilBERT int8.
+
+```bash
+# copy the winner + tokenizer + drug list into the app
+python export_onnx.py --model model-mobile --variant int8 --emit ../app/assets/ner
+```
+
+Ships in `app/assets/ner/`: `model.quant.onnx`, `vocab.txt`, `labels.json`,
+`config.json` (id2label), tokenizer config, `drug_names.txt`.
+
+### Validation layer (RxNorm + closed sets)
+
+The model's weak spot is DRUG precision (~0.4 — it tags manufacturer names,
+"Generic for NEURONTIN", OCR garble as drugs). `postprocess.py` checks every
+span against a controlled vocabulary — the standard clinical-NER architecture
+(model proposes, terminology validates):
+
+- **DRUG** → RxNorm list (`drug_vocab.DrugMatcher`, ~10k names, built from the
+  freely-redistributable RxNorm *Prescribable Content* subset — no UMLS login).
+  Exact / salt-stripped / fuzzy (edit-dist ≤ 2) match → normalize + tighten the
+  span to the drug name (`ATOMOXETINE25M` → `atomoxetine`, span shrunk).
+  Manufacturer / non-word garble → **dropped**. Unknown-but-plausible → kept and
+  **flagged** ("not a recognized drug name — verify"), never silently deleted,
+  because every field is human-confirmed anyway.
+- **FORM** → ~25-item set (`tab`→`tablet`, `er cap`→`capsule`, …)
+- **ROUTE** → ~20-item set (`po`/`orally`→`by mouth`, `affected area`→`topically`)
+- **STRENGTH / DOSAGE** → kept; flagged if no digit / number-word
+- **FREQUENCY / DURATION** → passthrough (too open-ended for a list)
+
+```bash
+python drug_vocab.py --build                          # -> distill/drug_names.txt (committed)
+python infer.py --onnx onnx-mobile --data data-mobile --eval   # model-alone vs model+refine on real_test
+python infer.py --onnx onnx-mobile --text "<a real OCR block>"  # eyeball end-to-end fields
+```
+
+`infer.py` is the Python reference for the whole phone pipeline (model → refine →
+first span per type → `Extraction` fields; `_regex_fields` from `med7_pipeline`
+for fill date / days supply). The Dart `OnnxExtractor` must reproduce it.
 
 ## The real evaluation
 
