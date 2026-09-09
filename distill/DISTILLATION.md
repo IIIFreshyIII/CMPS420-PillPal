@@ -149,10 +149,26 @@ conditions. That F1 doubles as the spec's required user-testing data.
 
 Med7 as the baseline: F1 ≈ 0.79 on *clean* label-format text, but ≈ **0.47 on the
 real OCR'd photos** (curved bottles, glued tokens, wrapped-off tails). That 0.47
-is the bar the distilled model has to clear. First run of a model trained on
-*clean* synthetic: ~0.43–0.45 real — it lost, by over-predicting DRUG on
-manufacturer names and OCR garble. The `--noise 0.01` corruption model (gluing +
-truncation + distractor lines) is the fix under test.
+is the bar.
+
+Progress on the 29-label real set (exact-span F1):
+
+| model / training | params | real_test F1 | vs Med7 0.47 |
+|---|---:|---:|---|
+| DistilBERT, clean synthetic (v1 generator) | 66M | 0.43–0.45 | loses — over-predicts DRUG on manufacturer names + OCR garble |
+| DistilBERT, clean synthetic (v2: +vocab, distractors) | 66M | 0.51 | edges ahead |
+| DistilBERT, **`--noise 0.01`** (v2 + gluing/truncation/distractors) | 66M | 0.58 | wins by ~0.10 |
+| **MobileBERT, `--noise 0.01`** (6 ep, lr 5e-5) | **25M** | **0.59** | **wins, at 1/3 the size** |
+
+MobileBERT (the actual phone-target model) ties the bigger DistilBERT and beats
+Med7 — **this is the Phase 1 deliverable.** It trades: better FORM (0.80) and
+DOSAGE (0.76), weaker DRUG (0.35, precision 0.39) and STRENGTH (0.53).
+
+The `--noise 0.01` models' synthetic scores also drop to ~0.64 (from 1.0) and now
+*track* the real score within ~0.06 — the synthetic eval finally means something.
+n=29 so treat ±0.1 as noise, but every `--noise 0.01` model beats Med7.
+Weakest entity across the board is DRUG precision (manufacturer / OCR-garble
+false-positives) — the place to push next if the number needs to go up.
 
 ## The honest risks
 

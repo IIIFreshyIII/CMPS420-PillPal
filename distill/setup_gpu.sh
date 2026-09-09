@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # One-time setup on the homelab GPU server (Linux + NVIDIA).
 #
-#   bash setup_gpu.sh              # auto: installs CUDA 12.1 torch (driver >= 525)
-#   CUDA=cu124 bash setup_gpu.sh   # pick another wheel if your driver is newer/older
+#   bash setup_gpu.sh              # auto: installs CUDA 12.4 torch (driver >= 550)
+#   CUDA=cu121 bash setup_gpu.sh   # pick another wheel if your driver is older
 #
 # Check your driver first:  nvidia-smi  -> top-right "CUDA Version:"
-#   >= 12.4  -> CUDA=cu124   (or leave default cu121, also fine)
-#   12.1-12.3-> CUDA=cu121   (default)
+#   >= 12.4  -> CUDA=cu124   (default)
+#   12.1-12.3-> CUDA=cu121
 #   11.8     -> CUDA=cu118
+# torch must be >= 2.6: transformers 5 refuses torch.load on older torch
+# (CVE-2025-32434), which blocks bases that ship only .bin weights (MobileBERT).
 set -euo pipefail
 
-CUDA="${CUDA:-cu121}"
+CUDA="${CUDA:-cu124}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 VENV="$HERE/../.venv-gpu"
 
@@ -19,7 +21,7 @@ python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --upgrade pip
 
 echo ">> installing PyTorch ($CUDA)"
-"$VENV/bin/pip" install -q torch --index-url "https://download.pytorch.org/whl/$CUDA"
+"$VENV/bin/pip" install -q "torch>=2.6" --index-url "https://download.pytorch.org/whl/$CUDA"
 
 echo ">> installing the rest"
 "$VENV/bin/pip" install -q \
