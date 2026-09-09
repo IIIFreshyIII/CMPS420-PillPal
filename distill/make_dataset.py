@@ -14,7 +14,7 @@ The gap between test_seen and test_unseen is the number that matters for the rep
 We also score Med7 on both test sets as the baseline.
 
     python make_dataset.py --n-train 4000 --out data/
-    python make_dataset.py --n-train 4000 --noise 0.02 --out data_noisy/   # + OCR corruption
+    python make_dataset.py --n-train 4000 --noise 0.01 --out data_noisy/   # + OCR corruption
 """
 
 from __future__ import annotations
@@ -69,7 +69,8 @@ def main() -> None:
     ap.add_argument("--n-train", type=int, default=4000)
     ap.add_argument("--n-val", type=int, default=400)
     ap.add_argument("--n-test", type=int, default=500, help="size of EACH test set")
-    ap.add_argument("--noise", type=float, default=0.0, help="per-char OCR corruption rate")
+    ap.add_argument("--noise", type=float, default=0.0,
+                    help="OCR corruption master rate (0=clean; 0.01 ~= real-photo difficulty)")
     ap.add_argument("--out", default="data")
     ap.add_argument("--base-model", default="distilbert-base-uncased")
     args = ap.parse_args()

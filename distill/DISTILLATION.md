@@ -61,15 +61,27 @@ this gap is a sanity check, not the deliverable.
 
 ```bash
 cd distill
-bash run.sh                                  # distilbert, 5000 labels, 5 epochs
-bash run.sh --noise 0.02 --name noisy        # + OCR-style corruption (see below)
+bash run.sh                                  # distilbert, 5000 labels, 5 epochs, clean
+bash run.sh --noise 0.01 --name noisy        # + OCR-style corruption (see below)
 bash run.sh --base google/mobilebert-uncased --name mobilebert --lr 5e-5 --epochs 6
 ```
 
-`--noise 0.02` makes the generator mimic real OCR: it **drops whole lines**
-(Tesseract's dominant failure — it silently loses regions it can't segment) and
-adds a few character swaps. Spans on a dropped line are removed, so the model
-learns to cope when OCR loses a field entirely.
+`--noise 0.01` makes the generator mimic what RapidOCR / ML Kit actually do to a
+curved bottle label:
+
+- **drops whole lines / regions** it can't segment
+- **deletes the space between fields** — `ATOMOXETINE25MGCAP`, `capsule3times`
+- **truncates the tail of a line** that wraps off the bottle — `by mouth in the`
+- **garbles characters**, harder on the low-contrast boilerplate than the fields
+- interleaves the stuff that sits next to the fields on a real label —
+  manufacturer names, `Generic for NEURONTIN`, `NDC …`, `*THANK YOU*`,
+  `for nerve pain` — all left unlabelled, so the model learns to output nothing
+  there instead of guessing DRUG / FREQUENCY
+
+Spans are clipped or dropped to match. The rate is calibrated: at `--noise 0.01`
+Med7 scores ~0.45 on the synthetic set — the same as it scores on the real
+labels — so a model trained at that rate is training on the right difficulty.
+(`0.0` = clean, ~0.74 for Med7; `0.02`+ is harder than the real photos.)
 
 `run.sh` builds the dataset, fine-tunes, evaluates, and writes everything to
 `run-<name>-<timestamp>.log`. Each `--name` gets its own `data-<name>/` and
@@ -79,7 +91,7 @@ present, else `.venv`.
 Or run the three stages by hand:
 
 ```bash
-python make_dataset.py --n-train 4000 --out data/     # --noise 0.02 optional
+python make_dataset.py --n-train 4000 --out data/     # --noise 0.01 optional
 python train_ner.py    --data data/ --base-model distilbert-base-uncased --epochs 4
 python evaluate.py      --model ner-model --data data/
 ```
@@ -135,15 +147,19 @@ Mock images have template text, so they mostly test OCR robustness + tooling. Re
 photos are the deliverable — target ~30-50, varied pharmacies/layouts/capture
 conditions. That F1 doubles as the spec's required user-testing data.
 
-Med7 as the baseline: F1 ≈ 0.79 on our label-format text (it's trained on clinical
-prose, not labels) — a citable reason you're not just shipping Med7. The distilled
-model should beat that on the *real* test set, especially on DRUG.
+Med7 as the baseline: F1 ≈ 0.79 on *clean* label-format text, but ≈ **0.47 on the
+real OCR'd photos** (curved bottles, glued tokens, wrapped-off tails). That 0.47
+is the bar the distilled model has to clear. First run of a model trained on
+*clean* synthetic: ~0.43–0.45 real — it lost, by over-predicting DRUG on
+manufacturer names and OCR garble. The `--noise 0.01` corruption model (gluing +
+truncation + distractor lines) is the fix under test.
 
 ## The honest risks
 
 1. **Synthetic-data gap.** Even `test_unseen` is still *generated* text. If real
    OCR'd labels look very different, the model won't transfer. Mitigations:
-   (a) `--noise 0.02` so training sees OCR-style corruption;
+   (a) `--noise 0.01` so training sees realistic OCR corruption (gluing,
+       truncation, distractor lines), calibrated to the real photos' difficulty;
    (b) photograph ~20–50 real or realistic mock labels, OCR them, hand-correct
    the fields, save as `data/real_test.jsonl` — `evaluate.py` picks it up
    automatically. That score is the one that actually matters, and it doubles as

@@ -13,7 +13,7 @@ Two kinds of variety, on purpose:
     always the dose" — it has to actually read the language.
 
     text, spans = generate(seed=0, split="train")
-    text, spans = add_ocr_noise(text, spans, rate=0.02, seed=0)
+    text, spans = add_ocr_noise(text, spans, rate=0.01, seed=0)   # 0.01 ~= real-photo OCR
 
 Run directly to eyeball it:  python label_generator.py
 """
@@ -114,6 +114,51 @@ DRUGS = [
     ("benzonatate", "", ["100 mg", "200 mg"], ["capsule"]),
     ("latanoprost", "", ["0.005%"], ["eye drops"]),
     ("timolol", "maleate", ["0.25%", "0.5%"], ["eye drops"]),
+    # topicals: "%" strengths, cream/ointment/gel forms, "to the affected area" routes
+    ("econazole", "nitrate", ["1%"], ["cream"]),
+    ("ketoconazole", "", ["2%"], ["cream", "shampoo"]),
+    ("clotrimazole", "", ["1%"], ["cream"]),
+    ("terbinafine", "hcl", ["1%"], ["cream"]),
+    ("metronidazole", "", ["0.75%", "1%", "250 mg", "500 mg"], ["cream", "gel", "tablet"]),
+    ("hydrocortisone", "", ["1%", "2.5%"], ["cream", "ointment"]),
+    ("triamcinolone", "acetonide", ["0.025%", "0.1%"], ["cream", "ointment"]),
+    ("mupirocin", "", ["2%"], ["ointment"]),
+    ("clindamycin", "phosphate", ["1%"], ["gel", "solution"]),
+    ("tretinoin", "", ["0.025%", "0.05%"], ["cream", "gel"]),
+    ("ketorolac", "tromethamine", ["10 mg"], ["tablet"]),
+    ("dicyclomine", "hcl", ["10 mg", "20 mg"], ["tablet", "capsule"]),
+    ("ranitidine", "hcl", ["150 mg", "300 mg"], ["tablet"]),
+    ("clonidine", "hcl", ["0.1 mg", "0.2 mg"], ["tablet"]),
+    ("hydralazine", "hcl", ["10 mg", "25 mg", "50 mg"], ["tablet"]),
+    ("amitriptyline", "hcl", ["10 mg", "25 mg", "50 mg", "75 mg"], ["tablet"]),
+    ("nortriptyline", "hcl", ["10 mg", "25 mg"], ["capsule"]),
+    ("paroxetine", "hcl", ["10 mg", "20 mg", "30 mg"], ["tablet"]),
+    ("clonazepam", "", ["0.5 mg", "1 mg", "2 mg"], ["tablet"]),
+    ("lorazepam", "", ["0.5 mg", "1 mg", "2 mg"], ["tablet"]),
+    ("alprazolam", "", ["0.25 mg", "0.5 mg", "1 mg"], ["tablet"]),
+    ("methylphenidate", "hcl", ["5 mg", "10 mg", "20 mg"], ["tablet", "ER tablet"]),
+    ("atomoxetine", "hcl", ["10 mg", "18 mg", "25 mg", "40 mg", "60 mg", "80 mg"], ["capsule"]),
+    ("lithium", "carbonate", ["150 mg", "300 mg", "600 mg"], ["capsule", "ER tablet"]),
+    ("divalproex", "sodium", ["125 mg", "250 mg", "500 mg"], ["DR tablet", "ER tablet"]),
+    ("carbamazepine", "", ["100 mg", "200 mg"], ["tablet", "ER tablet"]),
+    ("oxcarbazepine", "", ["150 mg", "300 mg", "600 mg"], ["tablet"]),
+    ("phenytoin", "sodium", ["100 mg"], ["ER capsule"]),
+    ("prochlorperazine", "maleate", ["5 mg", "10 mg"], ["tablet"]),
+    ("metoclopramide", "hcl", ["5 mg", "10 mg"], ["tablet"]),
+    ("dexamethasone", "", ["0.5 mg", "1 mg", "4 mg"], ["tablet"]),
+    ("methylprednisolone", "", ["4 mg"], ["tablet", "dose pack"]),
+    ("cefdinir", "", ["300 mg"], ["capsule"]),
+    ("amoxicillin-clavulanate", "", ["500 mg", "875 mg"], ["tablet"]),
+    ("sulfamethoxazole-trimethoprim", "", ["800 mg"], ["tablet", "DS tablet"]),
+    ("clarithromycin", "", ["250 mg", "500 mg"], ["tablet"]),
+    ("acyclovir", "", ["200 mg", "400 mg", "800 mg"], ["tablet", "capsule"]),
+    ("terazosin", "hcl", ["1 mg", "2 mg", "5 mg"], ["capsule"]),
+    ("doxazosin", "mesylate", ["1 mg", "2 mg", "4 mg", "8 mg"], ["tablet"]),
+    ("potassium chloride", "", ["10 mEq", "20 mEq"], ["ER tablet"]),
+    ("folic acid", "", ["1 mg"], ["tablet"]),
+    ("cyanocobalamin", "", ["1000 mcg"], ["tablet"]),
+    ("cholecalciferol", "", ["1000 unit", "2000 unit", "50000 unit"], ["capsule", "tablet"]),
+    ("ferrous sulfate", "", ["325 mg"], ["tablet"]),
 ]
 
 BRANDS = {
@@ -126,10 +171,13 @@ BRANDS = {
     "tadalafil": "Cialis", "sildenafil": "Viagra", "apixaban": "Eliquis",
 }
 
-DOSE_AMOUNTS = ["1", "2", "3", "one", "two", "1 to 2", "1-2", "one-half", "1/2", "one to two"]
+DOSE_AMOUNTS = ["1", "2", "3", "one", "two", "1 to 2", "1-2", "one-half", "1/2", "one to two",
+                "a thin layer", "a small amount", "a thin film"]
 ROUTES = ["by mouth", "by mouth", "by mouth", "orally", "PO", "by mouth",
           "into the affected eye", "in each eye", "by inhalation", "in each nostril",
-          "sublingually", "topically"]
+          "sublingually", "topically",
+          "to the affected area", "to the affected area", "to the affected skin",
+          "to affected areas", "to the face"]
 FREQ = [
     "once daily", "twice daily", "three times daily", "four times daily",
     "every morning", "every evening", "at bedtime", "every 8 hours",
@@ -164,6 +212,35 @@ STREETS = ["MAIN", "OAK", "ELM", "1ST", "2ND", "PARK", "CEDAR", "MAPLE", "HILL",
 WARNINGS = ["MAY CAUSE DROWSINESS", "TAKE WITH FOOD", "DO NOT DRINK ALCOHOL",
             "AVOID PROLONGED SUN EXPOSURE", "DO NOT CRUSH OR CHEW",
             "TAKE ON AN EMPTY STOMACH", "KEEP REFRIGERATED"]
+
+# --- distractor vocab: everything below appears on real labels near the fields
+#     we care about, and the model must learn to leave it as O ---------- #
+MANUFACTURERS = [
+    "AUROBINDO PHARMA", "DR. REDDY'S LABORATORIES", "TEVA PHARMACEUTICALS", "MYLAN",
+    "SANDOZ INC", "ACCORD HEALTHCARE", "CAMBER PHARMACEUTICALS", "ZYDUS PHARMACEUTICALS",
+    "LUPIN PHARMACEUTICALS", "AMNEAL PHARMACEUTICALS", "APOTEX CORP", "TORRENT PHARMA",
+    "GRANULES PHARMACEUTICALS", "AMBER PHARMACEUTICALS", "TRIS PHARMA", "NORTHSTAR RX",
+    "AJANTA PHARMA", "ASCEND LABORATORIES", "MACLEODS PHARMACEUTICALS", "GLENMARK",
+    "ALEMBIC PHARMACEUTICALS", "RISING PHARMACEUTICALS", "PRINCETON",
+]
+GENERIC_BRANDS = [
+    "NEURONTIN", "LIPITOR", "ZOLOFT", "PRILOSEC", "NORVASC", "LASIX", "COZAAR",
+    "SYNTHROID", "GLUCOPHAGE", "VIBRAMYCIN", "EFFEXOR XR", "XANAX", "LEXAPRO",
+    "AMBIEN", "CYMBALTA", "SEROQUEL", "WELLBUTRIN", "CRESTOR", "SPECTAZOLE",
+    "FLAGYL", "DIFLUCAN", "KEFLEX",
+]
+REASON_PHRASES = [
+    "for pain", "for nerve pain", "for anxiety", "for blood pressure",
+    "for cholesterol", "for sleep", "for infection", "for reflux", "for flaking",
+    "for itching", "for swelling", "as directed", "as directed by prescriber",
+]
+NOISE_WORDS = [
+    "*THANK YOU*", "THANK YOU", "KEEP OUT OF REACH OF CHILDREN", "SHAKE WELL BEFORE USE",
+    "FOR EXTERNAL USE ONLY", "DERMATOLOGIC USE ONLY", "REFRIGERATE", "DO NOT REFRIGERATE",
+    "PROTECT FROM LIGHT", "SWALLOW WHOLE DO NOT CHEW", "NO REFILLS REMAINING",
+    "REFILLS REMAINING", "FEDERAL LAW PROHIBITS TRANSFER", "STORE AT ROOM TEMPERATURE",
+    "WITH A FULL GLASS OF WATER",
+]
 
 _FORM_ABBREV = {"tablet": "tab", "capsule": "cap", "ER tablet": "ER tab",
                 "ER capsule": "ER cap", "DR capsule": "DR cap", "DR tablet": "DR tab"}
@@ -226,8 +303,8 @@ def _sig_verb(route: str, rng) -> str:
         return rng.choice(["Spray", "Instill"])
     if "inhal" in route:
         return rng.choice(["Inhale", "Take"])
-    if route == "topically":
-        return rng.choice(["Apply", "Use"])
+    if route == "topically" or "affected" in route or "face" in route or "skin" in route:
+        return rng.choice(["Apply", "Apply", "Use"])
     if route == "sublingually":
         return rng.choice(["Place", "Dissolve"])
     return rng.choice(["Take", "Take", "Use"])
@@ -296,7 +373,10 @@ def _emit_sig_line(b, dose, form, route, freq, dur, case, rng):
     if dur:
         b.sp()
         b.add(_casing(dur, case), "DURATION")
-    b.line(rng.choice([".", "", ".", "; refill as needed"]))
+    if rng.random() < 0.35:
+        b.sp()
+        b.add(_casing(rng.choice(REASON_PHRASES), case))   # deliberately unlabelled -> O
+    b.line(rng.choice([".", "", ".", "; refill as needed", " *THANK YOU*"]))
     b.line()
 
 
@@ -323,6 +403,26 @@ def _emit_footer(b, rng, m, d, y):
         b.line(ln)
 
 
+def _emit_distractors(b, rng, n: int) -> None:
+    """Emit n lines of the stuff that sits *next to* the fields on a real label
+    and that the model keeps mislabelling: manufacturer names, 'Generic for X',
+    boilerplate. None of it carries a label -> all O."""
+    for _ in range(n):
+        r = rng.random()
+        if r < 0.34:
+            pre = rng.choice(["MFR:", "MFG", "Mfr:", "MFR", "MANUFACTURER:", "Mfg by"])
+            b.line(f"{pre} {rng.choice(MANUFACTURERS)}")
+        elif r < 0.58:
+            b.line(f"{rng.choice(['Generic for', 'GENERIC FOR', 'Gen. for', 'Substituted for'])} "
+                   f"{rng.choice(GENERIC_BRANDS)}")
+        elif r < 0.80:
+            b.line(rng.choice(NOISE_WORDS))
+        elif r < 0.90:
+            b.line(f"NDC {rng.randint(10000, 99999)}-{rng.randint(100, 999)}-{rng.randint(10, 99)}")
+        else:
+            b.line(f"Disp by: {rng.choice(['RG/CP', 'VL/CDP', 'JM', 'RPH', 'AB/CD'])}")
+
+
 # --- generation --------------------------------------------------- #
 def generate(seed: int | None = None, split: str = "train"):
     if split == "train":
@@ -342,17 +442,42 @@ def generate(seed: int | None = None, split: str = "train"):
     route = rng.choice(ROUTES)
     freq = rng.choice(freqs)
     dur = rng.choice(durs)
+
+    # keep the sig roughly coherent with the form (topicals get applied, not swallowed)
+    _topical = form in ("cream", "ointment", "gel", "lotion", "shampoo")
+    if _topical:
+        dose = rng.choice(["a thin layer", "a small amount", "a thin film", "a thin layer"])
+        route = rng.choice(["to the affected area", "to the affected area",
+                            "to the affected skin", "to affected areas", "to the face", "topically"])
+    elif dose in ("a thin layer", "a small amount", "a thin film"):
+        dose = rng.choice(["1", "one", "2", "1 to 2"])
+    _skin_route = any(w in route for w in ("affected", "face", "skin")) or route == "topically"
+    if not _topical and _skin_route:
+        if "tab" in form or "cap" in form:
+            route = rng.choice(["by mouth", "by mouth", "orally", "PO"])
+        elif "eye" in form or "drop" in form:
+            route = rng.choice(["in each eye", "into the affected eye"])
+        elif "inhaler" in form or "spray" in form:
+            route = rng.choice(["by inhalation", "in each nostril"])
+        else:
+            route = "by mouth"
     case = rng.choice(["upper", "upper", "title", "as-is", "lower"])
     pharm, phone = rng.choice(pharms)
 
     m, d, y = _emit_header(b, pharm, phone, case, rng)
+    _emit_distractors(b, rng, rng.randint(0, 2))
     # sig sometimes comes before the drug-strength line, sometimes after
     if rng.random() < 0.85:
         _emit_drug_line(b, drug, salt, strength, form, case, rng)
+        if rng.random() < 0.65:
+            _emit_distractors(b, rng, 1)
         _emit_sig_line(b, dose, form, route, freq, dur, case, rng)
     else:
         _emit_sig_line(b, dose, form, route, freq, dur, case, rng)
         _emit_drug_line(b, drug, salt, strength, form, case, rng)
+        if rng.random() < 0.65:
+            _emit_distractors(b, rng, 1)
+    _emit_distractors(b, rng, rng.randint(0, 1))
     _emit_footer(b, rng, m, d, y)
 
     return b.text, _merge_adjacent(b.text, b.spans)
@@ -370,66 +495,106 @@ def _merge_adjacent(text: str, spans):
 
 
 # --- OCR-style corruption ---------------------------------------- #
-# Tesseract's dominant failure on real label photos is dropping whole lines /
-# regions it can't segment (testing showed it losing entire sig lines). So the
-# primary effect here is line dropout; light character swaps are secondary.
+# Real OCR (RapidOCR / ML Kit) on a curved bottle label does four things, and the
+# distilled model fails on all four because clean synthetic text never shows them:
+#   1. drops whole lines / regions it can't segment
+#   2. deletes the space between fields    -> "ATOMOXETINE25MGCAP", "capsule3times"
+#   3. truncates the tail of a line that wraps off the bottle -> "by mouth in the"
+#   4. garbles characters, especially in the low-contrast boilerplate
+# We model each as a set of character deletions, remap the spans once, then swap
+# characters on what's left. A span whose text is partly deleted is clipped; one
+# that's fully deleted is dropped (the field is simply gone).
 _CONFUSE = {
     "0": "O", "O": "0", "1": "l", "l": "1", "I": "l", "5": "S", "S": "5",
     "8": "B", "B": "8", "2": "Z", "Z": "2", "6": "b", "g": "9", "9": "g",
 }
 
 
-def _drop_lines(text: str, spans, prob: float, rng) -> tuple[str, list]:
-    """Delete whole non-empty lines at `prob` each and remap the spans. A span
-    that sat on a dropped line is removed (the field is simply gone, as when OCR
-    loses the sig line)."""
-    ranges, i = [], 0
-    for ln in text.splitlines(keepends=True):
-        ranges.append([i, i + len(ln), ln.strip() != ""])
-        i += len(ln)
-
-    nonempty = [k for k, r in enumerate(ranges) if r[2]]
-    drop = {k for k in nonempty if rng.random() < prob}
-    if drop and len(drop) >= len(nonempty):        # never drop every real line
-        drop.discard(min(drop))
-
-    new_text, remap, cur = "", [], 0
-    for k, (a, b, _) in enumerate(ranges):
-        if k in drop:
-            continue
-        remap.append((a, b, cur))
-        new_text += text[a:b]
-        cur += b - a
-
+def _apply_deletions(text: str, spans, deleted: set) -> tuple[str, list]:
+    """Rebuild text with `deleted` char indices removed; remap/clip/drop spans."""
+    if not deleted:
+        return text, [list(s) for s in spans]
+    keep = [i for i in range(len(text)) if i not in deleted]
+    new_index = {old: new for new, old in enumerate(keep)}
+    new_text = "".join(text[i] for i in keep)
     new_spans = []
     for s, e, lab in spans:
-        for a, b, ns in remap:
-            if a <= s < b and e <= b:
-                new_spans.append([ns + s - a, ns + e - a, lab])
-                break
+        kept = [i for i in range(s, e) if i not in deleted]
+        if not kept:
+            continue                       # whole field lost
+        new_spans.append([new_index[kept[0]], new_index[kept[-1]] + 1, lab])
     return new_text, new_spans
+
+
+def _line_spans(text: str):
+    """(start, content_end) for every line — content_end excludes the '\\n'."""
+    out, i = [], 0
+    for ln in text.splitlines(keepends=True):
+        out.append((i, i + len(ln.rstrip("\n"))))
+        i += len(ln)
+    return out
 
 
 def add_ocr_noise(text: str, spans, rate: float = 0.02, seed: int | None = None,
                   line_drop: float | None = None):
-    """Corrupt text the way Tesseract does: drop whole lines (primary), plus a
-    few length-preserving character swaps (secondary). Spans are remapped.
-    `line_drop` defaults to `rate` when not given."""
+    """Corrupt `text` the way real label OCR does and remap `spans`. `rate` is the
+    master knob (0 = off); the sub-effects below scale off it. `line_drop`
+    overrides the per-line drop probability."""
     rng = random.Random(seed)
-    if line_drop is None:
-        line_drop = rate
-    if line_drop > 0:
-        text, spans = _drop_lines(text, spans, line_drop, rng)
+    spans = [list(s) for s in spans]
+    if rate <= 0:
+        return text, spans
 
-    chars = list(text)
+    ld = rate if line_drop is None else line_drop
+    lines = _line_spans(text)
+    content = [(a, c) for a, c in lines if text[a:c].strip()]
+    deleted: set = set()
+
+    # 1. drop whole lines (keep at least one content line)
+    droppable = [k for k in range(len(content)) if rng.random() < ld]
+    if len(droppable) >= len(content) and content:
+        droppable = droppable[1:]
+    for k in droppable:
+        a, c = content[k]
+        deleted.update(range(a, c))
+
+    # 2. truncate the tail of a line that "wraps off the bottle"
+    p_trunc = min(0.9, rate * 12)
+    for a, c in content:
+        if c - a > 5 and rng.random() < p_trunc:
+            cut = rng.randint(1, min(8, c - a - 2))
+            deleted.update(range(c - cut, c))
+
+    # 3. delete spaces (hard at field boundaries, softer elsewhere) and some \n
+    edge = set()
+    for s, e, _ in spans:
+        edge.add(s - 1)
+        edge.add(e)
+    p_edge, p_mid, p_nl = min(0.6, rate * 26), min(0.22, rate * 6), min(0.14, rate * 5)
+    for i, ch in enumerate(text):
+        if ch == " " and rng.random() < (p_edge if i in edge else p_mid):
+            deleted.add(i)
+        elif ch == "\n" and rng.random() < p_nl:
+            deleted.add(i)
+
+    new_text, new_spans = _apply_deletions(text, spans, deleted)
+    if spans and not new_spans:                 # too aggressive - back off to line-drop only
+        new_text, new_spans = _apply_deletions(
+            text, spans, {i for k in droppable for i in range(*content[k])})
+
+    # 4. character garble - heavier on the boilerplate than on the fields
+    field_chars = {i for s, e, _ in new_spans for i in range(s, e)}
+    chars = list(new_text)
     for i, ch in enumerate(chars):
-        if ch == "\n" or rng.random() > rate:
+        if ch in ("\n", " "):
+            continue
+        if rng.random() > (rate if i in field_chars else rate * 2.5):
             continue
         if ch in _CONFUSE:
             chars[i] = _CONFUSE[ch]
         elif ch.isalpha():
             chars[i] = ch.upper() if ch.islower() else ch.lower()
-    return "".join(chars), spans
+    return "".join(chars), new_spans
 
 
 # --- preview ---------------------------------------------------- #

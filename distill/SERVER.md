@@ -56,7 +56,7 @@ Check what's on the card any time: `nvidia-smi`.
 cd ~/Projects/CMPS420-PillPal/distill
 
 bash run.sh                                              # baseline: distilbert, 5000 labels
-bash run.sh --noise 0.02 --name noisy                    # with OCR corruption
+bash run.sh --noise 0.01 --name noisy                    # with realistic OCR corruption
 bash run.sh --base google/mobilebert-uncased --name mobilebert --lr 5e-5 --epochs 6
 ```
 
