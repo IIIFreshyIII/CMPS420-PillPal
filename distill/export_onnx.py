@@ -21,7 +21,13 @@ import argparse
 import json
 import shutil
 import time
+import warnings
 from pathlib import Path
+
+# export/quant tooling is noisy: fp16 clamp notices, torch tracer warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="onnxconverter_common")
+warnings.filterwarnings("ignore", message=".*TracerWarning.*")
+warnings.filterwarnings("ignore", message=".*torch_dtype.*")
 
 from make_dataset import spans_to_bio  # reuse the exact span->BIO alignment
 
@@ -67,16 +73,26 @@ def make_fp16(fp32: Path) -> Path:
 
 def make_int8(fp32: Path) -> Path:
     from onnxruntime.quantization import QuantType, quantize_dynamic
-    from onnxruntime.quantization.shape_inference import quant_pre_process
 
-    prepped = fp32.with_name("model_prepped.onnx")
     dst = fp32.with_name("model_int8.onnx")
-    quant_pre_process(str(fp32), str(prepped), skip_symbolic_shape=False)
+    src = fp32
+    # onnxruntime's symbolic shape inference chokes on the MobileBERT/DistilBERT
+    # Slice ops; skip_symbolic_shape=True works, and if the whole preprocess
+    # still fails we quantize the raw graph (dynamic quant doesn't require it).
+    try:
+        from onnxruntime.quantization.shape_inference import quant_pre_process
+        prepped = fp32.with_name("model_prepped.onnx")
+        quant_pre_process(str(fp32), str(prepped), skip_symbolic_shape=True)
+        src = prepped
+    except Exception as exc:  # noqa: BLE001
+        print(f"   (quant_pre_process skipped: {type(exc).__name__})")
+
     quantize_dynamic(
-        str(prepped), str(dst),
+        str(src), str(dst),
         weight_type=QuantType.QInt8, per_channel=True, reduce_range=True,
     )
-    prepped.unlink(missing_ok=True)
+    if src != fp32:
+        src.unlink(missing_ok=True)
     print(f"   {dst.name}  {dst.stat().st_size/1e6:.1f} MB")
     return dst
 
