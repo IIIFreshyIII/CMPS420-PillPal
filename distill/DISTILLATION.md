@@ -118,14 +118,25 @@ python export_onnx.py --model model-noisy2  --data data-noisy2
 ```
 
 Prints a table: per-variant real F1 / test_unseen F1 / DRUG F1 / **file size MB** /
-**CPU latency ms**. Pick the **smallest variant whose real F1 stays within ~0.03
-of PyTorch and ≥ 0.53** (still clears Med7). Expected winner: MobileBERT int8
-(~25 MB). Contingency: MobileBERT fp16 (~50 MB, full accuracy — but phone CPUs
-have no fast fp16 path, so it's the same speed as fp32) or DistilBERT int8.
+**CPU latency ms**.
+
+**Result (2026-09-09):**
+
+| variant | MobileBERT | DistilBERT |
+|---|---|---|
+| pytorch | 0.587 | 0.579 |
+| onnx fp32 | 0.587 · 99 MB · 11 ms | 0.579 · 266 MB · 11 ms |
+| onnx int8 | **0.026** · 27 MB — collapsed | **0.583** · 67 MB · 7 ms |
+
+ONNX fp32 = bit-exact with PyTorch and ~2× faster on CPU. **MobileBERT does not
+survive dynamic int8** — its bottleneck architecture needs quantization-aware
+training, out of scope (citable finding). DistilBERT int8 is *free* (0.583 vs
+0.579). fp16 gives no phone-CPU speed benefit and the converter is buggy — skip.
+
+**Ship: DistilBERT int8** — 67 MB, real F1 0.583.
 
 ```bash
-# copy the winner + tokenizer + drug list into the app
-python export_onnx.py --model model-mobile --variant int8 --emit ../app/assets/ner
+python export_onnx.py --model model-noisy2 --variant int8 --emit ../app/assets/ner
 ```
 
 Ships in `app/assets/ner/`: `model.quant.onnx`, `vocab.txt`, `labels.json`,
@@ -151,10 +162,22 @@ span against a controlled vocabulary — the standard clinical-NER architecture
 - **FREQUENCY / DURATION** → passthrough (too open-ended for a list)
 
 ```bash
-python drug_vocab.py --build                          # -> distill/drug_names.txt (committed)
-python infer.py --onnx onnx-mobile --data data-mobile --eval   # model-alone vs model+refine on real_test
-python infer.py --onnx onnx-mobile --text "<a real OCR block>"  # eyeball end-to-end fields
+python drug_vocab.py --build                            # -> distill/drug_names.txt (committed, ~10k names)
+python infer.py --onnx onnx-noisy2 --data data-noisy2 --eval   # model-alone vs model+refine
+python infer.py --onnx onnx-noisy2 --text "<a real OCR block>"  # eyeball end-to-end fields
 ```
+
+**Result (2026-09-09, DistilBERT int8 on the 29-label real set):**
+
+| | micro F1 | DRUG P / R / F1 |
+|---|---|---|
+| model alone | 0.583 | 0.44 / 0.44 / 0.44 |
+| **model + refine** | **0.686** | **0.75 / 0.75 / 0.75** |
+
+The validation layer adds **+0.10 overall** and nearly doubles DRUG. Per-entity
+(model + refine): DOSAGE 0.85, FORM 0.81, DRUG 0.75, ROUTE 0.62, STRENGTH 0.59,
+FREQUENCY 0.46. **0.686 vs Med7's 0.477 — beating the model we distilled from by
+0.21** on real photos.
 
 `infer.py` is the Python reference for the whole phone pipeline (model → refine →
 first span per type → `Extraction` fields; `_regex_fields` from `med7_pipeline`
@@ -203,17 +226,20 @@ Progress on the 29-label real set (exact-span F1):
 | DistilBERT, clean synthetic (v1 generator) | 66M | 0.43–0.45 | loses — over-predicts DRUG on manufacturer names + OCR garble |
 | DistilBERT, clean synthetic (v2: +vocab, distractors) | 66M | 0.51 | edges ahead |
 | DistilBERT, **`--noise 0.01`** (v2 + gluing/truncation/distractors) | 66M | 0.58 | wins by ~0.10 |
-| **MobileBERT, `--noise 0.01`** (6 ep, lr 5e-5) | **25M** | **0.59** | **wins, at 1/3 the size** |
+| MobileBERT, `--noise 0.01` (6 ep, lr 5e-5) | 25M | 0.59 | ties DistilBERT — **but collapses to 0.03 at int8** |
+| **DistilBERT int8 + RxNorm/closed-set refine** (SHIPPED) | 66M / 67 MB | **0.69** | **wins by 0.21** |
 
-MobileBERT (the actual phone-target model) ties the bigger DistilBERT and beats
-Med7 — **this is the Phase 1 deliverable.** It trades: better FORM (0.80) and
-DOSAGE (0.76), weaker DRUG (0.35, precision 0.39) and STRENGTH (0.53).
+MobileBERT matched DistilBERT on accuracy but its architecture doesn't survive
+dynamic int8 quantization (F1 → 0.03), so **DistilBERT is the Phase 1
+deliverable**: quantizes for free (0.583 int8 vs 0.579 fp32), then the
+RxNorm/closed-set validation layer (`postprocess.py`) lifts it to **0.686** —
+DRUG F1 0.44 → 0.75, FORM → 0.81. Ships as `app/assets/ner/model.quant.onnx`
+(67 MB) + `drug_names.txt`.
 
 The `--noise 0.01` models' synthetic scores also drop to ~0.64 (from 1.0) and now
 *track* the real score within ~0.06 — the synthetic eval finally means something.
-n=29 so treat ±0.1 as noise, but every `--noise 0.01` model beats Med7.
-Weakest entity across the board is DRUG precision (manufacturer / OCR-garble
-false-positives) — the place to push next if the number needs to go up.
+n=29 so treat ±0.1 as noise. Weakest remaining entity is FREQUENCY (0.46 — no
+controlled vocabulary; the generator-side fix is more phrasing variety).
 
 ## The honest risks
 
