@@ -2,8 +2,8 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pillpal/main.dart';
-import 'package:pillpal/models/medication.dart';
-import 'package:pillpal/services/med_store.dart';
+import 'package:pillpal/data/models/medication.dart';
+import 'package:pillpal/data/services/med_store.dart';
 
 void main() {
   test('refillDate is fill date + days supply, warn is 7 days before', () {

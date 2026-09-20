@@ -7,8 +7,10 @@ environment:
   sdk: ^3.4.0
 
 dependencies:
+  cupertino_icons: ^1.0.9
   flutter:
     sdk: flutter
+  flutter_slidable: ^4.0.3
 
 dev_dependencies:
   flutter_test:
