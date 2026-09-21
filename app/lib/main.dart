@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'core/theme/app_theme.dart';
+import 'screens/home/home_scaffold.dart';
 
-import 'screens/med_list_screen.dart';
-
-void main() => runApp(const PillPalApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+      statusBarBrightness: Brightness.light,
+    ),
+  );
+  runApp(const PillPalApp());
+}
 
 class PillPalApp extends StatelessWidget {
   const PillPalApp({super.key});
@@ -12,11 +23,8 @@ class PillPalApp extends StatelessWidget {
     return MaterialApp(
       title: 'PillPal',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFF2E7D6B),
-        useMaterial3: true,
-      ),
-      home: const MedListScreen(),
+      theme: AppTheme.lightTheme,
+      home: const HomeScaffold(),
     );
   }
 }
