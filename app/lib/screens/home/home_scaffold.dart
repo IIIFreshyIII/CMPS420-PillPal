@@ -6,6 +6,7 @@ import '../../presentation/widgets/floating_tab_bar.dart';
 import '../account/account_screen.dart';
 import '../profiles/profiles_screen.dart';
 import '../schedule/schedule_screen.dart';
+import '../medication_detail/medication_detail_sheet.dart';
 
 class HomeScaffold extends StatefulWidget {
   const HomeScaffold({super.key});
@@ -18,6 +19,12 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   AppTab _activeTab = AppTab.schedule;
   String _selectedProfileId = 'all';
   bool _isScanning = false;
+
+  void _handleUpdateMedication(Prescription updated) {
+    setState(() {
+      _prescriptions = _prescriptions.map((m) => m.id == updated.id ? updated : m).toList();
+    });
+  }
 
   final List<Profile> _profiles = const [
     Profile(id: '1', name: 'Me', color: Color(0xFF3B82F6), isPrimary: true),
@@ -155,18 +162,12 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   void _handleEditMedication(Prescription prescription) {
-    showCupertinoDialog(
-      context: context,
-      builder: (ctx) => CupertinoAlertDialog(
-        title: Text('Edit ${prescription.name}'),
-        content: const Text('Edit prescription screen coming up next.'),
-        actions: [
-          CupertinoDialogAction(
-            child: const Text('OK'),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-        ],
-      ),
+    MedicationDetailSheet.show(
+      context,
+      prescription: prescription,
+      profiles: _profiles,
+      onUpdate: _handleUpdateMedication,
+      onDelete: () => _handleDeleteMedication(prescription.id),
     );
   }
 
@@ -194,6 +195,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           child: ProfilesScreen(
             profiles: _profiles,
             prescriptions: _prescriptions,
+            onEditMedication: _handleEditMedication,
           ),
         );
       case AppTab.profile:
