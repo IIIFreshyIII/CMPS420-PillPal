@@ -249,82 +249,109 @@ def main() -> None:
             lines.append(f"| {t} | {c['hit']} | {c['miss']} | {c['fp']} | {c['precision']:.3f} | {c['recall']:.3f} | {c['f1']:.3f} |")
         return "\n".join(lines)
 
-    med7_note = "" if nlp is not None else "\n**Med7 was not available in this run** (`--no-med7` or spaCy/en_core_med7_lg missing) -- Med7 columns are omitted below. Run on the homelab GPU server (see SERVER.md) for the full comparison.\n"
+    # Built as a list of self-contained blocks, joined with one blank line
+    # each -- avoids hand-counting newlines inside a giant nested f-string,
+    # which is what produced the missing/doubled blank lines this replaced.
+    sections: list[str] = []
 
-    report = f"""# Full Diagnostic — Med7 vs. DistilBERT
+    sections.append("# Full Diagnostic — Med7 vs. DistilBERT")
+    sections.append(
+        f"Expands the technical spike into a side-by-side comparison against Med7, the "
+        f"reference model DistilBERT was distilled from. Same {out['n_examples']} real, "
+        f"hand-corrected prescription labels used throughout this project."
+    )
+    if nlp is None:
+        sections.append(
+            "**Med7 was not available in this run** (`--no-med7` or spaCy/en_core_med7_lg "
+            "missing) -- Med7 columns are omitted below. Run on the homelab GPU server "
+            "(see SERVER.md) for the full comparison."
+        )
 
-Expands the technical spike into a side-by-side comparison against Med7, the
-reference model DistilBERT was distilled from. Same {out['n_examples']} real,
-hand-corrected prescription labels used throughout this project.
-{med7_note}
-## Latency
+    sections.append("## Latency")
+    latency = ["| | min ms | avg ms | max ms |", "|---|--:|--:|--:|",
+               f"| DistilBERT (int8 ONNX, on-device) | {out['latency_ms']['distilbert_raw']['min']} | "
+               f"{out['latency_ms']['distilbert_raw']['avg']} | {out['latency_ms']['distilbert_raw']['max']} |"]
+    if 'med7' in out['latency_ms']:
+        latency.append(f"| Med7 (spaCy, server-only) | {out['latency_ms']['med7']['min']} | "
+                        f"{out['latency_ms']['med7']['avg']} | {out['latency_ms']['med7']['max']} |")
+    sections.append("\n".join(latency))
+    sections.append(
+        "Med7 can't run on-device at all (no mobile export) -- this number exists only "
+        "to show the gap, not because it's a real option."
+    )
 
-| | min ms | avg ms | max ms |
-|---|--:|--:|--:|
-| DistilBERT (int8 ONNX, on-device) | {out['latency_ms']['distilbert_raw']['min']} | {out['latency_ms']['distilbert_raw']['avg']} | {out['latency_ms']['distilbert_raw']['max']} |
-{f"| Med7 (spaCy, server-only) | {out['latency_ms']['med7']['min']} | {out['latency_ms']['med7']['avg']} | {out['latency_ms']['med7']['max']} |" if 'med7' in out['latency_ms'] else ""}
+    sections.append("## Strict accuracy (seqeval, exact span + type match)")
+    sections.append(
+        "Same metric `evaluate.py` reports, so these numbers are directly comparable to "
+        "the ones already in `DISTILLATION.md`."
+    )
+    strict_table = ["| | Precision | Recall | F1 |", "|---|--:|--:|--:|",
+                     f"| DistilBERT (raw) | {strict['distilbert_raw']['precision']:.3f} | "
+                     f"{strict['distilbert_raw']['recall']:.3f} | {strict['distilbert_raw']['f1']:.3f} |"]
+    if 'med7' in strict:
+        strict_table.append(f"| Med7 | {strict['med7']['precision']:.3f} | "
+                             f"{strict['med7']['recall']:.3f} | {strict['med7']['f1']:.3f} |")
+    sections.append("\n".join(strict_table))
 
-Med7 can't run on-device at all (no mobile export) -- this number exists only
-to show the gap, not because it's a real option.
+    sections.append("## Loose accuracy, per field (span-off text match allowed)")
+    sections.append(
+        "A few characters of boundary drift doesn't matter for the real product -- this "
+        "view is forgiving of that the way the strict metric above isn't."
+    )
+    sections.append("**DistilBERT (raw model output, before validation):**\n" + fmt_prf1_table(loose['distil_raw']))
+    if 'med7' in loose:
+        sections.append("**Med7 (raw model output):**\n" + fmt_prf1_table(loose['med7']))
 
-## Strict accuracy (seqeval, exact span + type match)
+    sections.append("## The number that actually matters: DistilBERT + validation layer")
+    sections.append(
+        "DistilBERT's raw output is never what ships -- the RxNorm/closed-set "
+        "validation layer (`postprocess.py`) runs on top of it first. This is "
+        "field-level accuracy of *that* combined pipeline against gold:"
+    )
+    validated_table = ["| Field | Hit | Miss | Accuracy |", "|---|--:|--:|--:|"]
+    for t in ENTITY_TYPES:
+        c = validated_field_acc[t]
+        validated_table.append(f"| {t} | {c['hit']} | {c['miss']} | {c['accuracy']:.3f} |"
+                                if c['accuracy'] is not None else f"| {t} | - | - | n/a (no gold examples) |")
+    sections.append("\n".join(validated_table))
 
-Same metric `evaluate.py` reports, so these numbers are directly comparable to
-the ones already in `DISTILLATION.md`.
+    if nlp is not None:
+        sections.append("## Where Med7 and DistilBERT disagree (DRUG field)")
+        total_drug = agree_gold + distil_only + med7_only + both_wrong
+        sections.append(f"Of {total_drug} examples with a gold DRUG span:")
+        sections.append(
+            "\n".join([
+                "| | count |", "|---|--:|",
+                f"| both models correct | {agree_gold} |",
+                f"| DistilBERT right, Med7 wrong | {distil_only} |",
+                f"| Med7 right, DistilBERT wrong | {med7_only} |",
+                f"| both wrong | {both_wrong} |",
+            ])
+        )
+        sections.append(
+            "DistilBERT was fine-tuned specifically on this project's label style (OCR noise, "
+            "pharmacy phrasing); Med7 is a general clinical-note model that never saw this "
+            "distribution. That's the expected shape of the disagreement, not a surprise."
+        )
 
-| | Precision | Recall | F1 |
-|---|--:|--:|--:|
-| DistilBERT (raw) | {strict['distilbert_raw']['precision']:.3f} | {strict['distilbert_raw']['recall']:.3f} | {strict['distilbert_raw']['f1']:.3f} |
-{f"| Med7 | {strict['med7']['precision']:.3f} | {strict['med7']['recall']:.3f} | {strict['med7']['f1']:.3f} |" if 'med7' in strict else ""}
+    sections.append("## False-positive DRUG strings")
+    sections.append("What each model predicted as a drug name that wasn't one, most common first:")
+    distil_fp = ", ".join(f"{s!r} ({n})" for s, n in
+                           sorted(fp_drug_strings['distil_raw'].items(), key=lambda x: -x[1])[:8]) or "none"
+    sections.append(f"**DistilBERT:** {distil_fp}")
+    if nlp is not None:
+        med7_fp = ", ".join(f"{s!r} ({n})" for s, n in
+                             sorted(fp_drug_strings['med7'].items(), key=lambda x: -x[1])[:8]) or "none"
+        sections.append(f"**Med7:** {med7_fp}")
 
-## Loose accuracy, per field (span-off text match allowed)
+    sections.append("## Full per-example detail")
+    sections.append(
+        "Every example's gold spans, both models' raw predictions, and the validated "
+        "pipeline's final fields are in `results.json` -- the same level of detail "
+        "`diagnose_real.py` prints to the terminal, kept here as structured data instead."
+    )
 
-A few characters of boundary drift doesn't matter for the real product -- this
-view is forgiving of that the way the strict metric above isn't.
-
-**DistilBERT (raw model output, before validation):**
-{fmt_prf1_table(loose['distil_raw'])}
-{f"**Med7:**{chr(10)}{fmt_prf1_table(loose['med7'])}" if 'med7' in loose else ""}
-
-## The number that actually matters: DistilBERT + validation layer
-
-DistilBERT's raw output is never what ships -- the RxNorm/closed-set
-validation layer (`postprocess.py`) runs on top of it first. This is
-field-level accuracy of *that* combined pipeline against gold:
-
-| Field | Hit | Miss | Accuracy |
-|---|--:|--:|--:|
-{chr(10).join(f"| {t} | {validated_field_acc[t]['hit']} | {validated_field_acc[t]['miss']} | {validated_field_acc[t]['accuracy']:.3f} |" if validated_field_acc[t]['accuracy'] is not None else f"| {t} | - | - | n/a (no gold examples) |" for t in ENTITY_TYPES)}
-
-{"## Where Med7 and DistilBERT disagree (DRUG field)" if nlp is not None else ""}
-{f'''
-Of {agree_gold + distil_only + med7_only + both_wrong} examples with a gold DRUG span:
-
-| | count |
-|---|--:|
-| both models correct | {agree_gold} |
-| DistilBERT right, Med7 wrong | {distil_only} |
-| Med7 right, DistilBERT wrong | {med7_only} |
-| both wrong | {both_wrong} |
-
-DistilBERT was fine-tuned specifically on this project's label style (OCR noise,
-pharmacy phrasing); Med7 is a general clinical-note model that never saw this
-distribution. That's the expected shape of the disagreement, not a surprise.
-''' if nlp is not None else ""}
-
-## False-positive DRUG strings
-
-What each model predicted as a drug name that wasn't one, most common first:
-
-**DistilBERT:** {", ".join(f"{s!r} ({n})" for s, n in sorted(fp_drug_strings['distil_raw'].items(), key=lambda x: -x[1])[:8]) or "none"}
-{f"**Med7:** {', '.join(f'{s!r} ({n})' for s, n in sorted(fp_drug_strings['med7'].items(), key=lambda x: -x[1])[:8]) or 'none'}" if nlp is not None else ""}
-
-## Full per-example detail
-
-Every example's gold spans, both models' raw predictions, and the validated
-pipeline's final fields are in `results.json` -- the same level of detail
-`diagnose_real.py` prints to the terminal, kept here as structured data instead.
-"""
+    report = "\n\n".join(sections) + "\n"
     (OUT_DIR / "FULL_DIAGNOSTIC.md").write_text(report)
     print(f"wrote {OUT_DIR / 'results.json'}")
     print(f"wrote {OUT_DIR / 'FULL_DIAGNOSTIC.md'}")
