@@ -8,8 +8,8 @@ hand-corrected prescription labels used throughout this project.
 
 | | min ms | avg ms | max ms |
 |---|--:|--:|--:|
-| DistilBERT (int8 ONNX, on-device) | 3.43 | 7.35 | 14.9 |
-| Med7 (spaCy, server-only) | 9.12 | 18.43 | 38.59 |
+| DistilBERT (int8 ONNX, on-device) | 3.44 | 7.21 | 14.59 |
+| Med7 (spaCy, server-only) | 9.27 | 18.28 | 38.8 |
 
 Med7 can't run on-device at all (no mobile export) -- this number exists only
 to show the gap, not because it's a real option.
