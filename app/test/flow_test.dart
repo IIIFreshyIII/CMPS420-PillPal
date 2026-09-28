@@ -3,9 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pillpal/main.dart';
 import 'package:pillpal/data/models/medication.dart';
-import 'package:pillpal/data/services/med_store.dart';
 
 void main() {
+  // `Medication` (the label-extraction model) isn't wired into the live UI
+  // yet -- see PillPal/app/README.md -- but its refill-date arithmetic is
+  // real, load-bearing logic, so it stays covered here.
   test('refillDate is fill date + days supply, warn is 7 days before', () {
     final m = Medication(
       id: '1',
@@ -21,31 +23,26 @@ void main() {
     expect(Medication(id: '1', fillDate: DateTime(2026)).refillDate, isNull);
   });
 
-  testWidgets('capture -> confirm -> save adds a medication to the list',
+  testWidgets('home screen shows the seeded schedule and a scan adds a med',
       (tester) async {
-    // tall surface so the confirm screen fits without scrolling
+    // tall surface so the schedule screen fits without scrolling
     tester.view.physicalSize = const Size(1200, 3000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    for (final m in MedStore.instance.meds.toList()) {
-      MedStore.instance.remove(m.id);
-    }
-
     await tester.pumpWidget(const PillPalApp());
-    expect(find.text('No medications yet'), findsOneWidget);
-
-    await tester.tap(find.text('Add from label'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Simulate capture'));
+    // HomeScaffold seeds three hardcoded prescriptions on the Schedule tab.
+    expect(find.text('Allegra'), findsOneWidget);
+    expect(find.text('Amoxicillin'), findsNothing);
+
+    await tester.tap(find.text('+ Scan Bottle'));
+    await tester.pump(); // isScanning = true
+    await tester.pump(const Duration(milliseconds: 1500)); // fake scan delay
     await tester.pumpAndSettle();
 
-    expect(find.text('Check the details'), findsOneWidget);
-    await tester.tap(find.text('Confirm & save'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Metformin HCl'), findsOneWidget);
-    expect(MedStore.instance.meds, hasLength(1));
+    // _simulateScan() inserts a hardcoded Amoxicillin prescription.
+    expect(find.text('Amoxicillin'), findsOneWidget);
   });
 }
