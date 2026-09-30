@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../data/models/prescription.dart';
@@ -7,6 +8,7 @@ import '../account/account_screen.dart';
 import '../profiles/profiles_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../medication_detail/medication_detail_sheet.dart';
+import '../../presentation/widgets/android_sliding_bottom_bar.dart';
 
 class HomeScaffold extends StatefulWidget {
   const HomeScaffold({super.key});
@@ -94,6 +96,23 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   void _showRefillDialog(String medName) {
+    if (Platform.isAndroid) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Refill Required'),
+          content: Text('You just took the last dose of $medName!'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK', style: TextStyle(color: Color(0xFF168B87))),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
     showCupertinoDialog(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
@@ -171,7 +190,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     );
   }
 
- Widget _buildActiveScreen() {
+  Widget _buildActiveScreen() {
     switch (_activeTab) {
       case AppTab.schedule:
         return KeyedSubtree(
@@ -206,25 +225,67 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     }
   }
 
+  int get _activeTabIndex {
+    switch (_activeTab) {
+      case AppTab.schedule:
+        return 0;
+      case AppTab.meds:
+        return 1;
+      case AppTab.profile:
+        return 2;
+    }
+  }
+
+  void _onAndroidNavDestinationSelected(int index) {
+    setState(() {
+      switch (index) {
+        case 0:
+          _activeTab = AppTab.schedule;
+          break;
+        case 1:
+          _activeTab = AppTab.meds;
+          break;
+        case 2:
+          _activeTab = AppTab.profile;
+          break;
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final activeBody = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 180),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+      child: _buildActiveScreen(),
+    );
+
+    // Native Full-Width Sliding Bar on Android
+    if (Platform.isAndroid) {
+      return Scaffold(
+        backgroundColor: const Color(0xFFF8FAFA),
+        body: SafeArea(
+          bottom: false,
+          child: activeBody,
+        ),
+        bottomNavigationBar: AndroidSlidingBottomBar(
+          selectedIndex: _activeTabIndex,
+          onTabSelected: _onAndroidNavDestinationSelected,
+        ),
+      );
+    }
+    
+    // Default iOS Floating Frosted Pill Dock
     return Scaffold(
       body: Stack(
         children: [
           SafeArea(
             bottom: false,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              switchInCurve: Curves.easeOut,
-              switchOutCurve: Curves.easeIn,
-              transitionBuilder: (child, animation) {
-                return FadeTransition(
-                  opacity: animation,
-                  child: child,
-                );
-              },
-              child: _buildActiveScreen(),
-            ),
+            child: activeBody,
           ),
           FloatingTabBar(
             activeTab: _activeTab,
