@@ -24,10 +24,22 @@ dependencies:
   # >=1.5.1 required for Android's 16 KB page-size compliance (targetSdk 36).
   flutter_onnxruntime: ^1.8.5
 
+  # Local persistence (profiles/prescriptions/dose history). Plain sqlite3 --
+  # not sqlite3_flutter_libs/sqlcipher_flutter_libs, both end-of-life as of
+  # sqlite3 3.x/drift 2.32+; bundling the native lib is automatic now.
+  # Encryption is deferred (see pubspec notes below); this is swappable later
+  # without a schema rewrite.
+  drift: ^2.23.0
+  sqlite3: ^3.0.0
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  drift_dev: ^2.23.0
+  build_runner: ^2.4.13
 
 flutter:
   uses-material-design: true

@@ -1,12 +1,15 @@
+import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:pillpal/main.dart';
 import 'package:pillpal/core/ner/refill_math.dart';
+import 'package:pillpal/core/theme/app_theme.dart';
+import 'package:pillpal/data/local/app_database.dart';
 import 'package:pillpal/data/models/prescription.dart';
 import 'package:pillpal/data/models/profile.dart';
 import 'package:pillpal/data/services/extractor.dart';
 import 'package:pillpal/screens/confirm/confirm_screen.dart';
+import 'package:pillpal/screens/home/home_scaffold.dart';
 
 void main() {
   // Refill-date arithmetic is real, load-bearing logic (spec rule: plain
@@ -38,10 +41,17 @@ void main() {
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
 
-    await tester.pumpWidget(const PillPalApp());
+    // Real PillPalApp always opens a real on-disk database (path_provider
+    // needs a platform channel this plain widget test doesn't have), so an
+    // in-memory AppDatabase is injected here instead -- same schema/seed
+    // logic, no disk access.
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: HomeScaffold(database: AppDatabase(NativeDatabase.memory())),
+    ));
     await tester.pumpAndSettle();
 
-    // HomeScaffold seeds three hardcoded prescriptions on the Schedule tab.
+    // HomeScaffold seeds three demo prescriptions on the Schedule tab.
     expect(find.text('Allegra'), findsOneWidget);
 
     await tester.tap(find.text('+ Scan Bottle'));
@@ -51,6 +61,17 @@ void main() {
     // fallback, not the old fake-delay-then-insert-Amoxicillin behavior.
     expect(find.text('Scan Live'), findsOneWidget);
     expect(find.text('Enter from a Photo'), findsOneWidget);
+
+    // Dispose HomeScaffold here (rather than leaving it to the implicit
+    // end-of-test teardown): closing its DoseEvent/Prescription/Profile
+    // stream subscriptions schedules a zero-duration Timer inside drift's
+    // StreamQueryStore, and this pump gives it a chance to fire before
+    // flutter_test's pending-timer check runs.
+    await tester.pumpWidget(const SizedBox());
+    // `pump()` with no duration never calls FakeAsync.elapse(), so a
+    // zero-duration Timer never actually fires -- an explicit (even zero)
+    // duration is required to flush it.
+    await tester.pump(Duration.zero);
   });
 
   testWidgets('ConfirmScreen maps a confirmed Extraction into a real Prescription',

@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../../data/local/app_database.dart';
+import '../../data/models/dose_event.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/extractor.dart';
@@ -17,7 +20,11 @@ import '../../presentation/widgets/android_sliding_bottom_bar.dart';
 enum _ScanMode { live, upload }
 
 class HomeScaffold extends StatefulWidget {
-  const HomeScaffold({super.key});
+  const HomeScaffold({super.key, this.database});
+
+  /// Injectable for tests (an in-memory `AppDatabase`); production always
+  /// uses the default on-disk database created in `initState`.
+  final AppDatabase? database;
 
   @override
   State<HomeScaffold> createState() => _HomeScaffoldState();
@@ -28,18 +35,21 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   String _selectedProfileId = 'all';
   bool _isScanning = false;
 
-  void _handleUpdateMedication(Prescription updated) {
-    setState(() {
-      _prescriptions = _prescriptions.map((m) => m.id == updated.id ? updated : m).toList();
-    });
-  }
+  late final AppDatabase _db;
+  StreamSubscription<List<Profile>>? _profilesSub;
+  StreamSubscription<List<Prescription>>? _prescriptionsSub;
+  StreamSubscription<List<DoseEvent>>? _doseEventsSub;
 
-  final List<Profile> _profiles = const [
+  List<Profile> _profiles = const [];
+  List<Prescription> _prescriptions = const [];
+  List<DoseEvent> _doseEvents = const [];
+
+  static const _seedProfiles = [
     Profile(id: '1', name: 'Me', color: Color(0xFF3B82F6), isPrimary: true),
     Profile(id: '2', name: 'Mom', color: Color(0xFF8B5CF6)),
   ];
 
-  List<Prescription> _prescriptions = [
+  static const _seedPrescriptions = [
     Prescription(
       id: '1',
       name: 'Allegra',
@@ -69,36 +79,59 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     ),
   ];
 
-  void _handleTakeDose(String id) {
-    setState(() {
-      _prescriptions = _prescriptions.map((item) {
-        if (item.id == id) {
-          final willBeTaken = !item.takenToday;
-
-          if (willBeTaken) {
-            final newRemaining = (item.remaining - 1).clamp(0, 9999);
-            final newDays = (item.daysSupply - 1).clamp(0, 9999);
-
-            if (newRemaining <= 1) {
-              _showRefillDialog(item.name);
-            }
-
-            return item.copyWith(
-              takenToday: true,
-              remaining: newRemaining,
-              daysSupply: newDays,
-            );
-          } else {
-            return item.copyWith(
-              takenToday: false,
-              remaining: (item.remaining + 1).clamp(0, 9999),
-              daysSupply: (item.daysSupply + 1).clamp(0, 9999),
-            );
-          }
-        }
-        return item;
-      }).toList();
+  @override
+  void initState() {
+    super.initState();
+    _db = widget.database ?? AppDatabase();
+    _db.seedIfEmpty(_seedProfiles, _seedPrescriptions);
+    _profilesSub = _db.watchProfiles().listen((rows) {
+      if (mounted) setState(() => _profiles = rows);
     });
+    _prescriptionsSub = _db.watchPrescriptions().listen((rows) {
+      if (mounted) setState(() => _prescriptions = rows);
+    });
+    _doseEventsSub = _db.watchDoseEvents().listen((rows) {
+      if (mounted) setState(() => _doseEvents = rows);
+    });
+  }
+
+  void _handleUpdateMedication(Prescription updated) {
+    _db.upsertPrescription(updated);
+  }
+
+  /// Writes a `DoseEvent` only when a dose actually gets marked taken --
+  /// toggling it back off is treated as undoing a mis-tap, not a loggable
+  /// "skipped" event, so the history feed reflects real doses taken.
+  void _handleTakeDose(String id) {
+    final item = _prescriptions.firstWhere((p) => p.id == id);
+    final willBeTaken = !item.takenToday;
+
+    final Prescription updated;
+    if (willBeTaken) {
+      final newRemaining = (item.remaining - 1).clamp(0, 9999);
+      final newDays = (item.daysSupply - 1).clamp(0, 9999);
+      updated = item.copyWith(takenToday: true, remaining: newRemaining, daysSupply: newDays);
+      if (newRemaining <= 1) {
+        _showRefillDialog(item.name);
+      }
+    } else {
+      updated = item.copyWith(
+        takenToday: false,
+        remaining: (item.remaining + 1).clamp(0, 9999),
+        daysSupply: (item.daysSupply + 1).clamp(0, 9999),
+      );
+    }
+
+    _db.upsertPrescription(updated);
+    if (willBeTaken) {
+      _db.insertDoseEvent(DoseEvent(
+        id: '${id}_${DateTime.now().microsecondsSinceEpoch}',
+        prescriptionId: id,
+        profileId: item.profileId,
+        occurredAt: DateTime.now(),
+        action: DoseAction.taken,
+      ));
+    }
   }
 
   void _showRefillDialog(String medName) {
@@ -135,34 +168,36 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   void _handleDeleteMedication(String id) {
-    setState(() {
-      _prescriptions = _prescriptions.where((m) => m.id != id).toList();
-    });
+    _db.deletePrescription(id);
   }
 
   void _handleToggleAllCompleted(List<String> targetIds, bool shouldMarkTaken) {
-    setState(() {
-      _prescriptions = _prescriptions.map((item) {
-        if (targetIds.contains(item.id)) {
-          if (shouldMarkTaken && !item.takenToday) {
-            final newRemaining = (item.remaining - 1).clamp(0, 9999);
-            final newDays = (item.daysSupply - 1).clamp(0, 9999);
-            return item.copyWith(
-              takenToday: true,
-              remaining: newRemaining,
-              daysSupply: newDays,
-            );
-          } else if (!shouldMarkTaken && item.takenToday) {
-            return item.copyWith(
-              takenToday: false,
-              remaining: (item.remaining + 1).clamp(0, 9999),
-              daysSupply: (item.daysSupply + 1).clamp(0, 9999),
-            );
-          }
-        }
-        return item;
-      }).toList();
-    });
+    for (final item in _prescriptions) {
+      if (!targetIds.contains(item.id)) continue;
+
+      if (shouldMarkTaken && !item.takenToday) {
+        final newRemaining = (item.remaining - 1).clamp(0, 9999);
+        final newDays = (item.daysSupply - 1).clamp(0, 9999);
+        _db.upsertPrescription(item.copyWith(
+          takenToday: true,
+          remaining: newRemaining,
+          daysSupply: newDays,
+        ));
+        _db.insertDoseEvent(DoseEvent(
+          id: '${item.id}_${DateTime.now().microsecondsSinceEpoch}',
+          prescriptionId: item.id,
+          profileId: item.profileId,
+          occurredAt: DateTime.now(),
+          action: DoseAction.taken,
+        ));
+      } else if (!shouldMarkTaken && item.takenToday) {
+        _db.upsertPrescription(item.copyWith(
+          takenToday: false,
+          remaining: (item.remaining + 1).clamp(0, 9999),
+          daysSupply: (item.daysSupply + 1).clamp(0, 9999),
+        ));
+      }
+    }
   }
 
   Future<void> _openScan() async {
@@ -212,7 +247,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     setState(() => _isScanning = false);
 
     if (prescription != null) {
-      setState(() => _prescriptions.insert(0, prescription));
+      _db.upsertPrescription(prescription);
     }
   }
 
@@ -250,6 +285,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           child: ProfilesScreen(
             profiles: _profiles,
             prescriptions: _prescriptions,
+            doseEvents: _doseEvents,
             onEditMedication: _handleEditMedication,
           ),
         );
@@ -259,6 +295,15 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           child: AccountScreen(),
         );
     }
+  }
+
+  @override
+  void dispose() {
+    _profilesSub?.cancel();
+    _prescriptionsSub?.cancel();
+    _doseEventsSub?.cancel();
+    _db.close();
+    super.dispose();
   }
 
   int get _activeTabIndex {
