@@ -1,0 +1,36 @@
+{
+  "bio": [
+    "O",
+    "B-DRUG",
+    "I-DRUG",
+    "B-STRENGTH",
+    "I-STRENGTH",
+    "B-DOSAGE",
+    "I-DOSAGE",
+    "B-FORM",
+    "I-FORM",
+    "B-ROUTE",
+    "I-ROUTE",
+    "B-FREQUENCY",
+    "I-FREQUENCY",
+    "B-DURATION",
+    "I-DURATION"
+  ],
+  "label2id": {
+    "O": 0,
+    "B-DRUG": 1,
+    "I-DRUG": 2,
+    "B-STRENGTH": 3,
+    "I-STRENGTH": 4,
+    "B-DOSAGE": 5,
+    "I-DOSAGE": 6,
+    "B-FORM": 7,
+    "I-FORM": 8,
+    "B-ROUTE": 9,
+    "I-ROUTE": 10,
+    "B-FREQUENCY": 11,
+    "I-FREQUENCY": 12,
+    "B-DURATION": 13,
+    "I-DURATION": 14
+  }
+}

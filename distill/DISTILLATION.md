@@ -81,7 +81,9 @@ curved bottle label:
 Spans are clipped or dropped to match. The rate is calibrated: at `--noise 0.01`
 Med7 scores ~0.45 on the synthetic set — the same as it scores on the real
 labels — so a model trained at that rate is training on the right difficulty.
-(`0.0` = clean, ~0.74 for Med7; `0.02`+ is harder than the real photos.)
+(`0.0` = clean, ~0.74 for Med7 on the current generator — the ≈0.79 figure
+later in this doc is from an earlier, narrower-vocab generator version, not a
+contradiction; `0.02`+ is harder than the real photos.)
 
 `run.sh` builds the dataset, fine-tunes, evaluates, and writes everything to
 `run-<name>-<timestamp>.log`. Each `--name` gets its own `data-<name>/` and

@@ -36,3 +36,6 @@ profile.json
 .idea/
 .DS_Store
 distill/*.log
+
+# Course materials — never commit (instructor-provided, not ours to redistribute)
+CMPS_4200_HCI_Phase_1_Project_Requirements.pdf

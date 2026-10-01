@@ -1,5 +1,5 @@
 name: pillpal
-description: "PillPal — Med-Tracker Phase 1: photograph a prescription label, confirm the fields, get refill reminders."
+description: "PillPal — Med-Tracker: scan a prescription label (live camera OCR, no photo taken), confirm the fields, get refill reminders."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -11,6 +11,18 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_slidable: 3.1.2
+
+  # Live-scan capture (med-tracker-spec.md §1) + backup photo-upload fallback.
+  # No image_picker: the upload fallback reads picked-photo bytes straight
+  # into memory via a custom Android platform channel (MainActivity.kt) to
+  # keep the same zero-disk-write guarantee the live scan has -- image_picker
+  # always copies through its own cache file first, with no way to opt out.
+  camera: ^0.12.1
+  google_mlkit_text_recognition: ^0.17.1
+  google_mlkit_commons: ^0.13.0
+  permission_handler: ^11.3.1
+  # >=1.5.1 required for Android's 16 KB page-size compliance (targetSdk 36).
+  flutter_onnxruntime: ^1.8.5
 
 dev_dependencies:
   flutter_test:
@@ -24,10 +36,7 @@ flutter:
     # ../distill/export_onnx.py --emit assets/ner  (see assets/ner/README.md)
     - assets/ner/
 
-# Packages we'll add as the real features land (kept here as a roadmap):
-#   camera                          - camera preview + capture
-#   google_mlkit_text_recognition   - on-device OCR (photo -> text)
-#   onnxruntime / flutter_onnxruntime - run the distilled NER model on-device
+# Still to add later:
 #   drift + sqlcipher_flutter_libs  - encrypted local database
 #   flutter_local_notifications     - reminders
 #   local_auth                      - biometric / PIN app lock

@@ -71,9 +71,14 @@ class _FloatingTabBarState extends State<FloatingTabBar> {
   @override
   Widget build(BuildContext context) {
     final activeIndex = _isDragging ? _dragRatio.round() : widget.activeTab.index;
+    // The app now draws edge-to-edge (main.dart), so the system gesture bar
+    // no longer reserves its own space -- add its actual height (varies by
+    // device/gesture-nav settings) on top of the visual margin, or this bar
+    // would sit flush against, or under, the gesture area.
+    final gestureBarInset = MediaQuery.of(context).padding.bottom;
 
     return Positioned(
-      bottom: 28,
+      bottom: 28 + gestureBarInset,
       left: 24,
       right: 24,
       child: Center(

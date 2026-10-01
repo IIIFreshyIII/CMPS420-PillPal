@@ -16,7 +16,7 @@ Read **`med-tracker-spec.md`** for the design and the non-negotiables:
 | path | what it is |
 |------|-----------|
 | `app/` | **The Flutter app.** The product. See `app/README.md`. |
-| `distill/` | **Trains the on-device NER model.** Generates synthetic labels, distils Med7 into a small (DistilBERT / MobileBERT) model, evaluates it, exports to ONNX. See `distill/DISTILLATION.md` and `distill/SERVER.md`. |
+| `distill/` | **Trains the on-device NER model.** Generates synthetic labels, distils Med7 into DistilBERT, evaluates it, exports to ONNX (int8, ~67 MB, shipped in `app/assets/ner/`). See `distill/DISTILLATION.md` and `distill/SERVER.md`. |
 | `med7_pipeline.py` | The original computer-only prototype: OCR → Med7 → regex → confirm → refill math. Kept as a reference and a quick way to eyeball Med7. |
 | `compare_models.py` | One-off: Med7 vs candidate on-device models on the sample labels. |
 | `notebooks/med7_colab.ipynb` | Med7 quickstart in Colab (synthetic labels only). |
@@ -27,20 +27,23 @@ Read **`med-tracker-spec.md`** for the design and the non-negotiables:
 - **Everything runs on the phone.** No backend. (Med7 itself can't — spaCy has no
   mobile export — so Med7 became the *reference* we distil from and measure against.)
 - **App framework: Flutter.**
-- **On-device model:** a small transformer (start DistilBERT, try MobileBERT for
-  size) fine-tuned on synthetic labels whose gold answers come from a generator,
-  with Med7 as the baseline. Runs via ONNX Runtime in the app.
+- **On-device model:** DistilBERT (66M), fine-tuned on synthetic labels whose gold
+  answers come from a generator, with Med7 as the baseline. MobileBERT (25M) was
+  tried for its smaller size but rejected — it collapsed under int8 quantization
+  (F1 ≈ 0.03) while DistilBERT quantized losslessly. Runs via ONNX Runtime in the app.
 - **Encrypted storage:** SQLCipher via `drift` (not yet built).
 
 ## Where to start
 
 - **App lane:** `cd app`, then `app/README.md`. First runnable slice (list →
-  capture → confirm → save) is done and tested.
-- **Model lane:** `cd distill`, then `DISTILLATION.md`. Pipeline is done; the
-  blocker is collecting ~30–50 real label photos for the evaluation that counts
-  (`build_real_testset.py`).
-- **Research lane:** user interviews (spec's "Remaining Work"); the NER-model
-  write-up is `distill/DISTILLATION.md`.
+  capture → confirm → save) is done and tested. Next: the real `OnnxExtractor`
+  (Dart tokenizer + decode, see `distill/infer.py` for the Python reference).
+- **Model lane:** `cd distill`, then `DISTILLATION.md`. Pipeline is done: the
+  29-photo real-label eval set exists, and the shipped model scores 0.686 F1
+  on it (vs Med7's 0.477). Remaining model-lane work is optional (growing the
+  real-label set, tightening FREQUENCY).
+- **Research lane:** user interviews — 0 of the target 6 conducted so far, the
+  current gap; see `USER_RESEARCH.md` for the interview script + personas.
 
 ## The original prototype (`med7_pipeline.py`)
 
