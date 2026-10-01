@@ -15,6 +15,7 @@ import '../scan/live_scan_screen.dart';
 import '../scan/upload_scan_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../medication_detail/medication_detail_sheet.dart';
+import '../medication_detail/medication_quick_view_sheet.dart';
 import '../../presentation/widgets/android_sliding_bottom_bar.dart';
 
 enum _ScanMode { live, upload }
@@ -110,7 +111,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     if (willBeTaken) {
       final newRemaining = (item.remaining - 1).clamp(0, 9999);
       final newDays = (item.daysSupply - 1).clamp(0, 9999);
-      updated = item.copyWith(takenToday: true, remaining: newRemaining, daysSupply: newDays);
+      updated = item.copyWith(
+          takenToday: true, remaining: newRemaining, daysSupply: newDays);
       if (newRemaining <= 1) {
         _showRefillDialog(item.name);
       }
@@ -144,7 +146,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK', style: TextStyle(color: Color(0xFF168B87))),
+              child:
+                  const Text('OK', style: TextStyle(color: Color(0xFF168B87))),
             ),
           ],
         ),
@@ -228,7 +231,9 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     setState(() => _isScanning = true);
     final extraction = await Navigator.of(context).push<Extraction>(
       MaterialPageRoute(
-        builder: (_) => mode == _ScanMode.live ? const LiveScanScreen() : const UploadScanScreen(),
+        builder: (_) => mode == _ScanMode.live
+            ? const LiveScanScreen()
+            : const UploadScanScreen(),
       ),
     );
     if (!mounted) return;
@@ -238,7 +243,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       return;
     }
 
-    final prescription = await ConfirmScreen.show(context, extraction: extraction, profiles: _profiles);
+    final prescription = await ConfirmScreen.show(context,
+        extraction: extraction, profiles: _profiles);
     if (!mounted) return;
     setState(() => _isScanning = false);
 
@@ -257,6 +263,18 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     );
   }
 
+  /// Schedule-tab tap target: a low, read-only quick look, not the full
+  /// editable sheet -- its own edit button hands off to
+  /// [_handleEditMedication] for that.
+  void _handleViewMedication(Prescription prescription) {
+    MedicationQuickViewSheet.show(
+      context,
+      prescription: prescription,
+      profiles: _profiles,
+      onEdit: () => _handleEditMedication(prescription),
+    );
+  }
+
   Widget _buildActiveScreen() {
     switch (_activeTab) {
       case AppTab.schedule:
@@ -268,8 +286,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             selectedProfileId: _selectedProfileId,
             onSelectProfile: (id) => setState(() => _selectedProfileId = id),
             onTakeDose: _handleTakeDose,
-            onDeleteMedication: _handleDeleteMedication,
-            onEditMedication: _handleEditMedication,
+            onViewMedication: _handleViewMedication,
             onToggleAllCompleted: _handleToggleAllCompleted,
             onOpenScan: _openScan,
             isScanning: _isScanning,
@@ -355,7 +372,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         ),
       );
     }
-    
+
     // Default iOS Floating Frosted Pill Dock
     return Scaffold(
       body: Stack(

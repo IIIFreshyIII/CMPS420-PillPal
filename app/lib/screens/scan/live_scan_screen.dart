@@ -326,10 +326,13 @@ class _ScanningView extends StatelessWidget {
           right: 0,
           bottom: 0,
           child: Container(
-            // Edge-to-edge (main.dart) means the gesture bar no longer
-            // reserves its own space, so its height is added on top of the
-            // usual bottom padding here too.
-            padding: EdgeInsets.fromLTRB(16, 24, 16, 32 + MediaQuery.of(context).padding.bottom),
+            // Deliberately NOT MediaQuery.padding.bottom: the system nav bar
+            // is kept persistently hidden (main.dart), so that inset is only
+            // ever non-zero for the brief moment a user's edge-swipe
+            // transiently reveals it -- reacting to it made this panel
+            // visibly jump up and back down on every such swipe, same as the
+            // android_sliding_bottom_bar.dart bug. Fixed so it never moves.
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topCenter,

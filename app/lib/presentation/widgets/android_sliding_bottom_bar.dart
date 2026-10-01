@@ -30,7 +30,12 @@ class AndroidSlidingBottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.of(context).viewPadding.bottom;
+    // Deliberately NOT MediaQuery.viewPadding.bottom: the system nav bar is
+    // kept persistently hidden (main.dart), and that inset only ever becomes
+    // non-zero for the brief moment a user's edge-swipe transiently reveals
+    // it -- reacting to it made this bar visibly jump up and back down on
+    // every such swipe. Fixed at 0 so this bar never moves.
+    const double bottomInset = 0.0;
     const double barHeight = 80.0;
 
     return Container(

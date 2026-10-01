@@ -11,9 +11,9 @@ class ScheduleScreen extends StatelessWidget {
   final String selectedProfileId;
   final ValueChanged<String> onSelectProfile;
   final ValueChanged<String> onTakeDose;
-  final ValueChanged<String> onDeleteMedication;
-  final ValueChanged<Prescription> onEditMedication;
-  final void Function(List<String> targetIds, bool shouldMarkTaken) onToggleAllCompleted;
+  final ValueChanged<Prescription> onViewMedication;
+  final void Function(List<String> targetIds, bool shouldMarkTaken)
+      onToggleAllCompleted;
   final VoidCallback onOpenScan;
   final bool isScanning;
 
@@ -24,8 +24,7 @@ class ScheduleScreen extends StatelessWidget {
     required this.selectedProfileId,
     required this.onSelectProfile,
     required this.onTakeDose,
-    required this.onDeleteMedication,
-    required this.onEditMedication,
+    required this.onViewMedication,
     required this.onToggleAllCompleted,
     required this.onOpenScan,
     required this.isScanning,
@@ -37,8 +36,10 @@ class ScheduleScreen extends StatelessWidget {
         ? prescriptions
         : prescriptions.where((m) => m.profileId == selectedProfileId).toList();
 
-    final morningMeds = filteredMeds.where((m) => m.time.contains('AM')).toList();
-    final eveningMeds = filteredMeds.where((m) => m.time.contains('PM')).toList();
+    final morningMeds =
+        filteredMeds.where((m) => m.time.contains('AM')).toList();
+    final eveningMeds =
+        filteredMeds.where((m) => m.time.contains('PM')).toList();
 
     final totalDoses = filteredMeds.length;
     final takenDoses = filteredMeds.where((m) => m.takenToday).length;
@@ -93,7 +94,8 @@ class ScheduleScreen extends StatelessWidget {
                   onTap: isScanning ? null : onOpenScan,
                   child: Container(
                     margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
                     decoration: BoxDecoration(
                       color: AppTheme.cardWhite,
                       borderRadius: BorderRadius.circular(20),
@@ -116,7 +118,8 @@ class ScheduleScreen extends StatelessWidget {
                           )
                         : const Row(
                             children: [
-                              Icon(CupertinoIcons.camera, size: 16, color: AppTheme.interactiveTeal),
+                              Icon(CupertinoIcons.camera,
+                                  size: 16, color: AppTheme.interactiveTeal),
                               SizedBox(width: 6),
                               Text(
                                 '+ Scan Bottle',
@@ -158,23 +161,31 @@ class ScheduleScreen extends StatelessWidget {
                         if (totalDoses > 0)
                           GestureDetector(
                             onTap: () {
-                              final ids = filteredMeds.map((m) => m.id).toList();
+                              final ids =
+                                  filteredMeds.map((m) => m.id).toList();
                               onToggleAllCompleted(ids, !allDone);
                             },
                             child: Container(
                               margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 5, horizontal: 10),
                               decoration: BoxDecoration(
-                                color: allDone ? const Color(0xFFE2E8F0) : AppTheme.interactiveTeal,
+                                color: allDone
+                                    ? const Color(0xFFE2E8F0)
+                                    : AppTheme.interactiveTeal,
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    allDone ? CupertinoIcons.arrow_counterclockwise : CupertinoIcons.checkmark_alt,
+                                    allDone
+                                        ? CupertinoIcons.arrow_counterclockwise
+                                        : CupertinoIcons.checkmark_alt,
                                     size: 13,
-                                    color: allDone ? const Color(0xFF475569) : Colors.white,
+                                    color: allDone
+                                        ? const Color(0xFF475569)
+                                        : Colors.white,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
@@ -182,7 +193,9 @@ class ScheduleScreen extends StatelessWidget {
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: allDone ? const Color(0xFF475569) : Colors.white,
+                                      color: allDone
+                                          ? const Color(0xFF475569)
+                                          : Colors.white,
                                     ),
                                   ),
                                 ],
@@ -190,7 +203,8 @@ class ScheduleScreen extends StatelessWidget {
                             ),
                           ),
                         Container(
-                          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 12),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 5, horizontal: 12),
                           decoration: BoxDecoration(
                             color: AppTheme.lightPillTint,
                             borderRadius: BorderRadius.circular(14),
@@ -256,10 +270,10 @@ class ScheduleScreen extends StatelessWidget {
                 (context, i) => MedicationCard(
                   key: ValueKey('med_${morningMeds[i].id}'),
                   item: morningMeds[i],
-                  profile: profiles.firstWhere((p) => p.id == morningMeds[i].profileId),
+                  profile: profiles
+                      .firstWhere((p) => p.id == morningMeds[i].profileId),
                   onTakeDose: () => onTakeDose(morningMeds[i].id),
-                  onDelete: () => onDeleteMedication(morningMeds[i].id),
-                  onEdit: () => onEditMedication(morningMeds[i]),
+                  onViewDetails: () => onViewMedication(morningMeds[i]),
                 ),
                 childCount: morningMeds.length,
               ),
@@ -288,10 +302,10 @@ class ScheduleScreen extends StatelessWidget {
                 (context, i) => MedicationCard(
                   key: ValueKey('med_${eveningMeds[i].id}'),
                   item: eveningMeds[i],
-                  profile: profiles.firstWhere((p) => p.id == eveningMeds[i].profileId),
+                  profile: profiles
+                      .firstWhere((p) => p.id == eveningMeds[i].profileId),
                   onTakeDose: () => onTakeDose(eveningMeds[i].id),
-                  onDelete: () => onDeleteMedication(eveningMeds[i].id),
-                  onEdit: () => onEditMedication(eveningMeds[i]),
+                  onViewDetails: () => onViewMedication(eveningMeds[i]),
                 ),
                 childCount: eveningMeds.length,
               ),
@@ -327,7 +341,8 @@ class _ProfileChip extends StatelessWidget {
             color: isSelected ? AppTheme.textPrimary : AppTheme.cardWhite,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isSelected ? AppTheme.textPrimary : const Color(0xFFE2ECEB),
+              color:
+                  isSelected ? AppTheme.textPrimary : const Color(0xFFE2ECEB),
             ),
           ),
           child: Text(
