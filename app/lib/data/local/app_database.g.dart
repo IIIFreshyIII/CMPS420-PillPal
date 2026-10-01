@@ -35,8 +35,15 @@ class $ProfilesTable extends Profiles
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_primary" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _bedtimeMeta =
+      const VerificationMeta('bedtime');
   @override
-  List<GeneratedColumn> get $columns => [id, name, colorValue, isPrimary];
+  late final GeneratedColumn<String> bedtime = GeneratedColumn<String>(
+      'bedtime', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [id, name, colorValue, isPrimary, bedtime];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -70,6 +77,10 @@ class $ProfilesTable extends Profiles
       context.handle(_isPrimaryMeta,
           isPrimary.isAcceptableOrUnknown(data['is_primary']!, _isPrimaryMeta));
     }
+    if (data.containsKey('bedtime')) {
+      context.handle(_bedtimeMeta,
+          bedtime.isAcceptableOrUnknown(data['bedtime']!, _bedtimeMeta));
+    }
     return context;
   }
 
@@ -87,6 +98,8 @@ class $ProfilesTable extends Profiles
           .read(DriftSqlType.int, data['${effectivePrefix}color_value'])!,
       isPrimary: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_primary'])!,
+      bedtime: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}bedtime']),
     );
   }
 
@@ -101,11 +114,13 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
   final String name;
   final int colorValue;
   final bool isPrimary;
+  final String? bedtime;
   const ProfileRow(
       {required this.id,
       required this.name,
       required this.colorValue,
-      required this.isPrimary});
+      required this.isPrimary,
+      this.bedtime});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -113,6 +128,9 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
     map['name'] = Variable<String>(name);
     map['color_value'] = Variable<int>(colorValue);
     map['is_primary'] = Variable<bool>(isPrimary);
+    if (!nullToAbsent || bedtime != null) {
+      map['bedtime'] = Variable<String>(bedtime);
+    }
     return map;
   }
 
@@ -122,6 +140,9 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       name: Value(name),
       colorValue: Value(colorValue),
       isPrimary: Value(isPrimary),
+      bedtime: bedtime == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bedtime),
     );
   }
 
@@ -133,6 +154,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       name: serializer.fromJson<String>(json['name']),
       colorValue: serializer.fromJson<int>(json['colorValue']),
       isPrimary: serializer.fromJson<bool>(json['isPrimary']),
+      bedtime: serializer.fromJson<String?>(json['bedtime']),
     );
   }
   @override
@@ -143,16 +165,22 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       'name': serializer.toJson<String>(name),
       'colorValue': serializer.toJson<int>(colorValue),
       'isPrimary': serializer.toJson<bool>(isPrimary),
+      'bedtime': serializer.toJson<String?>(bedtime),
     };
   }
 
   ProfileRow copyWith(
-          {String? id, String? name, int? colorValue, bool? isPrimary}) =>
+          {String? id,
+          String? name,
+          int? colorValue,
+          bool? isPrimary,
+          Value<String?> bedtime = const Value.absent()}) =>
       ProfileRow(
         id: id ?? this.id,
         name: name ?? this.name,
         colorValue: colorValue ?? this.colorValue,
         isPrimary: isPrimary ?? this.isPrimary,
+        bedtime: bedtime.present ? bedtime.value : this.bedtime,
       );
   ProfileRow copyWithCompanion(ProfilesCompanion data) {
     return ProfileRow(
@@ -161,6 +189,7 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
       colorValue:
           data.colorValue.present ? data.colorValue.value : this.colorValue,
       isPrimary: data.isPrimary.present ? data.isPrimary.value : this.isPrimary,
+      bedtime: data.bedtime.present ? data.bedtime.value : this.bedtime,
     );
   }
 
@@ -170,13 +199,14 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
           ..write('id: $id, ')
           ..write('name: $name, ')
           ..write('colorValue: $colorValue, ')
-          ..write('isPrimary: $isPrimary')
+          ..write('isPrimary: $isPrimary, ')
+          ..write('bedtime: $bedtime')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, name, colorValue, isPrimary);
+  int get hashCode => Object.hash(id, name, colorValue, isPrimary, bedtime);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -184,7 +214,8 @@ class ProfileRow extends DataClass implements Insertable<ProfileRow> {
           other.id == this.id &&
           other.name == this.name &&
           other.colorValue == this.colorValue &&
-          other.isPrimary == this.isPrimary);
+          other.isPrimary == this.isPrimary &&
+          other.bedtime == this.bedtime);
 }
 
 class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
@@ -192,12 +223,14 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
   final Value<String> name;
   final Value<int> colorValue;
   final Value<bool> isPrimary;
+  final Value<String?> bedtime;
   final Value<int> rowid;
   const ProfilesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
     this.colorValue = const Value.absent(),
     this.isPrimary = const Value.absent(),
+    this.bedtime = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   ProfilesCompanion.insert({
@@ -205,6 +238,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     required String name,
     required int colorValue,
     this.isPrimary = const Value.absent(),
+    this.bedtime = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         name = Value(name),
@@ -214,6 +248,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     Expression<String>? name,
     Expression<int>? colorValue,
     Expression<bool>? isPrimary,
+    Expression<String>? bedtime,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -221,6 +256,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
       if (name != null) 'name': name,
       if (colorValue != null) 'color_value': colorValue,
       if (isPrimary != null) 'is_primary': isPrimary,
+      if (bedtime != null) 'bedtime': bedtime,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -230,12 +266,14 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
       Value<String>? name,
       Value<int>? colorValue,
       Value<bool>? isPrimary,
+      Value<String?>? bedtime,
       Value<int>? rowid}) {
     return ProfilesCompanion(
       id: id ?? this.id,
       name: name ?? this.name,
       colorValue: colorValue ?? this.colorValue,
       isPrimary: isPrimary ?? this.isPrimary,
+      bedtime: bedtime ?? this.bedtime,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -255,6 +293,9 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
     if (isPrimary.present) {
       map['is_primary'] = Variable<bool>(isPrimary.value);
     }
+    if (bedtime.present) {
+      map['bedtime'] = Variable<String>(bedtime.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -268,6 +309,7 @@ class ProfilesCompanion extends UpdateCompanion<ProfileRow> {
           ..write('name: $name, ')
           ..write('colorValue: $colorValue, ')
           ..write('isPrimary: $isPrimary, ')
+          ..write('bedtime: $bedtime, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -304,11 +346,19 @@ class $PrescriptionsTable extends Prescriptions
   late final GeneratedColumn<String> dosage = GeneratedColumn<String>(
       'dosage', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
-  static const VerificationMeta _timeMeta = const VerificationMeta('time');
   @override
-  late final GeneratedColumn<String> time = GeneratedColumn<String>(
-      'time', aliasedName, false,
-      type: DriftSqlType.string, requiredDuringInsert: true);
+  late final GeneratedColumnWithTypeConverter<List<String>, String>
+      reminderTimes = GeneratedColumn<String>(
+              'reminder_times', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<List<String>>(
+              $PrescriptionsTable.$converterreminderTimes);
+  @override
+  late final GeneratedColumnWithTypeConverter<List<String>, String> takenTimes =
+      GeneratedColumn<String>('taken_times', aliasedName, false,
+              type: DriftSqlType.string, requiredDuringInsert: true)
+          .withConverter<List<String>>(
+              $PrescriptionsTable.$convertertakenTimes);
   static const VerificationMeta _remainingMeta =
       const VerificationMeta('remaining');
   @override
@@ -321,19 +371,28 @@ class $PrescriptionsTable extends Prescriptions
   late final GeneratedColumn<int> daysSupply = GeneratedColumn<int>(
       'days_supply', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
-  static const VerificationMeta _takenTodayMeta =
-      const VerificationMeta('takenToday');
+  static const VerificationMeta _allowAfterBedtimeMeta =
+      const VerificationMeta('allowAfterBedtime');
   @override
-  late final GeneratedColumn<bool> takenToday = GeneratedColumn<bool>(
-      'taken_today', aliasedName, false,
+  late final GeneratedColumn<bool> allowAfterBedtime = GeneratedColumn<bool>(
+      'allow_after_bedtime', aliasedName, false,
       type: DriftSqlType.bool,
       requiredDuringInsert: false,
-      defaultConstraints:
-          GeneratedColumn.constraintIsAlways('CHECK ("taken_today" IN (0, 1))'),
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("allow_after_bedtime" IN (0, 1))'),
       defaultValue: const Constant(false));
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, profileId, name, dosage, time, remaining, daysSupply, takenToday];
+  List<GeneratedColumn> get $columns => [
+        id,
+        profileId,
+        name,
+        dosage,
+        reminderTimes,
+        takenTimes,
+        remaining,
+        daysSupply,
+        allowAfterBedtime
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -367,12 +426,6 @@ class $PrescriptionsTable extends Prescriptions
     } else if (isInserting) {
       context.missing(_dosageMeta);
     }
-    if (data.containsKey('time')) {
-      context.handle(
-          _timeMeta, time.isAcceptableOrUnknown(data['time']!, _timeMeta));
-    } else if (isInserting) {
-      context.missing(_timeMeta);
-    }
     if (data.containsKey('remaining')) {
       context.handle(_remainingMeta,
           remaining.isAcceptableOrUnknown(data['remaining']!, _remainingMeta));
@@ -387,11 +440,11 @@ class $PrescriptionsTable extends Prescriptions
     } else if (isInserting) {
       context.missing(_daysSupplyMeta);
     }
-    if (data.containsKey('taken_today')) {
+    if (data.containsKey('allow_after_bedtime')) {
       context.handle(
-          _takenTodayMeta,
-          takenToday.isAcceptableOrUnknown(
-              data['taken_today']!, _takenTodayMeta));
+          _allowAfterBedtimeMeta,
+          allowAfterBedtime.isAcceptableOrUnknown(
+              data['allow_after_bedtime']!, _allowAfterBedtimeMeta));
     }
     return context;
   }
@@ -410,14 +463,18 @@ class $PrescriptionsTable extends Prescriptions
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       dosage: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}dosage'])!,
-      time: attachedDatabase.typeMapping
-          .read(DriftSqlType.string, data['${effectivePrefix}time'])!,
+      reminderTimes: $PrescriptionsTable.$converterreminderTimes.fromSql(
+          attachedDatabase.typeMapping.read(
+              DriftSqlType.string, data['${effectivePrefix}reminder_times'])!),
+      takenTimes: $PrescriptionsTable.$convertertakenTimes.fromSql(
+          attachedDatabase.typeMapping.read(
+              DriftSqlType.string, data['${effectivePrefix}taken_times'])!),
       remaining: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}remaining'])!,
       daysSupply: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}days_supply'])!,
-      takenToday: attachedDatabase.typeMapping
-          .read(DriftSqlType.bool, data['${effectivePrefix}taken_today'])!,
+      allowAfterBedtime: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool, data['${effectivePrefix}allow_after_bedtime'])!,
     );
   }
 
@@ -425,6 +482,11 @@ class $PrescriptionsTable extends Prescriptions
   $PrescriptionsTable createAlias(String alias) {
     return $PrescriptionsTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<List<String>, String> $converterreminderTimes =
+      const StringListConverter();
+  static TypeConverter<List<String>, String> $convertertakenTimes =
+      const StringListConverter();
 }
 
 class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
@@ -432,19 +494,21 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
   final String profileId;
   final String name;
   final String dosage;
-  final String time;
+  final List<String> reminderTimes;
+  final List<String> takenTimes;
   final int remaining;
   final int daysSupply;
-  final bool takenToday;
+  final bool allowAfterBedtime;
   const PrescriptionRow(
       {required this.id,
       required this.profileId,
       required this.name,
       required this.dosage,
-      required this.time,
+      required this.reminderTimes,
+      required this.takenTimes,
       required this.remaining,
       required this.daysSupply,
-      required this.takenToday});
+      required this.allowAfterBedtime});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -452,10 +516,17 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
     map['profile_id'] = Variable<String>(profileId);
     map['name'] = Variable<String>(name);
     map['dosage'] = Variable<String>(dosage);
-    map['time'] = Variable<String>(time);
+    {
+      map['reminder_times'] = Variable<String>(
+          $PrescriptionsTable.$converterreminderTimes.toSql(reminderTimes));
+    }
+    {
+      map['taken_times'] = Variable<String>(
+          $PrescriptionsTable.$convertertakenTimes.toSql(takenTimes));
+    }
     map['remaining'] = Variable<int>(remaining);
     map['days_supply'] = Variable<int>(daysSupply);
-    map['taken_today'] = Variable<bool>(takenToday);
+    map['allow_after_bedtime'] = Variable<bool>(allowAfterBedtime);
     return map;
   }
 
@@ -465,10 +536,11 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       profileId: Value(profileId),
       name: Value(name),
       dosage: Value(dosage),
-      time: Value(time),
+      reminderTimes: Value(reminderTimes),
+      takenTimes: Value(takenTimes),
       remaining: Value(remaining),
       daysSupply: Value(daysSupply),
-      takenToday: Value(takenToday),
+      allowAfterBedtime: Value(allowAfterBedtime),
     );
   }
 
@@ -480,10 +552,11 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       profileId: serializer.fromJson<String>(json['profileId']),
       name: serializer.fromJson<String>(json['name']),
       dosage: serializer.fromJson<String>(json['dosage']),
-      time: serializer.fromJson<String>(json['time']),
+      reminderTimes: serializer.fromJson<List<String>>(json['reminderTimes']),
+      takenTimes: serializer.fromJson<List<String>>(json['takenTimes']),
       remaining: serializer.fromJson<int>(json['remaining']),
       daysSupply: serializer.fromJson<int>(json['daysSupply']),
-      takenToday: serializer.fromJson<bool>(json['takenToday']),
+      allowAfterBedtime: serializer.fromJson<bool>(json['allowAfterBedtime']),
     );
   }
   @override
@@ -494,10 +567,11 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       'profileId': serializer.toJson<String>(profileId),
       'name': serializer.toJson<String>(name),
       'dosage': serializer.toJson<String>(dosage),
-      'time': serializer.toJson<String>(time),
+      'reminderTimes': serializer.toJson<List<String>>(reminderTimes),
+      'takenTimes': serializer.toJson<List<String>>(takenTimes),
       'remaining': serializer.toJson<int>(remaining),
       'daysSupply': serializer.toJson<int>(daysSupply),
-      'takenToday': serializer.toJson<bool>(takenToday),
+      'allowAfterBedtime': serializer.toJson<bool>(allowAfterBedtime),
     };
   }
 
@@ -506,19 +580,21 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           String? profileId,
           String? name,
           String? dosage,
-          String? time,
+          List<String>? reminderTimes,
+          List<String>? takenTimes,
           int? remaining,
           int? daysSupply,
-          bool? takenToday}) =>
+          bool? allowAfterBedtime}) =>
       PrescriptionRow(
         id: id ?? this.id,
         profileId: profileId ?? this.profileId,
         name: name ?? this.name,
         dosage: dosage ?? this.dosage,
-        time: time ?? this.time,
+        reminderTimes: reminderTimes ?? this.reminderTimes,
+        takenTimes: takenTimes ?? this.takenTimes,
         remaining: remaining ?? this.remaining,
         daysSupply: daysSupply ?? this.daysSupply,
-        takenToday: takenToday ?? this.takenToday,
+        allowAfterBedtime: allowAfterBedtime ?? this.allowAfterBedtime,
       );
   PrescriptionRow copyWithCompanion(PrescriptionsCompanion data) {
     return PrescriptionRow(
@@ -526,12 +602,17 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       profileId: data.profileId.present ? data.profileId.value : this.profileId,
       name: data.name.present ? data.name.value : this.name,
       dosage: data.dosage.present ? data.dosage.value : this.dosage,
-      time: data.time.present ? data.time.value : this.time,
+      reminderTimes: data.reminderTimes.present
+          ? data.reminderTimes.value
+          : this.reminderTimes,
+      takenTimes:
+          data.takenTimes.present ? data.takenTimes.value : this.takenTimes,
       remaining: data.remaining.present ? data.remaining.value : this.remaining,
       daysSupply:
           data.daysSupply.present ? data.daysSupply.value : this.daysSupply,
-      takenToday:
-          data.takenToday.present ? data.takenToday.value : this.takenToday,
+      allowAfterBedtime: data.allowAfterBedtime.present
+          ? data.allowAfterBedtime.value
+          : this.allowAfterBedtime,
     );
   }
 
@@ -542,17 +623,18 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           ..write('profileId: $profileId, ')
           ..write('name: $name, ')
           ..write('dosage: $dosage, ')
-          ..write('time: $time, ')
+          ..write('reminderTimes: $reminderTimes, ')
+          ..write('takenTimes: $takenTimes, ')
           ..write('remaining: $remaining, ')
           ..write('daysSupply: $daysSupply, ')
-          ..write('takenToday: $takenToday')
+          ..write('allowAfterBedtime: $allowAfterBedtime')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, profileId, name, dosage, time, remaining, daysSupply, takenToday);
+  int get hashCode => Object.hash(id, profileId, name, dosage, reminderTimes,
+      takenTimes, remaining, daysSupply, allowAfterBedtime);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -561,10 +643,11 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           other.profileId == this.profileId &&
           other.name == this.name &&
           other.dosage == this.dosage &&
-          other.time == this.time &&
+          other.reminderTimes == this.reminderTimes &&
+          other.takenTimes == this.takenTimes &&
           other.remaining == this.remaining &&
           other.daysSupply == this.daysSupply &&
-          other.takenToday == this.takenToday);
+          other.allowAfterBedtime == this.allowAfterBedtime);
 }
 
 class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
@@ -572,20 +655,22 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
   final Value<String> profileId;
   final Value<String> name;
   final Value<String> dosage;
-  final Value<String> time;
+  final Value<List<String>> reminderTimes;
+  final Value<List<String>> takenTimes;
   final Value<int> remaining;
   final Value<int> daysSupply;
-  final Value<bool> takenToday;
+  final Value<bool> allowAfterBedtime;
   final Value<int> rowid;
   const PrescriptionsCompanion({
     this.id = const Value.absent(),
     this.profileId = const Value.absent(),
     this.name = const Value.absent(),
     this.dosage = const Value.absent(),
-    this.time = const Value.absent(),
+    this.reminderTimes = const Value.absent(),
+    this.takenTimes = const Value.absent(),
     this.remaining = const Value.absent(),
     this.daysSupply = const Value.absent(),
-    this.takenToday = const Value.absent(),
+    this.allowAfterBedtime = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PrescriptionsCompanion.insert({
@@ -593,16 +678,18 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     required String profileId,
     required String name,
     required String dosage,
-    required String time,
+    required List<String> reminderTimes,
+    required List<String> takenTimes,
     required int remaining,
     required int daysSupply,
-    this.takenToday = const Value.absent(),
+    this.allowAfterBedtime = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         profileId = Value(profileId),
         name = Value(name),
         dosage = Value(dosage),
-        time = Value(time),
+        reminderTimes = Value(reminderTimes),
+        takenTimes = Value(takenTimes),
         remaining = Value(remaining),
         daysSupply = Value(daysSupply);
   static Insertable<PrescriptionRow> custom({
@@ -610,10 +697,11 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     Expression<String>? profileId,
     Expression<String>? name,
     Expression<String>? dosage,
-    Expression<String>? time,
+    Expression<String>? reminderTimes,
+    Expression<String>? takenTimes,
     Expression<int>? remaining,
     Expression<int>? daysSupply,
-    Expression<bool>? takenToday,
+    Expression<bool>? allowAfterBedtime,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -621,10 +709,11 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
       if (profileId != null) 'profile_id': profileId,
       if (name != null) 'name': name,
       if (dosage != null) 'dosage': dosage,
-      if (time != null) 'time': time,
+      if (reminderTimes != null) 'reminder_times': reminderTimes,
+      if (takenTimes != null) 'taken_times': takenTimes,
       if (remaining != null) 'remaining': remaining,
       if (daysSupply != null) 'days_supply': daysSupply,
-      if (takenToday != null) 'taken_today': takenToday,
+      if (allowAfterBedtime != null) 'allow_after_bedtime': allowAfterBedtime,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -634,20 +723,22 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
       Value<String>? profileId,
       Value<String>? name,
       Value<String>? dosage,
-      Value<String>? time,
+      Value<List<String>>? reminderTimes,
+      Value<List<String>>? takenTimes,
       Value<int>? remaining,
       Value<int>? daysSupply,
-      Value<bool>? takenToday,
+      Value<bool>? allowAfterBedtime,
       Value<int>? rowid}) {
     return PrescriptionsCompanion(
       id: id ?? this.id,
       profileId: profileId ?? this.profileId,
       name: name ?? this.name,
       dosage: dosage ?? this.dosage,
-      time: time ?? this.time,
+      reminderTimes: reminderTimes ?? this.reminderTimes,
+      takenTimes: takenTimes ?? this.takenTimes,
       remaining: remaining ?? this.remaining,
       daysSupply: daysSupply ?? this.daysSupply,
-      takenToday: takenToday ?? this.takenToday,
+      allowAfterBedtime: allowAfterBedtime ?? this.allowAfterBedtime,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -667,8 +758,14 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     if (dosage.present) {
       map['dosage'] = Variable<String>(dosage.value);
     }
-    if (time.present) {
-      map['time'] = Variable<String>(time.value);
+    if (reminderTimes.present) {
+      map['reminder_times'] = Variable<String>($PrescriptionsTable
+          .$converterreminderTimes
+          .toSql(reminderTimes.value));
+    }
+    if (takenTimes.present) {
+      map['taken_times'] = Variable<String>(
+          $PrescriptionsTable.$convertertakenTimes.toSql(takenTimes.value));
     }
     if (remaining.present) {
       map['remaining'] = Variable<int>(remaining.value);
@@ -676,8 +773,8 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     if (daysSupply.present) {
       map['days_supply'] = Variable<int>(daysSupply.value);
     }
-    if (takenToday.present) {
-      map['taken_today'] = Variable<bool>(takenToday.value);
+    if (allowAfterBedtime.present) {
+      map['allow_after_bedtime'] = Variable<bool>(allowAfterBedtime.value);
     }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
@@ -692,10 +789,11 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
           ..write('profileId: $profileId, ')
           ..write('name: $name, ')
           ..write('dosage: $dosage, ')
-          ..write('time: $time, ')
+          ..write('reminderTimes: $reminderTimes, ')
+          ..write('takenTimes: $takenTimes, ')
           ..write('remaining: $remaining, ')
           ..write('daysSupply: $daysSupply, ')
-          ..write('takenToday: $takenToday, ')
+          ..write('allowAfterBedtime: $allowAfterBedtime, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1043,6 +1141,7 @@ typedef $$ProfilesTableCreateCompanionBuilder = ProfilesCompanion Function({
   required String name,
   required int colorValue,
   Value<bool> isPrimary,
+  Value<String?> bedtime,
   Value<int> rowid,
 });
 typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
@@ -1050,6 +1149,7 @@ typedef $$ProfilesTableUpdateCompanionBuilder = ProfilesCompanion Function({
   Value<String> name,
   Value<int> colorValue,
   Value<bool> isPrimary,
+  Value<String?> bedtime,
   Value<int> rowid,
 });
 
@@ -1106,6 +1206,9 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<bool> get isPrimary => $composableBuilder(
       column: $table.isPrimary, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get bedtime => $composableBuilder(
+      column: $table.bedtime, builder: (column) => ColumnFilters(column));
 
   Expression<bool> prescriptionsRefs(
       Expression<bool> Function($$PrescriptionsTableFilterComposer f) f) {
@@ -1170,6 +1273,9 @@ class $$ProfilesTableOrderingComposer
 
   ColumnOrderings<bool> get isPrimary => $composableBuilder(
       column: $table.isPrimary, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get bedtime => $composableBuilder(
+      column: $table.bedtime, builder: (column) => ColumnOrderings(column));
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -1192,6 +1298,9 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<bool> get isPrimary =>
       $composableBuilder(column: $table.isPrimary, builder: (column) => column);
+
+  GeneratedColumn<String> get bedtime =>
+      $composableBuilder(column: $table.bedtime, builder: (column) => column);
 
   Expression<T> prescriptionsRefs<T extends Object>(
       Expression<T> Function($$PrescriptionsTableAnnotationComposer a) f) {
@@ -1263,6 +1372,7 @@ class $$ProfilesTableTableManager extends RootTableManager<
             Value<String> name = const Value.absent(),
             Value<int> colorValue = const Value.absent(),
             Value<bool> isPrimary = const Value.absent(),
+            Value<String?> bedtime = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ProfilesCompanion(
@@ -1270,6 +1380,7 @@ class $$ProfilesTableTableManager extends RootTableManager<
             name: name,
             colorValue: colorValue,
             isPrimary: isPrimary,
+            bedtime: bedtime,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1277,6 +1388,7 @@ class $$ProfilesTableTableManager extends RootTableManager<
             required String name,
             required int colorValue,
             Value<bool> isPrimary = const Value.absent(),
+            Value<String?> bedtime = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               ProfilesCompanion.insert(
@@ -1284,6 +1396,7 @@ class $$ProfilesTableTableManager extends RootTableManager<
             name: name,
             colorValue: colorValue,
             isPrimary: isPrimary,
+            bedtime: bedtime,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -1354,10 +1467,11 @@ typedef $$PrescriptionsTableCreateCompanionBuilder = PrescriptionsCompanion
   required String profileId,
   required String name,
   required String dosage,
-  required String time,
+  required List<String> reminderTimes,
+  required List<String> takenTimes,
   required int remaining,
   required int daysSupply,
-  Value<bool> takenToday,
+  Value<bool> allowAfterBedtime,
   Value<int> rowid,
 });
 typedef $$PrescriptionsTableUpdateCompanionBuilder = PrescriptionsCompanion
@@ -1366,10 +1480,11 @@ typedef $$PrescriptionsTableUpdateCompanionBuilder = PrescriptionsCompanion
   Value<String> profileId,
   Value<String> name,
   Value<String> dosage,
-  Value<String> time,
+  Value<List<String>> reminderTimes,
+  Value<List<String>> takenTimes,
   Value<int> remaining,
   Value<int> daysSupply,
-  Value<bool> takenToday,
+  Value<bool> allowAfterBedtime,
   Value<int> rowid,
 });
 
@@ -1425,8 +1540,15 @@ class $$PrescriptionsTableFilterComposer
   ColumnFilters<String> get dosage => $composableBuilder(
       column: $table.dosage, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<String> get time => $composableBuilder(
-      column: $table.time, builder: (column) => ColumnFilters(column));
+  ColumnWithTypeConverterFilters<List<String>, List<String>, String>
+      get reminderTimes => $composableBuilder(
+          column: $table.reminderTimes,
+          builder: (column) => ColumnWithTypeConverterFilters(column));
+
+  ColumnWithTypeConverterFilters<List<String>, List<String>, String>
+      get takenTimes => $composableBuilder(
+          column: $table.takenTimes,
+          builder: (column) => ColumnWithTypeConverterFilters(column));
 
   ColumnFilters<int> get remaining => $composableBuilder(
       column: $table.remaining, builder: (column) => ColumnFilters(column));
@@ -1434,8 +1556,9 @@ class $$PrescriptionsTableFilterComposer
   ColumnFilters<int> get daysSupply => $composableBuilder(
       column: $table.daysSupply, builder: (column) => ColumnFilters(column));
 
-  ColumnFilters<bool> get takenToday => $composableBuilder(
-      column: $table.takenToday, builder: (column) => ColumnFilters(column));
+  ColumnFilters<bool> get allowAfterBedtime => $composableBuilder(
+      column: $table.allowAfterBedtime,
+      builder: (column) => ColumnFilters(column));
 
   $$ProfilesTableFilterComposer get profileId {
     final $$ProfilesTableFilterComposer composer = $composerBuilder(
@@ -1497,8 +1620,12 @@ class $$PrescriptionsTableOrderingComposer
   ColumnOrderings<String> get dosage => $composableBuilder(
       column: $table.dosage, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<String> get time => $composableBuilder(
-      column: $table.time, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<String> get reminderTimes => $composableBuilder(
+      column: $table.reminderTimes,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get takenTimes => $composableBuilder(
+      column: $table.takenTimes, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<int> get remaining => $composableBuilder(
       column: $table.remaining, builder: (column) => ColumnOrderings(column));
@@ -1506,8 +1633,9 @@ class $$PrescriptionsTableOrderingComposer
   ColumnOrderings<int> get daysSupply => $composableBuilder(
       column: $table.daysSupply, builder: (column) => ColumnOrderings(column));
 
-  ColumnOrderings<bool> get takenToday => $composableBuilder(
-      column: $table.takenToday, builder: (column) => ColumnOrderings(column));
+  ColumnOrderings<bool> get allowAfterBedtime => $composableBuilder(
+      column: $table.allowAfterBedtime,
+      builder: (column) => ColumnOrderings(column));
 
   $$ProfilesTableOrderingComposer get profileId {
     final $$ProfilesTableOrderingComposer composer = $composerBuilder(
@@ -1548,8 +1676,13 @@ class $$PrescriptionsTableAnnotationComposer
   GeneratedColumn<String> get dosage =>
       $composableBuilder(column: $table.dosage, builder: (column) => column);
 
-  GeneratedColumn<String> get time =>
-      $composableBuilder(column: $table.time, builder: (column) => column);
+  GeneratedColumnWithTypeConverter<List<String>, String> get reminderTimes =>
+      $composableBuilder(
+          column: $table.reminderTimes, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<List<String>, String> get takenTimes =>
+      $composableBuilder(
+          column: $table.takenTimes, builder: (column) => column);
 
   GeneratedColumn<int> get remaining =>
       $composableBuilder(column: $table.remaining, builder: (column) => column);
@@ -1557,8 +1690,8 @@ class $$PrescriptionsTableAnnotationComposer
   GeneratedColumn<int> get daysSupply => $composableBuilder(
       column: $table.daysSupply, builder: (column) => column);
 
-  GeneratedColumn<bool> get takenToday => $composableBuilder(
-      column: $table.takenToday, builder: (column) => column);
+  GeneratedColumn<bool> get allowAfterBedtime => $composableBuilder(
+      column: $table.allowAfterBedtime, builder: (column) => column);
 
   $$ProfilesTableAnnotationComposer get profileId {
     final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
@@ -1629,10 +1762,11 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             Value<String> profileId = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String> dosage = const Value.absent(),
-            Value<String> time = const Value.absent(),
+            Value<List<String>> reminderTimes = const Value.absent(),
+            Value<List<String>> takenTimes = const Value.absent(),
             Value<int> remaining = const Value.absent(),
             Value<int> daysSupply = const Value.absent(),
-            Value<bool> takenToday = const Value.absent(),
+            Value<bool> allowAfterBedtime = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PrescriptionsCompanion(
@@ -1640,10 +1774,11 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             profileId: profileId,
             name: name,
             dosage: dosage,
-            time: time,
+            reminderTimes: reminderTimes,
+            takenTimes: takenTimes,
             remaining: remaining,
             daysSupply: daysSupply,
-            takenToday: takenToday,
+            allowAfterBedtime: allowAfterBedtime,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1651,10 +1786,11 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             required String profileId,
             required String name,
             required String dosage,
-            required String time,
+            required List<String> reminderTimes,
+            required List<String> takenTimes,
             required int remaining,
             required int daysSupply,
-            Value<bool> takenToday = const Value.absent(),
+            Value<bool> allowAfterBedtime = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PrescriptionsCompanion.insert(
@@ -1662,10 +1798,11 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             profileId: profileId,
             name: name,
             dosage: dosage,
-            time: time,
+            reminderTimes: reminderTimes,
+            takenTimes: takenTimes,
             remaining: remaining,
             daysSupply: daysSupply,
-            takenToday: takenToday,
+            allowAfterBedtime: allowAfterBedtime,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

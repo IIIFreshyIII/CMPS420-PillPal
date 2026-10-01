@@ -255,8 +255,8 @@ class MedicationQuickViewSheet extends StatelessWidget {
                         Expanded(
                           child: _QuickStat(
                             icon: CupertinoIcons.clock,
-                            label: 'Reminder Time',
-                            value: prescription.time,
+                            label: prescription.reminderTimes.length > 1 ? 'Reminder Times' : 'Reminder Time',
+                            value: prescription.reminderTimes.join(', '),
                           ),
                         ),
                         Container(

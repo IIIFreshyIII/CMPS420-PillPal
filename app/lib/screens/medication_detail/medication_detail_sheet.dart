@@ -50,9 +50,8 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
   late TextEditingController _dosageController;
   late int _remaining;
   late int _daysSupply;
-  late String _selectedTime;
   late String _selectedProfileId;
-  late bool _takenToday;
+  late bool _allowAfterBedtime;
 
   @override
   void initState() {
@@ -61,9 +60,8 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
     _dosageController = TextEditingController(text: widget.prescription.dosage);
     _remaining = widget.prescription.remaining;
     _daysSupply = widget.prescription.daysSupply;
-    _selectedTime = widget.prescription.time;
     _selectedProfileId = widget.prescription.profileId;
-    _takenToday = widget.prescription.takenToday;
+    _allowAfterBedtime = widget.prescription.allowAfterBedtime;
   }
 
   @override
@@ -80,9 +78,8 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
       dosage: _dosageController.text.trim().isEmpty ? widget.prescription.dosage : _dosageController.text.trim(),
       remaining: _remaining,
       daysSupply: _daysSupply,
-      time: _selectedTime,
       profileId: _selectedProfileId,
-      takenToday: _takenToday,
+      allowAfterBedtime: _allowAfterBedtime,
     );
     widget.onUpdate(updated);
     Navigator.pop(context);
@@ -93,20 +90,6 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
     setState(() {
       _remaining += amount;
       _daysSupply += amount;
-    });
-  }
-
-  void _toggleTakenToday() {
-    HapticFeedback.mediumImpact();
-    setState(() {
-      _takenToday = !_takenToday;
-      if (_takenToday) {
-        _remaining = (_remaining - 1).clamp(0, 9999);
-        _daysSupply = (_daysSupply - 1).clamp(0, 9999);
-      } else {
-        _remaining = (_remaining + 1).clamp(0, 9999);
-        _daysSupply = (_daysSupply + 1).clamp(0, 9999);
-      }
     });
   }
 
@@ -290,7 +273,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                   ),
                                   const SizedBox(height: 3),
                                   Text(
-                                    'Prescribed to ${profile.name} • ${_selectedTime}',
+                                    'Prescribed to ${profile.name}',
                                     style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                                   ),
                                 ],
@@ -313,56 +296,6 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                 ),
                               ),
                           ],
-                        ),
-                        const SizedBox(height: 16),
-                        const Divider(height: 1, color: AppTheme.borderLight),
-                        const SizedBox(height: 14),
-                        // Quick Action: Taken Today Toggle
-                        GestureDetector(
-                          onTap: _toggleTakenToday,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                            decoration: BoxDecoration(
-                              color: _takenToday ? AppTheme.lightPillTint : const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: _takenToday ? AppTheme.headerTeal : const Color(0xFFE2E8F0),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Row(
-                                  children: [
-                                    Icon(
-                                      _takenToday
-                                          ? CupertinoIcons.checkmark_circle_fill
-                                          : CupertinoIcons.circle,
-                                      color: _takenToday ? AppTheme.interactiveTeal : const Color(0xFF94A3B8),
-                                      size: 22,
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      _takenToday ? 'Taken Today' : 'Mark as Taken Today',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: _takenToday ? AppTheme.interactiveTeal : AppTheme.textPrimary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                Text(
-                                  _takenToday ? 'Dose Logged' : 'Tap to log',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: _takenToday ? AppTheme.interactiveTeal : AppTheme.textSecondary,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         ),
                       ],
                     ),
@@ -534,22 +467,25 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                           ),
                         ),
                         const SizedBox(height: 16),
+                        // Read-only -- regenerating the reminder schedule
+                        // (changing start time/frequency after the fact)
+                        // isn't supported yet; only the bedtime override
+                        // below is editable here.
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text('Scheduled Time', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                            DropdownButton<String>(
-                              value: _selectedTime,
-                              underline: const SizedBox(),
-                              items: const [
-                                DropdownMenuItem(value: '8:00 AM', child: Text('8:00 AM (Morning)')),
-                                DropdownMenuItem(value: '12:00 PM', child: Text('12:00 PM (Noon)')),
-                                DropdownMenuItem(value: '6:00 PM', child: Text('6:00 PM (Evening)')),
-                                DropdownMenuItem(value: '9:00 PM', child: Text('9:00 PM (Bedtime)')),
-                              ],
-                              onChanged: (val) {
-                                if (val != null) setState(() => _selectedTime = val);
-                              },
+                            Expanded(
+                              child: Text(
+                                widget.prescription.reminderTimes.join(', '),
+                                textAlign: TextAlign.end,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.textSecondary,
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -567,6 +503,23 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                               onChanged: (val) {
                                 if (val != null) setState(() => _selectedProfileId = val);
                               },
+                            ),
+                          ],
+                        ),
+                        const Divider(height: 16, color: AppTheme.borderLight),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Send reminders after bedtime',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            Switch(
+                              value: _allowAfterBedtime,
+                              activeThumbColor: AppTheme.interactiveTeal,
+                              onChanged: (val) => setState(() => _allowAfterBedtime = val),
                             ),
                           ],
                         ),

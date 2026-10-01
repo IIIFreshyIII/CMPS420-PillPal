@@ -7,6 +7,7 @@ import '../../data/models/dose_event.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/extractor.dart';
+import '../../data/services/notification_service.dart';
 import '../../presentation/widgets/floating_tab_bar.dart';
 import '../account/account_screen.dart';
 import '../confirm/confirm_screen.dart';
@@ -37,6 +38,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   bool _isScanning = false;
 
   late final AppDatabase _db;
+  late final NotificationService _notifications;
+  bool _notificationPermissionsRequested = false;
   StreamSubscription<List<Profile>>? _profilesSub;
   StreamSubscription<List<Prescription>>? _prescriptionsSub;
   StreamSubscription<List<DoseEvent>>? _doseEventsSub;
@@ -55,7 +58,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       id: '1',
       name: 'Allegra',
       dosage: '10mg',
-      time: '8:00 AM',
+      reminderTimes: ['8:00 AM'],
       daysSupply: 14,
       remaining: 14,
       profileId: '1',
@@ -64,7 +67,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       id: '2',
       name: 'Lisinopril',
       dosage: '20mg',
-      time: '8:00 AM',
+      reminderTimes: ['8:00 AM'],
       daysSupply: 4,
       remaining: 4,
       profileId: '2',
@@ -73,7 +76,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       id: '3',
       name: 'Metformin',
       dosage: '500mg',
-      time: '12:00 PM',
+      reminderTimes: ['12:00 PM'],
       daysSupply: 28,
       remaining: 28,
       profileId: '2',
@@ -84,41 +87,97 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   void initState() {
     super.initState();
     _db = widget.database ?? AppDatabase();
+    _notifications = NotificationService();
     _db.seedIfEmpty(_seedProfiles, _seedPrescriptions);
     _profilesSub = _db.watchProfiles().listen((rows) {
       if (mounted) setState(() => _profiles = rows);
+      _syncNotifications();
     });
     _prescriptionsSub = _db.watchPrescriptions().listen((rows) {
       if (mounted) setState(() => _prescriptions = rows);
+      _syncNotifications();
     });
     _doseEventsSub = _db.watchDoseEvents().listen((rows) {
       if (mounted) setState(() => _doseEvents = rows);
     });
   }
 
+  bool _syncingNotifications = false;
+  bool _notificationSyncQueued = false;
+
+  /// Reconciles every scheduled reminder against current state -- called
+  /// whenever prescriptions or profiles change (their stream listeners,
+  /// above), which also covers app startup (the first emission) and so
+  /// doesn't need a separate reboot-recovery path. Failures here (a missing
+  /// plugin in a test environment, a real device without the permission
+  /// granted yet) are swallowed, not rethrown -- notification delivery must
+  /// never be able to crash the medication-tracking UI around it.
+  ///
+  /// `_syncingNotifications`/`_notificationSyncQueued` serialize calls:
+  /// `NotificationService.syncAll` cancels everything then reschedules from
+  /// scratch, and the profiles/prescriptions streams can each fire their own
+  /// call within milliseconds of each other on startup -- two overlapping
+  /// calls raced here before this guard (confirmed via `adb shell dumpsys
+  /// alarm`: one call's `cancelAll()` wiped an alarm the other had already
+  /// scheduled seconds earlier, silently dropping a reminder). Only one call
+  /// runs at a time now; anything that arrives mid-sync is coalesced into a
+  /// single trailing re-run against whatever state is current by then.
+  Future<void> _syncNotifications() async {
+    if (_syncingNotifications) {
+      _notificationSyncQueued = true;
+      return;
+    }
+    _syncingNotifications = true;
+    try {
+      if (!_notificationPermissionsRequested &&
+          _prescriptions.any((p) => p.reminderTimes.isNotEmpty)) {
+        _notificationPermissionsRequested = true;
+        await _notifications.requestPermissions();
+      }
+      await _notifications.syncAll(_prescriptions, _profiles);
+    } catch (e) {
+      debugPrint('Notification sync failed: $e');
+    } finally {
+      _syncingNotifications = false;
+      if (_notificationSyncQueued) {
+        _notificationSyncQueued = false;
+        unawaited(_syncNotifications());
+      }
+    }
+  }
+
   void _handleUpdateMedication(Prescription updated) {
     _db.upsertPrescription(updated);
+  }
+
+  void _handleUpdateProfile(Profile updated) {
+    _db.upsertProfile(updated);
   }
 
   /// Writes a `DoseEvent` only when a dose actually gets marked taken --
   /// toggling it back off is treated as undoing a mis-tap, not a loggable
   /// "skipped" event, so the history feed reflects real doses taken.
-  void _handleTakeDose(String id) {
+  /// [time] is which of the prescription's (possibly several) reminder
+  /// times was acted on.
+  void _handleTakeDose(String id, String time) {
     final item = _prescriptions.firstWhere((p) => p.id == id);
-    final willBeTaken = !item.takenToday;
+    final willBeTaken = !item.takenTimes.contains(time);
 
     final Prescription updated;
     if (willBeTaken) {
       final newRemaining = (item.remaining - 1).clamp(0, 9999);
       final newDays = (item.daysSupply - 1).clamp(0, 9999);
       updated = item.copyWith(
-          takenToday: true, remaining: newRemaining, daysSupply: newDays);
+        takenTimes: {...item.takenTimes, time},
+        remaining: newRemaining,
+        daysSupply: newDays,
+      );
       if (newRemaining <= 1) {
         _showRefillDialog(item.name);
       }
     } else {
       updated = item.copyWith(
-        takenToday: false,
+        takenTimes: item.takenTimes.difference({time}),
         remaining: (item.remaining + 1).clamp(0, 9999),
         daysSupply: (item.daysSupply + 1).clamp(0, 9999),
       );
@@ -174,30 +233,38 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     _db.deletePrescription(id);
   }
 
-  void _handleToggleAllCompleted(List<String> targetIds, bool shouldMarkTaken) {
+  /// [targets] is (prescriptionId, time) pairs -- a prescription with
+  /// several reminder times can have some targeted and others left alone.
+  void _handleToggleAllCompleted(List<(String, String)> targets, bool shouldMarkTaken) {
     for (final item in _prescriptions) {
-      if (!targetIds.contains(item.id)) continue;
+      final times = targets.where((t) => t.$1 == item.id).map((t) => t.$2).toSet();
+      if (times.isEmpty) continue;
 
-      if (shouldMarkTaken && !item.takenToday) {
-        final newRemaining = (item.remaining - 1).clamp(0, 9999);
-        final newDays = (item.daysSupply - 1).clamp(0, 9999);
+      final toMark = shouldMarkTaken ? times.difference(item.takenTimes) : times.intersection(item.takenTimes);
+      if (toMark.isEmpty) continue;
+
+      if (shouldMarkTaken) {
+        final newRemaining = (item.remaining - toMark.length).clamp(0, 9999);
+        final newDays = (item.daysSupply - toMark.length).clamp(0, 9999);
         _db.upsertPrescription(item.copyWith(
-          takenToday: true,
+          takenTimes: {...item.takenTimes, ...toMark},
           remaining: newRemaining,
           daysSupply: newDays,
         ));
-        _db.insertDoseEvent(DoseEvent(
-          id: '${item.id}_${DateTime.now().microsecondsSinceEpoch}',
-          prescriptionId: item.id,
-          profileId: item.profileId,
-          occurredAt: DateTime.now(),
-          action: DoseAction.taken,
-        ));
-      } else if (!shouldMarkTaken && item.takenToday) {
+        for (final time in toMark) {
+          _db.insertDoseEvent(DoseEvent(
+            id: '${item.id}_${time}_${DateTime.now().microsecondsSinceEpoch}',
+            prescriptionId: item.id,
+            profileId: item.profileId,
+            occurredAt: DateTime.now(),
+            action: DoseAction.taken,
+          ));
+        }
+      } else {
         _db.upsertPrescription(item.copyWith(
-          takenToday: false,
-          remaining: (item.remaining + 1).clamp(0, 9999),
-          daysSupply: (item.daysSupply + 1).clamp(0, 9999),
+          takenTimes: item.takenTimes.difference(toMark),
+          remaining: (item.remaining + toMark.length).clamp(0, 9999),
+          daysSupply: (item.daysSupply + toMark.length).clamp(0, 9999),
         ));
       }
     }
@@ -303,9 +370,13 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           ),
         );
       case AppTab.profile:
-        return const KeyedSubtree(
-          key: ValueKey('screen_profile'),
-          child: AccountScreen(),
+        return KeyedSubtree(
+          key: const ValueKey('screen_profile'),
+          child: AccountScreen(
+            profiles: _profiles,
+            onUpdateProfile: _handleUpdateProfile,
+            notificationService: _notifications,
+          ),
         );
     }
   }

@@ -34,6 +34,13 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
 
+  # Real reminder delivery for Prescription.reminderTimes (exact, daily-
+  # repeating alarms -- see core/scheduling/reminder_scheduler.dart for the
+  # bedtime-aware decision logic this schedules on top of).
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+  flutter_timezone: ^5.1.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -50,5 +57,4 @@ flutter:
 
 # Still to add later:
 #   drift + sqlcipher_flutter_libs  - encrypted local database
-#   flutter_local_notifications     - reminders
 #   local_auth                      - biometric / PIN app lock

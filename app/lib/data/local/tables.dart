@@ -1,4 +1,20 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
+
+/// Drift has no native list column type -- stores a `List<String>` as a
+/// JSON-encoded text column. Used for both `reminderTimes` (ordered) and
+/// `takenTimes` (a set at the Dart model layer, converted to/from a list at
+/// the `AppDatabase` mapping boundary so this one converter covers both).
+class StringListConverter extends TypeConverter<List<String>, String> {
+  const StringListConverter();
+
+  @override
+  List<String> fromSql(String fromDb) => (jsonDecode(fromDb) as List).cast<String>();
+
+  @override
+  String toSql(List<String> value) => jsonEncode(value);
+}
 
 /// Mirrors `Profile` (data/models/profile.dart) field-for-field, including
 /// the string id, so the app layer can keep using plain model classes
@@ -13,6 +29,7 @@ class Profiles extends Table {
   TextColumn get name => text()();
   IntColumn get colorValue => integer()(); // Color.toARGB32()
   BoolColumn get isPrimary => boolean().withDefault(const Constant(false))();
+  TextColumn get bedtime => text().nullable()(); // formatted like "10:00 PM"
 
   @override
   Set<Column> get primaryKey => {id};
@@ -25,10 +42,11 @@ class Prescriptions extends Table {
   TextColumn get profileId => text().references(Profiles, #id)();
   TextColumn get name => text()();
   TextColumn get dosage => text()();
-  TextColumn get time => text()();
+  TextColumn get reminderTimes => text().map(const StringListConverter())();
+  TextColumn get takenTimes => text().map(const StringListConverter())();
   IntColumn get remaining => integer()();
   IntColumn get daysSupply => integer()();
-  BoolColumn get takenToday => boolean().withDefault(const Constant(false))();
+  BoolColumn get allowAfterBedtime => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};

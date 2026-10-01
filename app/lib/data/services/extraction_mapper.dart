@@ -5,14 +5,15 @@ import 'extractor.dart';
 /// [Prescription] (the app's real, persisted schedule model). Called once,
 /// at confirm-time, after the user has reviewed every field.
 ///
-/// [time] and [remaining] are required with no default -- [Extraction] has
-/// no equivalent field for either, so the Confirm screen must always collect
-/// them from the user rather than this function inventing a value.
+/// [reminderTimes] and [remaining] are required with no default --
+/// [Extraction] has no equivalent field for either, so the Confirm flow must
+/// always collect them from the user rather than this function inventing a
+/// value.
 Prescription mapExtractionToPrescription(
   Extraction extraction, {
   required String id,
   required String profileId,
-  required String time,
+  required List<String> reminderTimes,
   required int remaining,
   String? nameOverride,
   String? dosageOverride,
@@ -23,7 +24,7 @@ Prescription mapExtractionToPrescription(
     profileId: profileId,
     name: nameOverride ?? extraction.drug ?? 'Unnamed medication',
     dosage: dosageOverride ?? _composeDosage(extraction),
-    time: time,
+    reminderTimes: reminderTimes,
     remaining: remaining,
     daysSupply: daysSupplyOverride ?? extraction.daysSupply ?? 0,
   );

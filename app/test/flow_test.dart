@@ -113,30 +113,44 @@ void main() {
     // (which live-updates from the drug-name field) and the field itself.
     expect(find.text('Metformin HCl'), findsWidgets);
 
-    // Save (the glass checkmark button) is disabled until the required
-    // reminder time is provided -- nothing is saved before the user
-    // confirms every field.
-    var saveButton = tester.widget<GestureDetector>(find.byKey(const Key('confirm_save_button')));
+    // Step 1 (Confirm Details): name + profile are both already filled in
+    // (pre-selected first profile), so continuing doesn't need a reminder
+    // time here anymore -- that's step 2.
+    final continueButton = tester.widget<GestureDetector>(find.byKey(const Key('confirm_save_button')));
+    expect(continueButton.onTap, isNotNull);
+
+    await tester.tap(find.byKey(const Key('confirm_save_button')));
+    await tester.pumpAndSettle();
+
+    // Step 2 (Reminder Schedule): save is disabled until a start time is
+    // picked -- nothing is saved before the user confirms every field.
+    var saveButton = tester.widget<GestureDetector>(find.byKey(const Key('reminder_schedule_save_button')));
     expect(saveButton.onTap, isNull);
 
-    // REMINDER TIME opens the rotary wheel picker sheet, not free text --
-    // open it and confirm whatever it defaults to (TimeOfDay.now()).
-    await tester.tap(find.byKey(const Key('field_time')));
+    // Opens the rotary wheel picker sheet, not free text -- open it and
+    // confirm whatever it defaults to (TimeOfDay.now()).
+    await tester.tap(find.byKey(const Key('field_start_time')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('rotary_time_done')));
     await tester.pumpAndSettle();
 
-    saveButton = tester.widget<GestureDetector>(find.byKey(const Key('confirm_save_button')));
+    saveButton = tester.widget<GestureDetector>(find.byKey(const Key('reminder_schedule_save_button')));
     expect(saveButton.onTap, isNotNull);
 
-    await tester.tap(find.byKey(const Key('confirm_save_button')));
+    await tester.tap(find.byKey(const Key('reminder_schedule_save_button')));
     await tester.pumpAndSettle();
 
     expect(result, isNotNull);
     expect(result!.name, 'Metformin HCl');
     expect(result!.dosage, '500 mg, 1 tablet, tablet');
-    // Picked from the live clock, so assert the format rather than a literal.
-    expect(result!.time, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    // "twice daily" is periodic (12h interval) -- at least the picked start
+    // time is always included; exact count depends on the real wall clock
+    // the rotary picker defaulted to (TimeOfDay.now()), so only the format
+    // and non-emptiness are asserted, not a literal count.
+    expect(result!.reminderTimes, isNotEmpty);
+    for (final time in result!.reminderTimes) {
+      expect(time, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    }
     expect(result!.daysSupply, 30);
     expect(result!.remaining, 30);
     expect(result!.profileId, '1');

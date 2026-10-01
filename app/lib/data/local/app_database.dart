@@ -17,7 +17,26 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            // Additive, safe.
+            await m.addColumn(profiles, profiles.bedtime);
+            // Prescriptions' time/takenToday columns became
+            // reminderTimes/takenTimes (a schema-shape change, not just an
+            // added column) -- this is active-dev test data, not real user
+            // data, so a one-time reset of saved prescriptions is
+            // acceptable. DoseEvents rows survive and just show "Deleted
+            // medication" for any wiped prescription id.
+            await m.deleteTable('prescriptions');
+            await m.createTable(prescriptions);
+          }
+        },
+      );
 
   Stream<List<Profile>> watchProfiles() {
     return select(profiles).watch().map((rows) => rows.map(_toProfile).toList());
@@ -39,6 +58,7 @@ class AppDatabase extends _$AppDatabase {
       name: profile.name,
       colorValue: profile.color.toARGB32(),
       isPrimary: Value(profile.isPrimary),
+      bedtime: Value(profile.bedtime),
     ));
   }
 
@@ -48,10 +68,11 @@ class AppDatabase extends _$AppDatabase {
       profileId: prescription.profileId,
       name: prescription.name,
       dosage: prescription.dosage,
-      time: prescription.time,
+      reminderTimes: prescription.reminderTimes,
+      takenTimes: prescription.takenTimes.toList(),
       remaining: prescription.remaining,
       daysSupply: prescription.daysSupply,
-      takenToday: Value(prescription.takenToday),
+      allowAfterBedtime: Value(prescription.allowAfterBedtime),
     ));
   }
 
@@ -72,37 +93,54 @@ class AppDatabase extends _$AppDatabase {
   /// Inserts the given profiles/prescriptions only if the tables are
   /// currently empty -- first-launch demo data, not a reset-on-every-run.
   Future<void> seedIfEmpty(List<Profile> seedProfiles, List<Prescription> seedPrescriptions) async {
+    // Checked independently (not "seed everything if profiles is empty"):
+    // a schema migration that only reshapes Prescriptions (e.g. v1 -> v2's
+    // time -> reminderTimes change) can leave Profiles populated but
+    // Prescriptions empty, and that should still get demo data back rather
+    // than leaving Schedule silently blank.
     final hasProfiles = await select(profiles).get();
-    if (hasProfiles.isNotEmpty) return;
+    final hasPrescriptions = await select(prescriptions).get();
 
     await batch((b) {
-      b.insertAll(
-        profiles,
-        seedProfiles.map((p) => ProfilesCompanion.insert(
-              id: p.id,
-              name: p.name,
-              colorValue: p.color.toARGB32(),
-              isPrimary: Value(p.isPrimary),
-            )),
-      );
-      b.insertAll(
-        prescriptions,
-        seedPrescriptions.map((m) => PrescriptionsCompanion.insert(
-              id: m.id,
-              profileId: m.profileId,
-              name: m.name,
-              dosage: m.dosage,
-              time: m.time,
-              remaining: m.remaining,
-              daysSupply: m.daysSupply,
-              takenToday: Value(m.takenToday),
-            )),
-      );
+      if (hasProfiles.isEmpty) {
+        b.insertAll(
+          profiles,
+          seedProfiles.map((p) => ProfilesCompanion.insert(
+                id: p.id,
+                name: p.name,
+                colorValue: p.color.toARGB32(),
+                isPrimary: Value(p.isPrimary),
+                bedtime: Value(p.bedtime),
+              )),
+        );
+      }
+      if (hasPrescriptions.isEmpty) {
+        b.insertAll(
+          prescriptions,
+          seedPrescriptions.map((m) => PrescriptionsCompanion.insert(
+                id: m.id,
+                profileId: m.profileId,
+                name: m.name,
+                dosage: m.dosage,
+                reminderTimes: m.reminderTimes,
+                takenTimes: m.takenTimes.toList(),
+                remaining: m.remaining,
+                daysSupply: m.daysSupply,
+                allowAfterBedtime: Value(m.allowAfterBedtime),
+              )),
+        );
+      }
     });
   }
 
   Profile _toProfile(ProfileRow row) {
-    return Profile(id: row.id, name: row.name, color: Color(row.colorValue), isPrimary: row.isPrimary);
+    return Profile(
+      id: row.id,
+      name: row.name,
+      color: Color(row.colorValue),
+      isPrimary: row.isPrimary,
+      bedtime: row.bedtime,
+    );
   }
 
   Prescription _toPrescription(PrescriptionRow row) {
@@ -111,10 +149,11 @@ class AppDatabase extends _$AppDatabase {
       profileId: row.profileId,
       name: row.name,
       dosage: row.dosage,
-      time: row.time,
+      reminderTimes: row.reminderTimes,
+      takenTimes: row.takenTimes.toSet(),
       remaining: row.remaining,
       daysSupply: row.daysSupply,
-      takenToday: row.takenToday,
+      allowAfterBedtime: row.allowAfterBedtime,
     );
   }
 

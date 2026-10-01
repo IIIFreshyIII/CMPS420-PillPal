@@ -9,6 +9,8 @@ import '../../../data/models/profile.dart';
 /// button now, not a swipe gesture here.
 class MedicationCard extends StatelessWidget {
   final Prescription item;
+  final String time;
+  final bool isTaken;
   final Profile? profile;
   final VoidCallback onTakeDose;
   final VoidCallback onViewDetails;
@@ -16,6 +18,8 @@ class MedicationCard extends StatelessWidget {
   const MedicationCard({
     super.key,
     required this.item,
+    required this.time,
+    required this.isTaken,
     required this.profile,
     required this.onTakeDose,
     required this.onViewDetails,
@@ -24,7 +28,7 @@ class MedicationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isLow = item.remaining <= 5;
-    final parts = item.time.split(' ');
+    final parts = time.split(' ');
     final timeDigit = parts.isNotEmpty ? parts[0] : '';
     final timePeriod = parts.length > 1 ? parts[1] : '';
 
@@ -32,12 +36,12 @@ class MedicationCard extends StatelessWidget {
       onTap: onViewDetails,
       behavior: HitTestBehavior.opaque,
       child: Opacity(
-        opacity: item.takenToday ? 0.45 : 1.0,
+        opacity: isTaken ? 0.45 : 1.0,
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: item.takenToday ? AppTheme.background : AppTheme.cardWhite,
+            color: isTaken ? AppTheme.background : AppTheme.cardWhite,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: AppTheme.borderLight),
             boxShadow: [
@@ -152,13 +156,13 @@ class MedicationCard extends StatelessWidget {
                   margin: const EdgeInsets.only(left: 10),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: item.takenToday ? AppTheme.interactiveTeal : Colors.transparent,
+                    color: isTaken ? AppTheme.interactiveTeal : Colors.transparent,
                     border: Border.all(
-                      color: item.takenToday ? AppTheme.interactiveTeal : const Color(0xFFC7D8D7),
+                      color: isTaken ? AppTheme.interactiveTeal : const Color(0xFFC7D8D7),
                       width: 2,
                     ),
                   ),
-                  child: item.takenToday
+                  child: isTaken
                       ? const Icon(CupertinoIcons.checkmark, size: 20, color: Colors.white)
                       : null,
                 ),

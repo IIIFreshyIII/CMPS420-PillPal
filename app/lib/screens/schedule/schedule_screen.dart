@@ -1,19 +1,24 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/date_formatter.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import 'widgets/medication_card.dart';
+
+/// One reminder-time instance of a prescription -- a prescription with
+/// several `reminderTimes` (e.g. "every 4 hours") shows up as one slot per
+/// time, each independently markable taken.
+typedef ScheduleSlot = ({Prescription prescription, String time});
 
 class ScheduleScreen extends StatelessWidget {
   final List<Prescription> prescriptions;
   final List<Profile> profiles;
   final String selectedProfileId;
   final ValueChanged<String> onSelectProfile;
-  final ValueChanged<String> onTakeDose;
+  final void Function(String prescriptionId, String time) onTakeDose;
   final ValueChanged<Prescription> onViewMedication;
-  final void Function(List<String> targetIds, bool shouldMarkTaken)
-      onToggleAllCompleted;
+  final void Function(List<(String, String)> targets, bool shouldMarkTaken) onToggleAllCompleted;
   final VoidCallback onOpenScan;
   final bool isScanning;
 
@@ -36,13 +41,21 @@ class ScheduleScreen extends StatelessWidget {
         ? prescriptions
         : prescriptions.where((m) => m.profileId == selectedProfileId).toList();
 
-    final morningMeds =
-        filteredMeds.where((m) => m.time.contains('AM')).toList();
-    final eveningMeds =
-        filteredMeds.where((m) => m.time.contains('PM')).toList();
+    final slots = filteredMeds
+        .expand((m) => m.reminderTimes.map((t) => (prescription: m, time: t)))
+        .toList()
+      ..sort((a, b) {
+        final ta = parseTimeOfDayLabel(a.time);
+        final tb = parseTimeOfDayLabel(b.time);
+        if (ta == null || tb == null) return 0;
+        return (ta.hour * 60 + ta.minute).compareTo(tb.hour * 60 + tb.minute);
+      });
 
-    final totalDoses = filteredMeds.length;
-    final takenDoses = filteredMeds.where((m) => m.takenToday).length;
+    final morningSlots = slots.where((s) => s.time.contains('AM')).toList();
+    final eveningSlots = slots.where((s) => s.time.contains('PM')).toList();
+
+    final totalDoses = slots.length;
+    final takenDoses = slots.where((s) => s.prescription.takenTimes.contains(s.time)).length;
     final allDone = totalDoses > 0 && takenDoses == totalDoses;
 
     return CustomScrollView(
@@ -94,8 +107,7 @@ class ScheduleScreen extends StatelessWidget {
                   onTap: isScanning ? null : onOpenScan,
                   child: Container(
                     margin: const EdgeInsets.only(top: 4),
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
+                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
                     decoration: BoxDecoration(
                       color: AppTheme.cardWhite,
                       borderRadius: BorderRadius.circular(20),
@@ -118,8 +130,7 @@ class ScheduleScreen extends StatelessWidget {
                           )
                         : const Row(
                             children: [
-                              Icon(CupertinoIcons.camera,
-                                  size: 16, color: AppTheme.interactiveTeal),
+                              Icon(CupertinoIcons.camera, size: 16, color: AppTheme.interactiveTeal),
                               SizedBox(width: 6),
                               Text(
                                 '+ Scan Bottle',
@@ -161,31 +172,23 @@ class ScheduleScreen extends StatelessWidget {
                         if (totalDoses > 0)
                           GestureDetector(
                             onTap: () {
-                              final ids =
-                                  filteredMeds.map((m) => m.id).toList();
-                              onToggleAllCompleted(ids, !allDone);
+                              final targets = slots.map((s) => (s.prescription.id, s.time)).toList();
+                              onToggleAllCompleted(targets, !allDone);
                             },
                             child: Container(
                               margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 5, horizontal: 10),
+                              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
                               decoration: BoxDecoration(
-                                color: allDone
-                                    ? const Color(0xFFE2E8F0)
-                                    : AppTheme.interactiveTeal,
+                                color: allDone ? const Color(0xFFE2E8F0) : AppTheme.interactiveTeal,
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    allDone
-                                        ? CupertinoIcons.arrow_counterclockwise
-                                        : CupertinoIcons.checkmark_alt,
+                                    allDone ? CupertinoIcons.arrow_counterclockwise : CupertinoIcons.checkmark_alt,
                                     size: 13,
-                                    color: allDone
-                                        ? const Color(0xFF475569)
-                                        : Colors.white,
+                                    color: allDone ? const Color(0xFF475569) : Colors.white,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
@@ -193,9 +196,7 @@ class ScheduleScreen extends StatelessWidget {
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: allDone
-                                          ? const Color(0xFF475569)
-                                          : Colors.white,
+                                      color: allDone ? const Color(0xFF475569) : Colors.white,
                                     ),
                                   ),
                                 ],
@@ -203,8 +204,7 @@ class ScheduleScreen extends StatelessWidget {
                             ),
                           ),
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 5, horizontal: 12),
+                          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 12),
                           decoration: BoxDecoration(
                             color: AppTheme.lightPillTint,
                             borderRadius: BorderRadius.circular(14),
@@ -248,7 +248,7 @@ class ScheduleScreen extends StatelessWidget {
             ),
           ),
         ),
-        if (morningMeds.isNotEmpty) ...[
+        if (morningSlots.isNotEmpty) ...[
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
@@ -267,20 +267,13 @@ class ScheduleScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, i) => MedicationCard(
-                  key: ValueKey('med_${morningMeds[i].id}'),
-                  item: morningMeds[i],
-                  profile: profiles
-                      .firstWhere((p) => p.id == morningMeds[i].profileId),
-                  onTakeDose: () => onTakeDose(morningMeds[i].id),
-                  onViewDetails: () => onViewMedication(morningMeds[i]),
-                ),
-                childCount: morningMeds.length,
+                (context, i) => _slotCard(morningSlots[i]),
+                childCount: morningSlots.length,
               ),
             ),
           ),
         ],
-        if (eveningMeds.isNotEmpty) ...[
+        if (eveningSlots.isNotEmpty) ...[
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
@@ -299,21 +292,26 @@ class ScheduleScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
-                (context, i) => MedicationCard(
-                  key: ValueKey('med_${eveningMeds[i].id}'),
-                  item: eveningMeds[i],
-                  profile: profiles
-                      .firstWhere((p) => p.id == eveningMeds[i].profileId),
-                  onTakeDose: () => onTakeDose(eveningMeds[i].id),
-                  onViewDetails: () => onViewMedication(eveningMeds[i]),
-                ),
-                childCount: eveningMeds.length,
+                (context, i) => _slotCard(eveningSlots[i]),
+                childCount: eveningSlots.length,
               ),
             ),
           ),
         ],
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ],
+    );
+  }
+
+  Widget _slotCard(ScheduleSlot slot) {
+    return MedicationCard(
+      key: ValueKey('med_${slot.prescription.id}_${slot.time}'),
+      item: slot.prescription,
+      time: slot.time,
+      isTaken: slot.prescription.takenTimes.contains(slot.time),
+      profile: profiles.firstWhere((p) => p.id == slot.prescription.profileId),
+      onTakeDose: () => onTakeDose(slot.prescription.id, slot.time),
+      onViewDetails: () => onViewMedication(slot.prescription),
     );
   }
 }
@@ -341,8 +339,7 @@ class _ProfileChip extends StatelessWidget {
             color: isSelected ? AppTheme.textPrimary : AppTheme.cardWhite,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color:
-                  isSelected ? AppTheme.textPrimary : const Color(0xFFE2ECEB),
+              color: isSelected ? AppTheme.textPrimary : const Color(0xFFE2ECEB),
             ),
           ),
           child: Text(

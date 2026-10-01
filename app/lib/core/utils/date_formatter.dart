@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart' show TimeOfDay, DayPeriod;
+
 const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _monthNames = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -28,3 +30,25 @@ String formatTimeOfDay(DateTime dt) {
 /// True when [date] falls on the same calendar day as [now] (defaults to
 /// `DateTime.now()`).
 bool isToday(DateTime date, {DateTime? now}) => formatDayLabel(date, now: now) == 'Today';
+
+/// "8:00 AM" -- the formatted-string convention `Prescription.reminderTimes`
+/// and `Profile.bedtime` both store times in.
+String formatTimeOfDayLabel(TimeOfDay t) {
+  final hour = t.hourOfPeriod == 0 ? 12 : t.hourOfPeriod;
+  final minute = t.minute.toString().padLeft(2, '0');
+  final period = t.period == DayPeriod.am ? 'AM' : 'PM';
+  return '$hour:$minute $period';
+}
+
+/// Reverses [formatTimeOfDayLabel]. Returns `null` for anything that doesn't
+/// match the expected "h:mm AM/PM" shape, rather than throwing.
+TimeOfDay? parseTimeOfDayLabel(String? label) {
+  if (label == null) return null;
+  final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false).firstMatch(label.trim());
+  if (match == null) return null;
+  var hour = int.parse(match.group(1)!);
+  final minute = int.parse(match.group(2)!);
+  final isPm = match.group(3)!.toUpperCase() == 'PM';
+  if (hour == 12) hour = 0;
+  return TimeOfDay(hour: isPm ? hour + 12 : hour, minute: minute);
+}

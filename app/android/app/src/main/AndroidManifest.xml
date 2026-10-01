@@ -3,6 +3,21 @@
          fallback both need the camera; scanning is a core app feature. -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-feature android:name="android.hardware.camera" android:required="true"/>
+
+    <!-- Dose-reminder notifications (data/services/notification_service.dart).
+         POST_NOTIFICATIONS: Android 13+ runtime permission to show any
+         notification at all. SCHEDULE_EXACT_ALARM: exact, not approximate,
+         delivery; medication timing matters. On Android 12+ this needs an
+         explicit one-time grant via system settings, requested via the
+         plugin's requestExactAlarmsPermission(). RECEIVE_BOOT_COMPLETED plus
+         the two receiver entries below let flutter_local_notifications
+         restore exact alarms after a reboot (Android clears them otherwise);
+         home_scaffold.dart's resync on every DB change also covers this,
+         independently of whether the receiver fires. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
     <application
         android:label="PillPal"
         android:name="${applicationName}"
@@ -28,6 +43,18 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- flutter_local_notifications: fires a scheduled notification, and
+             restores all scheduled alarms after a reboot/app-update. -->
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" />
+        <receiver android:exported="false" android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
     </application>
     <queries>
         <intent>
