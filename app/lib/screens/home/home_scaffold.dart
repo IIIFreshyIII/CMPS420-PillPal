@@ -2,11 +2,17 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
+import '../../data/services/extractor.dart';
 import '../../presentation/widgets/floating_tab_bar.dart';
 import '../account/account_screen.dart';
+import '../confirm/confirm_screen.dart';
 import '../profiles/profiles_screen.dart';
+import '../scan/live_scan_screen.dart';
+import '../scan/upload_scan_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../medication_detail/medication_detail_sheet.dart';
+
+enum _ScanMode { live, upload }
 
 class HomeScaffold extends StatefulWidget {
   const HomeScaffold({super.key});
@@ -140,25 +146,55 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     });
   }
 
-  Future<void> _simulateScan() async {
+  Future<void> _openScan() async {
+    final mode = await showModalBottomSheet<_ScanMode>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Scan Live'),
+              subtitle: const Text('Pan the camera over the label'),
+              onTap: () => Navigator.pop(ctx, _ScanMode.live),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_outlined),
+              title: const Text('Enter from a Photo'),
+              subtitle: const Text("If you don't have the bottle in hand"),
+              onTap: () => Navigator.pop(ctx, _ScanMode.upload),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (mode == null || !mounted) return;
+
     setState(() => _isScanning = true);
-    await Future.delayed(const Duration(milliseconds: 1400));
+    final extraction = await Navigator.of(context).push<Extraction>(
+      MaterialPageRoute(
+        builder: (_) => mode == _ScanMode.live ? const LiveScanScreen() : const UploadScanScreen(),
+      ),
+    );
+    if (!mounted) return;
+
+    if (extraction == null) {
+      setState(() => _isScanning = false);
+      return;
+    }
+
+    final prescription = await Navigator.of(context).push<Prescription>(
+      MaterialPageRoute(
+        builder: (_) => ConfirmScreen(extraction: extraction, profiles: _profiles),
+      ),
+    );
     if (!mounted) return;
     setState(() => _isScanning = false);
 
-    final newMed = Prescription(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      name: 'Amoxicillin',
-      dosage: '500mg',
-      time: '8:00 AM',
-      daysSupply: 10,
-      remaining: 10,
-      profileId: '1',
-    );
-
-    setState(() {
-      _prescriptions.insert(0, newMed);
-    });
+    if (prescription != null) {
+      setState(() => _prescriptions.insert(0, prescription));
+    }
   }
 
   void _handleEditMedication(Prescription prescription) {
@@ -185,7 +221,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             onDeleteMedication: _handleDeleteMedication,
             onEditMedication: _handleEditMedication,
             onToggleAllCompleted: _handleToggleAllCompleted,
-            onOpenScan: _simulateScan,
+            onOpenScan: _openScan,
             isScanning: _isScanning,
           ),
         );

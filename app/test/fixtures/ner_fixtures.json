@@ -1,0 +1,2267 @@
+{
+  "vocab_size": 30522,
+  "model_max_length": 256,
+  "id2label": {
+    "0": "O",
+    "1": "B-DRUG",
+    "2": "I-DRUG",
+    "3": "B-STRENGTH",
+    "4": "I-STRENGTH",
+    "5": "B-DOSAGE",
+    "6": "I-DOSAGE",
+    "7": "B-FORM",
+    "8": "I-FORM",
+    "9": "B-ROUTE",
+    "10": "I-ROUTE",
+    "11": "B-FREQUENCY",
+    "12": "I-FREQUENCY",
+    "13": "B-DURATION",
+    "14": "I-DURATION"
+  },
+  "tokenizer_cases": [
+    {
+      "text": "MARCUS DELROY\nATOMOXETINE25M\nMFR:DR.REDDYSU\nTake 1 capsule bymo\nmorning.\nRERLLS\nOTY.30\nREMAINING",
+      "input_ids": [
+        101,
+        6647,
+        3972,
+        13238,
+        13787,
+        11636,
+        20624,
+        2638,
+        17788,
+        2213,
+        1049,
+        19699,
+        1024,
+        2852,
+        1012,
+        18998,
+        6342,
+        2202,
+        1015,
+        18269,
+        2011,
+        5302,
+        2851,
+        1012,
+        2128,
+        12190,
+        4877,
+        27178,
+        2100,
+        1012,
+        2382,
+        3588,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          10,
+          13
+        ],
+        [
+          14,
+          18
+        ],
+        [
+          18,
+          20
+        ],
+        [
+          20,
+          23
+        ],
+        [
+          23,
+          25
+        ],
+        [
+          25,
+          27
+        ],
+        [
+          27,
+          28
+        ],
+        [
+          29,
+          30
+        ],
+        [
+          30,
+          32
+        ],
+        [
+          32,
+          33
+        ],
+        [
+          33,
+          35
+        ],
+        [
+          35,
+          36
+        ],
+        [
+          36,
+          41
+        ],
+        [
+          41,
+          43
+        ],
+        [
+          44,
+          48
+        ],
+        [
+          49,
+          50
+        ],
+        [
+          51,
+          58
+        ],
+        [
+          59,
+          61
+        ],
+        [
+          61,
+          63
+        ],
+        [
+          64,
+          71
+        ],
+        [
+          71,
+          72
+        ],
+        [
+          73,
+          75
+        ],
+        [
+          75,
+          77
+        ],
+        [
+          77,
+          79
+        ],
+        [
+          80,
+          82
+        ],
+        [
+          82,
+          83
+        ],
+        [
+          83,
+          84
+        ],
+        [
+          84,
+          86
+        ],
+        [
+          87,
+          96
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "marcus",
+        "del",
+        "##roy",
+        "atom",
+        "##ox",
+        "##eti",
+        "##ne",
+        "##25",
+        "##m",
+        "m",
+        "##fr",
+        ":",
+        "dr",
+        ".",
+        "reddy",
+        "##su",
+        "take",
+        "1",
+        "capsule",
+        "by",
+        "##mo",
+        "morning",
+        ".",
+        "re",
+        "##rl",
+        "##ls",
+        "ot",
+        "##y",
+        ".",
+        "30",
+        "remaining",
+        "[SEP]"
+      ],
+      "raw_spans": [
+        [
+          14,
+          28,
+          "DRUG"
+        ],
+        [
+          49,
+          50,
+          "DOSAGE"
+        ],
+        [
+          51,
+          58,
+          "FORM"
+        ],
+        [
+          59,
+          71,
+          "FREQUENCY"
+        ]
+      ],
+      "token_label_ids": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        2,
+        2,
+        3,
+        4,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        7,
+        11,
+        12,
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        13
+      ]
+    },
+    {
+      "text": "MARCUS DELROY\nTake1 capsule bymu\nmorning.\nSTILER\nOTY.S0\nREMAINING",
+      "input_ids": [
+        101,
+        6647,
+        3972,
+        13238,
+        2202,
+        2487,
+        18269,
+        2011,
+        12274,
+        2851,
+        1012,
+        25931,
+        2121,
+        27178,
+        2100,
+        1012,
+        1055,
+        2692,
+        3588,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          10,
+          13
+        ],
+        [
+          14,
+          18
+        ],
+        [
+          18,
+          19
+        ],
+        [
+          20,
+          27
+        ],
+        [
+          28,
+          30
+        ],
+        [
+          30,
+          32
+        ],
+        [
+          33,
+          40
+        ],
+        [
+          40,
+          41
+        ],
+        [
+          42,
+          46
+        ],
+        [
+          46,
+          48
+        ],
+        [
+          49,
+          51
+        ],
+        [
+          51,
+          52
+        ],
+        [
+          52,
+          53
+        ],
+        [
+          53,
+          54
+        ],
+        [
+          54,
+          55
+        ],
+        [
+          56,
+          65
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "marcus",
+        "del",
+        "##roy",
+        "take",
+        "##1",
+        "capsule",
+        "by",
+        "##mu",
+        "morning",
+        ".",
+        "stil",
+        "##er",
+        "ot",
+        "##y",
+        ".",
+        "s",
+        "##0",
+        "remaining",
+        "[SEP]"
+      ],
+      "raw_spans": [
+        [
+          20,
+          27,
+          "FORM"
+        ],
+        [
+          28,
+          40,
+          "FREQUENCY"
+        ]
+      ],
+      "token_label_ids": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        7,
+        11,
+        12,
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        13
+      ]
+    },
+    {
+      "text": "MARCUS DELROY\nMFR:DR.REDDY'SLABOR\nTake l capsule by mouthi\nmorning.\nQTY:30\nREFILLS\nREMAINING\n(lofl)",
+      "input_ids": [
+        101,
+        6647,
+        3972,
+        13238,
+        1049,
+        19699,
+        1024,
+        2852,
+        1012,
+        18998,
+        1005,
+        17584,
+        2953,
+        2202,
+        1048,
+        18269,
+        2011,
+        2677,
+        2072,
+        2851,
+        1012,
+        1053,
+        3723,
+        1024,
+        2382,
+        25416,
+        8591,
+        2015,
+        3588,
+        1006,
+        8840,
+        10258,
+        1007,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          10,
+          13
+        ],
+        [
+          14,
+          15
+        ],
+        [
+          15,
+          17
+        ],
+        [
+          17,
+          18
+        ],
+        [
+          18,
+          20
+        ],
+        [
+          20,
+          21
+        ],
+        [
+          21,
+          26
+        ],
+        [
+          26,
+          27
+        ],
+        [
+          27,
+          31
+        ],
+        [
+          31,
+          33
+        ],
+        [
+          34,
+          38
+        ],
+        [
+          39,
+          40
+        ],
+        [
+          41,
+          48
+        ],
+        [
+          49,
+          51
+        ],
+        [
+          52,
+          57
+        ],
+        [
+          57,
+          58
+        ],
+        [
+          59,
+          66
+        ],
+        [
+          66,
+          67
+        ],
+        [
+          68,
+          69
+        ],
+        [
+          69,
+          71
+        ],
+        [
+          71,
+          72
+        ],
+        [
+          72,
+          74
+        ],
+        [
+          75,
+          78
+        ],
+        [
+          78,
+          81
+        ],
+        [
+          81,
+          82
+        ],
+        [
+          83,
+          92
+        ],
+        [
+          93,
+          94
+        ],
+        [
+          94,
+          96
+        ],
+        [
+          96,
+          98
+        ],
+        [
+          98,
+          99
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "marcus",
+        "del",
+        "##roy",
+        "m",
+        "##fr",
+        ":",
+        "dr",
+        ".",
+        "reddy",
+        "'",
+        "slab",
+        "##or",
+        "take",
+        "l",
+        "capsule",
+        "by",
+        "mouth",
+        "##i",
+        "morning",
+        ".",
+        "q",
+        "##ty",
+        ":",
+        "30",
+        "ref",
+        "##ill",
+        "##s",
+        "remaining",
+        "(",
+        "lo",
+        "##fl",
+        ")",
+        "[SEP]"
+      ],
+      "raw_spans": [
+        [
+          39,
+          40,
+          "DOSAGE"
+        ],
+        [
+          41,
+          48,
+          "FORM"
+        ],
+        [
+          49,
+          58,
+          "ROUTE"
+        ],
+        [
+          59,
+          66,
+          "FREQUENCY"
+        ]
+      ],
+      "token_label_ids": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        7,
+        9,
+        10,
+        11,
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "text": "MARCUS DELROY\nATOMOXETINE25MGCAP\nMFR:DR.REDDYSLABORATO\nTake 1 capsule bymouthitr\nmorning.\nFhds\nRRLS\nOTY:30\nEHAINING\n(\uff08of1\uff09",
+      "input_ids": [
+        101,
+        6647,
+        3972,
+        13238,
+        13787,
+        11636,
+        20624,
+        2638,
+        17788,
+        24798,
+        17695,
+        1049,
+        19699,
+        1024,
+        2852,
+        1012,
+        18998,
+        14540,
+        7875,
+        6525,
+        3406,
+        2202,
+        1015,
+        18269,
+        2011,
+        14359,
+        4183,
+        2099,
+        2851,
+        1012,
+        1042,
+        14945,
+        2015,
+        25269,
+        4877,
+        27178,
+        2100,
+        1024,
+        2382,
+        15501,
+        8113,
+        2075,
+        1006,
+        1987,
+        1997,
+        2487,
+        1988,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          10,
+          13
+        ],
+        [
+          14,
+          18
+        ],
+        [
+          18,
+          20
+        ],
+        [
+          20,
+          23
+        ],
+        [
+          23,
+          25
+        ],
+        [
+          25,
+          27
+        ],
+        [
+          27,
+          29
+        ],
+        [
+          29,
+          32
+        ],
+        [
+          33,
+          34
+        ],
+        [
+          34,
+          36
+        ],
+        [
+          36,
+          37
+        ],
+        [
+          37,
+          39
+        ],
+        [
+          39,
+          40
+        ],
+        [
+          40,
+          45
+        ],
+        [
+          45,
+          47
+        ],
+        [
+          47,
+          49
+        ],
+        [
+          49,
+          52
+        ],
+        [
+          52,
+          54
+        ],
+        [
+          55,
+          59
+        ],
+        [
+          60,
+          61
+        ],
+        [
+          62,
+          69
+        ],
+        [
+          70,
+          72
+        ],
+        [
+          72,
+          77
+        ],
+        [
+          77,
+          79
+        ],
+        [
+          79,
+          80
+        ],
+        [
+          81,
+          88
+        ],
+        [
+          88,
+          89
+        ],
+        [
+          90,
+          91
+        ],
+        [
+          91,
+          93
+        ],
+        [
+          93,
+          94
+        ],
+        [
+          95,
+          97
+        ],
+        [
+          97,
+          99
+        ],
+        [
+          100,
+          102
+        ],
+        [
+          102,
+          103
+        ],
+        [
+          103,
+          104
+        ],
+        [
+          104,
+          106
+        ],
+        [
+          107,
+          109
+        ],
+        [
+          109,
+          112
+        ],
+        [
+          112,
+          115
+        ],
+        [
+          116,
+          117
+        ],
+        [
+          117,
+          118
+        ],
+        [
+          118,
+          120
+        ],
+        [
+          120,
+          121
+        ],
+        [
+          121,
+          122
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "marcus",
+        "del",
+        "##roy",
+        "atom",
+        "##ox",
+        "##eti",
+        "##ne",
+        "##25",
+        "##mg",
+        "##cap",
+        "m",
+        "##fr",
+        ":",
+        "dr",
+        ".",
+        "reddy",
+        "##sl",
+        "##ab",
+        "##ora",
+        "##to",
+        "take",
+        "1",
+        "capsule",
+        "by",
+        "##mouth",
+        "##it",
+        "##r",
+        "morning",
+        ".",
+        "f",
+        "##hd",
+        "##s",
+        "rr",
+        "##ls",
+        "ot",
+        "##y",
+        ":",
+        "30",
+        "eh",
+        "##ain",
+        "##ing",
+        "(",
+        "\uff08",
+        "of",
+        "##1",
+        "\uff09",
+        "[SEP]"
+      ],
+      "raw_spans": [
+        [
+          14,
+          32,
+          "DRUG"
+        ],
+        [
+          60,
+          61,
+          "DOSAGE"
+        ],
+        [
+          62,
+          69,
+          "FORM"
+        ],
+        [
+          70,
+          88,
+          "FREQUENCY"
+        ]
+      ],
+      "token_label_ids": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        2,
+        2,
+        3,
+        4,
+        7,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        7,
+        11,
+        12,
+        12,
+        12,
+        12,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "text": "MARCUS DELROY\nUXETINE 25 MG CAP\nFilled on:\n07/01/2026\n52",
+      "input_ids": [
+        101,
+        6647,
+        3972,
+        13238,
+        1057,
+        2595,
+        20624,
+        2638,
+        2423,
+        11460,
+        6178,
+        3561,
+        2006,
+        1024,
+        5718,
+        1013,
+        5890,
+        1013,
+        16798,
+        2575,
+        4720,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          10,
+          13
+        ],
+        [
+          14,
+          15
+        ],
+        [
+          15,
+          16
+        ],
+        [
+          16,
+          19
+        ],
+        [
+          19,
+          21
+        ],
+        [
+          22,
+          24
+        ],
+        [
+          25,
+          27
+        ],
+        [
+          28,
+          31
+        ],
+        [
+          32,
+          38
+        ],
+        [
+          39,
+          41
+        ],
+        [
+          41,
+          42
+        ],
+        [
+          43,
+          45
+        ],
+        [
+          45,
+          46
+        ],
+        [
+          46,
+          48
+        ],
+        [
+          48,
+          49
+        ],
+        [
+          49,
+          52
+        ],
+        [
+          52,
+          53
+        ],
+        [
+          54,
+          56
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "marcus",
+        "del",
+        "##roy",
+        "u",
+        "##x",
+        "##eti",
+        "##ne",
+        "25",
+        "mg",
+        "cap",
+        "filled",
+        "on",
+        ":",
+        "07",
+        "/",
+        "01",
+        "/",
+        "202",
+        "##6",
+        "52",
+        "[SEP]"
+      ],
+      "raw_spans": [
+        [
+          14,
+          21,
+          "DRUG"
+        ],
+        [
+          22,
+          27,
+          "STRENGTH"
+        ],
+        [
+          28,
+          31,
+          "FORM"
+        ]
+      ],
+      "token_label_ids": [
+        0,
+        0,
+        0,
+        0,
+        1,
+        2,
+        2,
+        2,
+        3,
+        4,
+        7,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "text": "MARCUS DELROY\nM9DPRAIRIEVLLE.LA70701-1188\nNE 25MGCAP\nDiscerd bf\n07/03/2027\nFilled on:\n07/01/2026\n52",
+      "input_ids": [
+        101,
+        6647,
+        3972,
+        13238,
+        1049,
+        2683,
+        18927,
+        14995,
+        7373,
+        2615,
+        6216,
+        1012,
+        2474,
+        19841,
+        19841,
+        2487,
+        1011,
+        12963,
+        2620,
+        11265,
+        2423,
+        24798,
+        17695,
+        5860,
+        2121,
+        2094,
+        28939,
+        5718,
+        1013,
+        6021,
+        1013,
+        16798,
+        2581,
+        3561,
+        2006,
+        1024,
+        5718,
+        1013,
+        5890,
+        1013,
+        16798,
+        2575,
+        4720,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          6
+        ],
+        [
+          7,
+          10
+        ],
+        [
+          10,
+          13
+        ],
+        [
+          14,
+          15
+        ],
+        [
+          15,
+          16
+        ],
+        [
+          16,
+          18
+        ],
+        [
+          18,
+          21
+        ],
+        [
+          21,
+          24
+        ],
+        [
+          24,
+          25
+        ],
+        [
+          25,
+          28
+        ],
+        [
+          28,
+          29
+        ],
+        [
+          29,
+          31
+        ],
+        [
+          31,
+          33
+        ],
+        [
+          33,
+          35
+        ],
+        [
+          35,
+          36
+        ],
+        [
+          36,
+          37
+        ],
+        [
+          37,
+          40
+        ],
+        [
+          40,
+          41
+        ],
+        [
+          42,
+          44
+        ],
+        [
+          45,
+          47
+        ],
+        [
+          47,
+          49
+        ],
+        [
+          49,
+          52
+        ],
+        [
+          53,
+          57
+        ],
+        [
+          57,
+          59
+        ],
+        [
+          59,
+          60
+        ],
+        [
+          61,
+          63
+        ],
+        [
+          64,
+          66
+        ],
+        [
+          66,
+          67
+        ],
+        [
+          67,
+          69
+        ],
+        [
+          69,
+          70
+        ],
+        [
+          70,
+          73
+        ],
+        [
+          73,
+          74
+        ],
+        [
+          75,
+          81
+        ],
+        [
+          82,
+          84
+        ],
+        [
+          84,
+          85
+        ],
+        [
+          86,
+          88
+        ],
+        [
+          88,
+          89
+        ],
+        [
+          89,
+          91
+        ],
+        [
+          91,
+          92
+        ],
+        [
+          92,
+          95
+        ],
+        [
+          95,
+          96
+        ],
+        [
+          97,
+          99
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "marcus",
+        "del",
+        "##roy",
+        "m",
+        "##9",
+        "##dp",
+        "##rai",
+        "##rie",
+        "##v",
+        "##lle",
+        ".",
+        "la",
+        "##70",
+        "##70",
+        "##1",
+        "-",
+        "118",
+        "##8",
+        "ne",
+        "25",
+        "##mg",
+        "##cap",
+        "disc",
+        "##er",
+        "##d",
+        "bf",
+        "07",
+        "/",
+        "03",
+        "/",
+        "202",
+        "##7",
+        "filled",
+        "on",
+        ":",
+        "07",
+        "/",
+        "01",
+        "/",
+        "202",
+        "##6",
+        "52",
+        "[SEP]"
+      ],
+      "raw_spans": [
+        [
+          45,
+          52,
+          "STRENGTH"
+        ],
+        [
+          53,
+          60,
+          "FORM"
+        ]
+      ],
+      "token_label_ids": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        3,
+        4,
+        7,
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "text": "",
+      "input_ids": [
+        101,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "[SEP]"
+      ],
+      "raw_spans": [],
+      "token_label_ids": []
+    },
+    {
+      "text": "   ",
+      "input_ids": [
+        101,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "[SEP]"
+      ],
+      "raw_spans": [],
+      "token_label_ids": []
+    },
+    {
+      "text": "a",
+      "input_ids": [
+        101,
+        1037,
+        102
+      ],
+      "offset_mapping": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          0
+        ]
+      ],
+      "tokens": [
+        "[CLS]",
+        "a",
+        "[SEP]"
+      ],
+      "raw_spans": [],
+      "token_label_ids": [
+        0,
+        0,
+        4
+      ]
+    }
+  ],
+  "refine_cases": [
+    {
+      "text": "MARCUS DELROY\nATOMOXETINE25M\nMFR:DR.REDDYSU\nTake 1 capsule bymo\nmorning.\nRERLLS\nOTY.30\nREMAINING",
+      "raw_spans": [
+        [
+          14,
+          28,
+          "DRUG"
+        ],
+        [
+          49,
+          50,
+          "DOSAGE"
+        ],
+        [
+          51,
+          58,
+          "FORM"
+        ],
+        [
+          59,
+          71,
+          "FREQUENCY"
+        ]
+      ],
+      "expected_refined": [
+        {
+          "start": 14,
+          "end": 25,
+          "type": "DRUG",
+          "text": "ATOMOXETINE",
+          "canonical": "atomoxetine",
+          "recognized": true
+        },
+        {
+          "start": 49,
+          "end": 50,
+          "type": "DOSAGE",
+          "text": "1",
+          "canonical": "1",
+          "recognized": true
+        },
+        {
+          "start": 51,
+          "end": 58,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        {
+          "start": 59,
+          "end": 71,
+          "type": "FREQUENCY",
+          "text": "bymo\nmorning",
+          "canonical": "bymo\nmorning",
+          "recognized": true
+        }
+      ],
+      "expected_first_per_type": {
+        "DRUG": {
+          "start": 14,
+          "end": 25,
+          "type": "DRUG",
+          "text": "ATOMOXETINE",
+          "canonical": "atomoxetine",
+          "recognized": true
+        },
+        "DOSAGE": {
+          "start": 49,
+          "end": 50,
+          "type": "DOSAGE",
+          "text": "1",
+          "canonical": "1",
+          "recognized": true
+        },
+        "FORM": {
+          "start": 51,
+          "end": 58,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        "FREQUENCY": {
+          "start": 59,
+          "end": 71,
+          "type": "FREQUENCY",
+          "text": "bymo\nmorning",
+          "canonical": "bymo\nmorning",
+          "recognized": true
+        }
+      }
+    },
+    {
+      "text": "MARCUS DELROY\nTake1 capsule bymu\nmorning.\nSTILER\nOTY.S0\nREMAINING",
+      "raw_spans": [
+        [
+          20,
+          27,
+          "FORM"
+        ],
+        [
+          28,
+          40,
+          "FREQUENCY"
+        ]
+      ],
+      "expected_refined": [
+        {
+          "start": 20,
+          "end": 27,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        {
+          "start": 28,
+          "end": 40,
+          "type": "FREQUENCY",
+          "text": "bymu\nmorning",
+          "canonical": "bymu\nmorning",
+          "recognized": true
+        }
+      ],
+      "expected_first_per_type": {
+        "FORM": {
+          "start": 20,
+          "end": 27,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        "FREQUENCY": {
+          "start": 28,
+          "end": 40,
+          "type": "FREQUENCY",
+          "text": "bymu\nmorning",
+          "canonical": "bymu\nmorning",
+          "recognized": true
+        }
+      }
+    },
+    {
+      "text": "MARCUS DELROY\nMFR:DR.REDDY'SLABOR\nTake l capsule by mouthi\nmorning.\nQTY:30\nREFILLS\nREMAINING\n(lofl)",
+      "raw_spans": [
+        [
+          39,
+          40,
+          "DOSAGE"
+        ],
+        [
+          41,
+          48,
+          "FORM"
+        ],
+        [
+          49,
+          58,
+          "ROUTE"
+        ],
+        [
+          59,
+          66,
+          "FREQUENCY"
+        ]
+      ],
+      "expected_refined": [
+        {
+          "start": 39,
+          "end": 40,
+          "type": "DOSAGE",
+          "text": "l",
+          "canonical": "l",
+          "recognized": false
+        },
+        {
+          "start": 41,
+          "end": 48,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        {
+          "start": 49,
+          "end": 58,
+          "type": "ROUTE",
+          "text": "by mouthi",
+          "canonical": "by mouth",
+          "recognized": true
+        },
+        {
+          "start": 59,
+          "end": 66,
+          "type": "FREQUENCY",
+          "text": "morning",
+          "canonical": "morning",
+          "recognized": true
+        }
+      ],
+      "expected_first_per_type": {
+        "DOSAGE": {
+          "start": 39,
+          "end": 40,
+          "type": "DOSAGE",
+          "text": "l",
+          "canonical": "l",
+          "recognized": false
+        },
+        "FORM": {
+          "start": 41,
+          "end": 48,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        "ROUTE": {
+          "start": 49,
+          "end": 58,
+          "type": "ROUTE",
+          "text": "by mouthi",
+          "canonical": "by mouth",
+          "recognized": true
+        },
+        "FREQUENCY": {
+          "start": 59,
+          "end": 66,
+          "type": "FREQUENCY",
+          "text": "morning",
+          "canonical": "morning",
+          "recognized": true
+        }
+      }
+    },
+    {
+      "text": "MARCUS DELROY\nATOMOXETINE25MGCAP\nMFR:DR.REDDYSLABORATO\nTake 1 capsule bymouthitr\nmorning.\nFhds\nRRLS\nOTY:30\nEHAINING\n(\uff08of1\uff09",
+      "raw_spans": [
+        [
+          14,
+          32,
+          "DRUG"
+        ],
+        [
+          60,
+          61,
+          "DOSAGE"
+        ],
+        [
+          62,
+          69,
+          "FORM"
+        ],
+        [
+          70,
+          88,
+          "FREQUENCY"
+        ]
+      ],
+      "expected_refined": [
+        {
+          "start": 14,
+          "end": 25,
+          "type": "DRUG",
+          "text": "ATOMOXETINE",
+          "canonical": "atomoxetine",
+          "recognized": true
+        },
+        {
+          "start": 60,
+          "end": 61,
+          "type": "DOSAGE",
+          "text": "1",
+          "canonical": "1",
+          "recognized": true
+        },
+        {
+          "start": 62,
+          "end": 69,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        {
+          "start": 70,
+          "end": 88,
+          "type": "FREQUENCY",
+          "text": "bymouthitr\nmorning",
+          "canonical": "bymouthitr\nmorning",
+          "recognized": true
+        }
+      ],
+      "expected_first_per_type": {
+        "DRUG": {
+          "start": 14,
+          "end": 25,
+          "type": "DRUG",
+          "text": "ATOMOXETINE",
+          "canonical": "atomoxetine",
+          "recognized": true
+        },
+        "DOSAGE": {
+          "start": 60,
+          "end": 61,
+          "type": "DOSAGE",
+          "text": "1",
+          "canonical": "1",
+          "recognized": true
+        },
+        "FORM": {
+          "start": 62,
+          "end": 69,
+          "type": "FORM",
+          "text": "capsule",
+          "canonical": "capsule",
+          "recognized": true
+        },
+        "FREQUENCY": {
+          "start": 70,
+          "end": 88,
+          "type": "FREQUENCY",
+          "text": "bymouthitr\nmorning",
+          "canonical": "bymouthitr\nmorning",
+          "recognized": true
+        }
+      }
+    },
+    {
+      "text": "MARCUS DELROY\nUXETINE 25 MG CAP\nFilled on:\n07/01/2026\n52",
+      "raw_spans": [
+        [
+          14,
+          21,
+          "DRUG"
+        ],
+        [
+          22,
+          27,
+          "STRENGTH"
+        ],
+        [
+          28,
+          31,
+          "FORM"
+        ]
+      ],
+      "expected_refined": [
+        {
+          "start": 14,
+          "end": 21,
+          "type": "DRUG",
+          "text": "UXETINE",
+          "canonical": "uxetine",
+          "recognized": false
+        },
+        {
+          "start": 22,
+          "end": 27,
+          "type": "STRENGTH",
+          "text": "25 MG",
+          "canonical": "25 MG",
+          "recognized": true
+        },
+        {
+          "start": 28,
+          "end": 31,
+          "type": "FORM",
+          "text": "CAP",
+          "canonical": "capsule",
+          "recognized": true
+        }
+      ],
+      "expected_first_per_type": {
+        "DRUG": {
+          "start": 14,
+          "end": 21,
+          "type": "DRUG",
+          "text": "UXETINE",
+          "canonical": "uxetine",
+          "recognized": false
+        },
+        "STRENGTH": {
+          "start": 22,
+          "end": 27,
+          "type": "STRENGTH",
+          "text": "25 MG",
+          "canonical": "25 MG",
+          "recognized": true
+        },
+        "FORM": {
+          "start": 28,
+          "end": 31,
+          "type": "FORM",
+          "text": "CAP",
+          "canonical": "capsule",
+          "recognized": true
+        }
+      }
+    },
+    {
+      "text": "MARCUS DELROY\nM9DPRAIRIEVLLE.LA70701-1188\nNE 25MGCAP\nDiscerd bf\n07/03/2027\nFilled on:\n07/01/2026\n52",
+      "raw_spans": [
+        [
+          45,
+          52,
+          "STRENGTH"
+        ],
+        [
+          53,
+          60,
+          "FORM"
+        ]
+      ],
+      "expected_refined": [
+        {
+          "start": 45,
+          "end": 52,
+          "type": "STRENGTH",
+          "text": "25MGCAP",
+          "canonical": "25MGCAP",
+          "recognized": true
+        },
+        {
+          "start": 53,
+          "end": 60,
+          "type": "FORM",
+          "text": "Discerd",
+          "canonical": "Discerd",
+          "recognized": false
+        }
+      ],
+      "expected_first_per_type": {
+        "STRENGTH": {
+          "start": 45,
+          "end": 52,
+          "type": "STRENGTH",
+          "text": "25MGCAP",
+          "canonical": "25MGCAP",
+          "recognized": true
+        },
+        "FORM": {
+          "start": 53,
+          "end": 60,
+          "type": "FORM",
+          "text": "Discerd",
+          "canonical": "Discerd",
+          "recognized": false
+        }
+      }
+    }
+  ],
+  "drug_cases": [
+    {
+      "input": "atomoxetine",
+      "expected": {
+        "canonical": "atomoxetine",
+        "recognized": true,
+        "corrected": false
+      }
+    },
+    {
+      "input": "ATOMOXETINE25M",
+      "expected": {
+        "canonical": "atomoxetine",
+        "recognized": true,
+        "corrected": false
+      }
+    },
+    {
+      "input": "venlafaxine 75 mg er cap",
+      "expected": {
+        "canonical": "venlafaxine",
+        "recognized": true,
+        "corrected": false
+      }
+    },
+    {
+      "input": "AUROBINDO",
+      "expected": {
+        "canonical": "aurobindo",
+        "recognized": false,
+        "corrected": false
+      }
+    },
+    {
+      "input": "asdkjqwoeiru",
+      "expected": {
+        "canonical": "asdkjqwoeiru",
+        "recognized": false,
+        "corrected": false
+      }
+    },
+    {
+      "input": "atorvastati",
+      "expected": {
+        "canonical": "atorvastatin",
+        "recognized": true,
+        "corrected": true
+      }
+    },
+    {
+      "input": "mfr:aurobindo",
+      "expected": {
+        "canonical": "mfr:aurobindo",
+        "recognized": false,
+        "corrected": false
+      }
+    }
+  ],
+  "regex_cases": [
+    {
+      "text": "Date filled: 08/01/2026\nDays supply: 30",
+      "expected": {
+        "fill_date": "2026-08-01",
+        "days_supply": 30
+      }
+    },
+    {
+      "text": "Filled 2026-08-01\n30-day supply",
+      "expected": {
+        "fill_date": "2026-08-01",
+        "days_supply": 30
+      }
+    },
+    {
+      "text": "Fill date: August 1, 2026\nQty: 90",
+      "expected": {
+        "fill_date": "2026-08-01",
+        "quantity": "90"
+      }
+    },
+    {
+      "text": "Dispensed: Aug 1, 26\nDays Supply:30",
+      "expected": {
+        "days_supply": 30
+      }
+    },
+    {
+      "text": "no dates or supply info here at all",
+      "expected": {}
+    },
+    {
+      "text": "Date: 12/31/99\nDays supply: 10",
+      "expected": {
+        "fill_date": "1999-12-31",
+        "days_supply": 10
+      }
+    }
+  ],
+  "refill_cases": [
+    {
+      "fill_date": "2026-08-01",
+      "days_supply": 30,
+      "expected_refill": "2026-08-31",
+      "expected_warn": "2026-08-24"
+    },
+    {
+      "fill_date": "2026-12-15",
+      "days_supply": 10,
+      "expected_refill": "2026-12-25",
+      "expected_warn": "2026-12-18"
+    },
+    {
+      "fill_date": null,
+      "days_supply": 30,
+      "expected_refill": null,
+      "expected_warn": null
+    },
+    {
+      "fill_date": "2026-01-01",
+      "days_supply": null,
+      "expected_refill": null,
+      "expected_warn": null
+    },
+    {
+      "fill_date": "2026-01-20",
+      "days_supply": 7,
+      "expected_refill": "2026-01-27",
+      "expected_warn": "2026-01-20"
+    }
+  ]
+}

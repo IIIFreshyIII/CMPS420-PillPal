@@ -1,29 +1,37 @@
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pillpal/main.dart';
-import 'package:pillpal/data/models/medication.dart';
+import 'package:pillpal/core/ner/refill_math.dart';
+import 'package:pillpal/data/models/prescription.dart';
+import 'package:pillpal/data/models/profile.dart';
+import 'package:pillpal/data/services/extractor.dart';
+import 'package:pillpal/screens/confirm/confirm_screen.dart';
 
 void main() {
-  // `Medication` (the label-extraction model) isn't wired into the live UI
-  // yet -- see PillPal/app/README.md -- but its refill-date arithmetic is
-  // real, load-bearing logic, so it stays covered here.
+  // Refill-date arithmetic is real, load-bearing logic (spec rule: plain
+  // math, never predicted by a model), so it stays covered here even though
+  // it now lives in core/ner/refill_math.dart rather than on a Medication
+  // model -- see extractor.dart / extraction_mapper.dart for the current
+  // extraction-side design.
   test('refillDate is fill date + days supply, warn is 7 days before', () {
-    final m = Medication(
-      id: '1',
-      fillDate: DateTime(2026, 8, 1),
-      daysSupply: 30,
+    final fillDate = DateTime(2026, 8, 1);
+    expect(
+      computeRefillDate(fillDate: fillDate, daysSupply: 30),
+      DateTime(2026, 8, 31),
     );
-    expect(m.refillDate, DateTime(2026, 8, 31));
-    expect(m.refillWarnDate, DateTime(2026, 8, 24));
+    expect(
+      computeRefillWarnDate(fillDate: fillDate, daysSupply: 30),
+      DateTime(2026, 8, 24),
+    );
   });
 
   test('refillDate is null without both inputs', () {
-    expect(Medication(id: '1', daysSupply: 30).refillDate, isNull);
-    expect(Medication(id: '1', fillDate: DateTime(2026)).refillDate, isNull);
+    expect(computeRefillDate(daysSupply: 30), isNull);
+    expect(computeRefillDate(fillDate: DateTime(2026)), isNull);
   });
 
-  testWidgets('home screen shows the seeded schedule and a scan adds a med',
+  testWidgets('+ Scan Bottle opens the real scan-mode choice, not a fake insert',
       (tester) async {
     // tall surface so the schedule screen fits without scrolling
     tester.view.physicalSize = const Size(1200, 3000);
@@ -35,14 +43,80 @@ void main() {
 
     // HomeScaffold seeds three hardcoded prescriptions on the Schedule tab.
     expect(find.text('Allegra'), findsOneWidget);
-    expect(find.text('Amoxicillin'), findsNothing);
 
     await tester.tap(find.text('+ Scan Bottle'));
-    await tester.pump(); // isScanning = true
-    await tester.pump(const Duration(milliseconds: 1500)); // fake scan delay
     await tester.pumpAndSettle();
 
-    // _simulateScan() inserts a hardcoded Amoxicillin prescription.
-    expect(find.text('Amoxicillin'), findsOneWidget);
+    // The real entry point: a choice between live scan and the upload
+    // fallback, not the old fake-delay-then-insert-Amoxicillin behavior.
+    expect(find.text('Scan Live'), findsOneWidget);
+    expect(find.text('Enter from a Photo'), findsOneWidget);
+  });
+
+  testWidgets('ConfirmScreen maps a confirmed Extraction into a real Prescription',
+      (tester) async {
+    // Same shape StubExtractor used to return -- this is the confirm-and-save
+    // path's coverage now that a real camera/model can't run in a widget test.
+    final extraction = Extraction(rawText: 'test label')
+      ..drug = 'Metformin HCl'
+      ..strength = '500 mg'
+      ..dose = '1 tablet'
+      ..form = 'tablet'
+      ..frequency = 'twice daily'
+      ..daysSupply = 30;
+    const profiles = [Profile(id: '1', name: 'Me', color: Color(0xFF3B82F6), isPrimary: true)];
+
+    // tall surface so every field, including the save button, is mounted --
+    // a ListView's sliver only builds children near the viewport.
+    tester.view.physicalSize = const Size(1200, 3000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    Prescription? result;
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => ElevatedButton(
+          onPressed: () async {
+            result = await Navigator.of(context).push<Prescription>(
+              MaterialPageRoute(builder: (_) => ConfirmScreen(extraction: extraction, profiles: profiles)),
+            );
+          },
+          child: const Text('open'),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    // Fields pre-filled from the extraction.
+    expect(find.text('Metformin HCl'), findsOneWidget);
+
+    // Save is disabled until the required reminder time is provided --
+    // nothing is saved before the user confirms every field.
+    var saveButton = tester.widget<FilledButton>(find.byKey(const Key('confirm_save_button')));
+    expect(saveButton.onPressed, isNull);
+
+    // REMINDER TIME opens the rotary wheel picker sheet, not free text --
+    // open it and confirm whatever it defaults to (TimeOfDay.now()).
+    await tester.tap(find.byKey(const Key('field_time')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('rotary_time_done')));
+    await tester.pumpAndSettle();
+
+    saveButton = tester.widget<FilledButton>(find.byKey(const Key('confirm_save_button')));
+    expect(saveButton.onPressed, isNotNull);
+
+    await tester.tap(find.byKey(const Key('confirm_save_button')));
+    await tester.pumpAndSettle();
+
+    expect(result, isNotNull);
+    expect(result!.name, 'Metformin HCl');
+    expect(result!.dosage, '500 mg, 1 tablet, tablet');
+    // Picked from the live clock, so assert the format rather than a literal.
+    expect(result!.time, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
+    expect(result!.daysSupply, 30);
+    expect(result!.remaining, 30);
+    expect(result!.profileId, '1');
   });
 }

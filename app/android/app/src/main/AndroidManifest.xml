@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Live label scanning (med-tracker-spec.md §1) and the photo-upload
+         fallback both need the camera; scanning is a core app feature. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="true"/>
     <application
         android:label="pillpal"
         android:name="${applicationName}"

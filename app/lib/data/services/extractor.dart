@@ -1,8 +1,8 @@
 /// Draft fields pulled from a label's text.
 ///
 /// NOTHING here is trusted. The user confirms every field on the ConfirmScreen
-/// before a [Medication] is created. This object is just the starting point for
-/// that screen.
+/// before a [Prescription] is created (see `extraction_mapper.dart`). This
+/// object is just the starting point for that screen.
 class Extraction {
   Extraction({this.rawText = ''});
 
@@ -16,6 +16,16 @@ class Extraction {
   String? duration;
   DateTime? fillDate;
   int? daysSupply;
+
+  /// Per-field name (`'drug'`, `'strength'`, etc. -- matching the property
+  /// names above) -> whether the validation layer could confidently match
+  /// it. A field absent from this map has no flag info (treated as
+  /// recognized) rather than being falsely flagged -- see [isRecognized].
+  /// This is deliberately a bool, never a confidence score: the model
+  /// doesn't produce one, and the Confirm screen must never invent one.
+  final Map<String, bool> fieldRecognized = {};
+
+  bool isRecognized(String field) => fieldRecognized[field] ?? true;
 }
 
 /// Turns label text into a draft [Extraction].
