@@ -95,12 +95,11 @@ void main() {
 
     Prescription? result;
     await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
       home: Builder(
         builder: (context) => ElevatedButton(
           onPressed: () async {
-            result = await Navigator.of(context).push<Prescription>(
-              MaterialPageRoute(builder: (_) => ConfirmScreen(extraction: extraction, profiles: profiles)),
-            );
+            result = await ConfirmScreen.show(context, extraction: extraction, profiles: profiles);
           },
           child: const Text('open'),
         ),
@@ -110,13 +109,15 @@ void main() {
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
 
-    // Fields pre-filled from the extraction.
-    expect(find.text('Metformin HCl'), findsOneWidget);
+    // Fields pre-filled from the extraction -- shown both in the hero card
+    // (which live-updates from the drug-name field) and the field itself.
+    expect(find.text('Metformin HCl'), findsWidgets);
 
-    // Save is disabled until the required reminder time is provided --
-    // nothing is saved before the user confirms every field.
-    var saveButton = tester.widget<FilledButton>(find.byKey(const Key('confirm_save_button')));
-    expect(saveButton.onPressed, isNull);
+    // Save (the glass checkmark button) is disabled until the required
+    // reminder time is provided -- nothing is saved before the user
+    // confirms every field.
+    var saveButton = tester.widget<GestureDetector>(find.byKey(const Key('confirm_save_button')));
+    expect(saveButton.onTap, isNull);
 
     // REMINDER TIME opens the rotary wheel picker sheet, not free text --
     // open it and confirm whatever it defaults to (TimeOfDay.now()).
@@ -125,8 +126,8 @@ void main() {
     await tester.tap(find.byKey(const Key('rotary_time_done')));
     await tester.pumpAndSettle();
 
-    saveButton = tester.widget<FilledButton>(find.byKey(const Key('confirm_save_button')));
-    expect(saveButton.onPressed, isNotNull);
+    saveButton = tester.widget<GestureDetector>(find.byKey(const Key('confirm_save_button')));
+    expect(saveButton.onTap, isNotNull);
 
     await tester.tap(find.byKey(const Key('confirm_save_button')));
     await tester.pumpAndSettle();

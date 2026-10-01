@@ -238,11 +238,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       return;
     }
 
-    final prescription = await Navigator.of(context).push<Prescription>(
-      MaterialPageRoute(
-        builder: (_) => ConfirmScreen(extraction: extraction, profiles: _profiles),
-      ),
-    );
+    final prescription = await ConfirmScreen.show(context, extraction: extraction, profiles: _profiles);
     if (!mounted) return;
     setState(() => _isScanning = false);
 

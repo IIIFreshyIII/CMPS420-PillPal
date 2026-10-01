@@ -1,4 +1,8 @@
+import 'dart:ui';
+
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/ner/postprocess.dart' show formOptions;
 import '../../core/theme/app_theme.dart';
@@ -11,8 +15,12 @@ import 'widgets/rotary_time_picker.dart';
 /// Every field editable, low-confidence fields flagged with the raw matched
 /// text -- never a fabricated confidence score (Phase 2 wireframe §Confirm,
 /// `med-tracker-spec.md` §1: "no confidence-based shortcuts"). Nothing is
-/// saved until the user taps Confirm & Save; that tap is the only place an
+/// saved until the user taps the checkmark; that tap is the only place an
 /// [Extraction] becomes a real [Prescription] (`extraction_mapper.dart`).
+///
+/// Styled to match `MedicationDetailSheet` -- same modal-sheet chrome, hero
+/// card, and grouped section cards -- so scanning a label and editing an
+/// existing medication feel like the same screen family.
 ///
 /// Pops with the built [Prescription], or `null` if the user backs out.
 class ConfirmScreen extends StatefulWidget {
@@ -20,6 +28,20 @@ class ConfirmScreen extends StatefulWidget {
 
   final Extraction extraction;
   final List<Profile> profiles;
+
+  static Future<Prescription?> show(
+    BuildContext context, {
+    required Extraction extraction,
+    required List<Profile> profiles,
+  }) {
+    return showModalBottomSheet<Prescription>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => ConfirmScreen(extraction: extraction, profiles: profiles),
+    );
+  }
 
   @override
   State<ConfirmScreen> createState() => _ConfirmScreenState();
@@ -73,7 +95,15 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
+  /// A flagged field's error message -- the raw OCR text, never a fabricated
+  /// confidence score. `null` (no error shown) when the field is recognized.
+  String? _flagText(bool recognized, String? rawIfFlagged) {
+    if (recognized || rawIfFlagged == null) return null;
+    return 'Verify -- OCR matched: "$rawIfFlagged"';
+  }
+
   void _save() {
+    HapticFeedback.lightImpact();
     final days = int.tryParse(_daysSupply.text.trim()) ?? 0;
     final prescription = mapExtractionToPrescription(
       widget.extraction,
@@ -91,220 +121,370 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     Navigator.of(context).pop(prescription);
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final e = widget.extraction;
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        backgroundColor: AppTheme.background,
-        foregroundColor: AppTheme.textPrimary,
-        title: const Text('Confirm Details'),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          _field('DRUG', _drug, recognized: e.isRecognized('drug'), rawIfFlagged: e.drug, fieldKey: const Key('field_drug')),
-          _field('STRENGTH', _strength, recognized: e.isRecognized('strength'), rawIfFlagged: e.strength, fieldKey: const Key('field_strength')),
-          _field('DOSE', _dose, recognized: e.isRecognized('dose'), rawIfFlagged: e.dose, fieldKey: const Key('field_dose')),
-          _formDropdown(recognized: e.isRecognized('form'), rawIfFlagged: e.form),
-          if (e.frequency != null) ...[
-            const SizedBox(height: 4),
-            Text('OCR read frequency as: "${e.frequency}" -- set the exact reminder time below.',
-                style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-          ],
-          const SizedBox(height: 16),
-          _timePickerField(),
-          const SizedBox(height: 16),
-          _plainField('DAYS SUPPLY', _daysSupply, keyboardType: TextInputType.number, fieldKey: const Key('field_days_supply')),
-          const SizedBox(height: 16),
-          _profileDropdown(),
-          const SizedBox(height: 32),
-          FilledButton(
-            key: const Key('confirm_save_button'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.interactiveTeal,
-              minimumSize: const Size.fromHeight(48),
-            ),
-            onPressed: _canSave ? _save : null,
-            child: const Text('Confirm & Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _field(String label, TextEditingController controller,
-      {required bool recognized, String? rawIfFlagged, Key? fieldKey}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            recognized ? label : '$label · verify this',
-            style: TextStyle(
-              fontSize: 11,
-              letterSpacing: 0.5,
-              color: recognized ? AppTheme.textSecondary : AppTheme.lowStockAlert,
-            ),
-          ),
-          const SizedBox(height: 4),
-          TextField(
-            key: fieldKey,
-            controller: controller,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: AppTheme.cardWhite,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: recognized
-                    ? BorderSide(color: AppTheme.borderLight)
-                    : BorderSide(color: AppTheme.lowStockAlert, width: 1.5),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            ),
-          ),
-          if (!recognized && rawIfFlagged != null) ...[
-            const SizedBox(height: 4),
-            Text('matched text: "$rawIfFlagged"',
-                style: const TextStyle(fontSize: 11, color: AppTheme.lowStockAlert)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _formDropdown({required bool recognized, String? rawIfFlagged}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            recognized ? 'FORM' : 'FORM · verify this',
-            style: TextStyle(
-              fontSize: 11,
-              letterSpacing: 0.5,
-              color: recognized ? AppTheme.textSecondary : AppTheme.lowStockAlert,
-            ),
-          ),
-          const SizedBox(height: 4),
-          DropdownButtonFormField<String>(
-            key: const Key('field_form'),
-            initialValue: _formValue,
-            hint: const Text('Select a form'),
-            decoration: InputDecoration(
-              filled: true,
-              fillColor: AppTheme.cardWhite,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
-                borderSide: recognized
-                    ? BorderSide(color: AppTheme.borderLight)
-                    : BorderSide(color: AppTheme.lowStockAlert, width: 1.5),
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            ),
-            items: formOptions
-                .map((f) => DropdownMenuItem(value: f, child: Text(f[0].toUpperCase() + f.substring(1))))
-                .toList(),
-            onChanged: (value) => setState(() => _formValue = value),
-          ),
-          if (!recognized && rawIfFlagged != null) ...[
-            const SizedBox(height: 4),
-            Text('matched text: "$rawIfFlagged"',
-                style: const TextStyle(fontSize: 11, color: AppTheme.lowStockAlert)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _timePickerField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('REMINDER TIME (required)',
-            style: TextStyle(fontSize: 11, letterSpacing: 0.5, color: AppTheme.textSecondary)),
-        const SizedBox(height: 4),
-        InkWell(
-          key: const Key('field_time'),
-          borderRadius: BorderRadius.circular(10),
-          onTap: _pickTime,
+  Widget _buildGlassCircleButton({
+    Key? key,
+    required IconData icon,
+    required VoidCallback onTap,
+    bool isPrimary = false,
+    bool enabled = true,
+  }) {
+    return GestureDetector(
+      key: key,
+      onTap: enabled ? onTap : null,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            width: 36,
+            height: 36,
             decoration: BoxDecoration(
-              color: AppTheme.cardWhite,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.borderLight),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.access_time, size: 18, color: AppTheme.textSecondary),
-                const SizedBox(width: 8),
-                Text(
-                  _selectedTime != null ? _formatTime(_selectedTime!) : 'Tap to set a time',
-                  style: TextStyle(
-                    color: _selectedTime != null ? AppTheme.textPrimary : AppTheme.textSecondary,
-                  ),
+              color: !enabled
+                  ? Colors.white.withValues(alpha: 0.5)
+                  : isPrimary
+                      ? AppTheme.interactiveTeal.withValues(alpha: 0.90)
+                      : Colors.white.withValues(alpha: 0.70),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: !enabled
+                    ? Colors.white.withValues(alpha: 0.6)
+                    : isPrimary
+                        ? AppTheme.interactiveTeal
+                        : Colors.white.withValues(alpha: 0.9),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.textPrimary.withValues(alpha: 0.08),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
                 ),
               ],
             ),
+            child: Center(
+              child: Icon(
+                icon,
+                size: 18,
+                color: !enabled
+                    ? AppTheme.textSecondary.withValues(alpha: 0.5)
+                    : isPrimary
+                        ? Colors.white
+                        : AppTheme.textPrimary,
+              ),
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _plainField(String label, TextEditingController controller, {TextInputType? keyboardType, Key? fieldKey}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, letterSpacing: 0.5, color: AppTheme.textSecondary)),
-        const SizedBox(height: 4),
-        TextField(
-          key: fieldKey,
-          controller: controller,
-          keyboardType: keyboardType,
-          onChanged: (_) => setState(() {}),
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: AppTheme.cardWhite,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppTheme.borderLight),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          ),
-        ),
-      ],
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.extraction;
+    final profile = widget.profiles.firstWhere(
+      (p) => p.id == _profileId,
+      orElse: () => const Profile(id: '0', name: 'General', color: Colors.grey),
     );
-  }
+    final heroName = _drug.text.trim().isEmpty ? 'New Medication' : _drug.text.trim();
+    final heroSubtitle = _selectedTime != null
+        ? 'For ${profile.name} • ${_formatTime(_selectedTime!)}'
+        : 'For ${profile.name} • set a reminder time below';
 
-  Widget _profileDropdown() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('PROFILE', style: TextStyle(fontSize: 11, letterSpacing: 0.5, color: AppTheme.textSecondary)),
-        const SizedBox(height: 4),
-        DropdownButtonFormField<String>(
-          initialValue: _profileId.isEmpty ? null : _profileId,
-          decoration: InputDecoration(
-            filled: true,
-            fillColor: AppTheme.cardWhite,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppTheme.borderLight),
+    return Container(
+      height: MediaQuery.of(context).size.height,
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFA),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            Center(
+              child: Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 6),
+                width: 36,
+                height: 4.5,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFCBD5E1),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              ),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          ),
-          items: widget.profiles
-              .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
-              .toList(),
-          onChanged: (id) => setState(() => _profileId = id ?? _profileId),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildGlassCircleButton(
+                    icon: CupertinoIcons.xmark,
+                    onTap: () => Navigator.of(context).pop(),
+                  ),
+                  const Text(
+                    'Confirm Details',
+                    style: TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+                  _buildGlassCircleButton(
+                    key: const Key('confirm_save_button'),
+                    icon: CupertinoIcons.checkmark,
+                    isPrimary: true,
+                    enabled: _canSave,
+                    onTap: _save,
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: AppTheme.borderLight),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
+                children: [
+                  // Hero card -- same chrome as MedicationDetailSheet, with
+                  // a live-updating name/subtitle instead of a static one
+                  // since there's no saved Prescription yet to read from.
+                  Container(
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: AppTheme.borderLight),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.textPrimary.withValues(alpha: 0.03),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: profile.color.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(CupertinoIcons.capsule_fill, color: profile.color, size: 28),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                heroName,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppTheme.textPrimary,
+                                  letterSpacing: -0.4,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                heroSubtitle,
+                                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  const Text(
+                    'MEDICATION INFORMATION',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textSecondary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.borderLight),
+                    ),
+                    child: Column(
+                      children: [
+                        TextField(
+                          key: const Key('field_drug'),
+                          controller: _drug,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: 'Drug Name',
+                            border: const UnderlineInputBorder(),
+                            errorText: _flagText(e.isRecognized('drug'), e.drug),
+                            errorMaxLines: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          key: const Key('field_strength'),
+                          controller: _strength,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: 'Strength',
+                            border: const UnderlineInputBorder(),
+                            errorText: _flagText(e.isRecognized('strength'), e.strength),
+                            errorMaxLines: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          key: const Key('field_dose'),
+                          controller: _dose,
+                          onChanged: (_) => setState(() {}),
+                          decoration: InputDecoration(
+                            labelText: 'Dose',
+                            border: const UnderlineInputBorder(),
+                            errorText: _flagText(e.isRecognized('dose'), e.dose),
+                            errorMaxLines: 2,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          key: const Key('field_form'),
+                          initialValue: _formValue,
+                          isExpanded: true,
+                          hint: const Text('Select a form'),
+                          decoration: InputDecoration(
+                            labelText: 'Form',
+                            border: const UnderlineInputBorder(),
+                            errorText: _flagText(e.isRecognized('form'), e.form),
+                            errorMaxLines: 2,
+                          ),
+                          items: formOptions
+                              .map((f) => DropdownMenuItem(value: f, child: Text(f[0].toUpperCase() + f.substring(1))))
+                              .toList(),
+                          onChanged: (value) => setState(() => _formValue = value),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  const Text(
+                    'SCHEDULE',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textSecondary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.borderLight),
+                    ),
+                    child: Column(
+                      children: [
+                        InkWell(
+                          key: const Key('field_time'),
+                          onTap: _pickTime,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Reminder Time (required)',
+                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                              Row(
+                                children: [
+                                  Text(
+                                    _selectedTime != null ? _formatTime(_selectedTime!) : 'Tap to set',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: _selectedTime != null
+                                          ? AppTheme.interactiveTeal
+                                          : AppTheme.lowStockAlert,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(CupertinoIcons.chevron_right, size: 14, color: AppTheme.textSecondary),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (e.frequency != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            'OCR read frequency as: "${e.frequency}"',
+                            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                          ),
+                        ],
+                        const Divider(height: 24, color: AppTheme.borderLight),
+                        TextField(
+                          key: const Key('field_days_supply'),
+                          controller: _daysSupply,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setState(() {}),
+                          decoration: const InputDecoration(
+                            labelText: 'Days Supply',
+                            border: UnderlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  const Text(
+                    'PROFILE',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textSecondary,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppTheme.borderLight),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Assignee', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                        DropdownButton<String>(
+                          value: _profileId.isEmpty ? null : _profileId,
+                          underline: const SizedBox(),
+                          items: widget.profiles
+                              .map((p) => DropdownMenuItem(value: p.id, child: Text(p.name)))
+                              .toList(),
+                          onChanged: (id) => setState(() => _profileId = id ?? _profileId),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
