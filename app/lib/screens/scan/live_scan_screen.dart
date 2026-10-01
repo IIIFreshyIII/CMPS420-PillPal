@@ -32,10 +32,13 @@ class LiveScanScreen extends StatefulWidget {
 
 enum _ScanStatus { requestingPermission, permissionDenied, initializing, scanning, error }
 
-/// Fields that matter enough to auto-advance on -- the three things a user
-/// most needs to use a medication safely. The rest (dose/form/route/
-/// duration/dates) are nice-to-have and user-completable on Confirm.
-const _requiredFields = ['drug', 'strength', 'frequency'];
+/// Fields that must all be recognized before auto-advancing. Previously only
+/// drug/strength/frequency were checked, which let the scan confirm and move
+/// on before the user had rotated the bottle far enough to show qty/days
+/// supply -- often printed on the opposite side from the drug name/strength.
+/// `daysSupply` isn't in this list because it's regex-extracted, not part of
+/// the NER `fieldRecognized` map -- it's checked separately in `_processFrame`.
+const _requiredFields = ['drug', 'strength', 'dose', 'form', 'frequency'];
 
 /// How many consecutive OCR passes all three required fields must stay
 /// recognized for before auto-advancing -- guards against a one-frame fluke.
@@ -153,7 +156,8 @@ class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObse
     final extraction = await extractor.extract(activeText);
     if (!mounted) return;
 
-    final ready = _requiredFields.every((f) => extraction.isRecognized(f) && _fieldValue(extraction, f) != null);
+    final ready = _requiredFields.every((f) => extraction.isRecognized(f) && _fieldValue(extraction, f) != null) &&
+        extraction.daysSupply != null;
     setState(() {
       _liveExtraction = extraction;
       _consecutivePasses = ready ? _consecutivePasses + 1 : 0;
@@ -170,6 +174,10 @@ class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObse
         return e.drug;
       case 'strength':
         return e.strength;
+      case 'dose':
+        return e.dose;
+      case 'form':
+        return e.form;
       case 'frequency':
         return e.frequency;
       default:
@@ -348,7 +356,10 @@ class _ScanningView extends StatelessWidget {
                       if (extraction!.drug != null) _FieldChip('Drug', extraction!.drug!),
                       if (extraction!.strength != null) _FieldChip('Strength', extraction!.strength!),
                       if (extraction!.dose != null) _FieldChip('Dose', extraction!.dose!),
+                      if (extraction!.form != null) _FieldChip('Form', extraction!.form!),
                       if (extraction!.frequency != null) _FieldChip('Frequency', extraction!.frequency!),
+                      if (extraction!.daysSupply != null)
+                        _FieldChip('Days Supply', '${extraction!.daysSupply}'),
                     ],
                   ),
                 const SizedBox(height: 16),
