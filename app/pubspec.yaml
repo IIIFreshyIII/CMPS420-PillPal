@@ -24,15 +24,16 @@ dependencies:
   # >=1.5.1 required for Android's 16 KB page-size compliance (targetSdk 36).
   flutter_onnxruntime: ^1.8.5
 
-  # Local persistence (profiles/prescriptions/dose history). Plain sqlite3 --
-  # not sqlite3_flutter_libs/sqlcipher_flutter_libs, both end-of-life as of
-  # sqlite3 3.x/drift 2.32+; bundling the native lib is automatic now.
-  # Encryption is deferred (see pubspec notes below); this is swappable later
-  # without a schema rewrite.
+  # Local persistence (profiles/prescriptions/dose history), encrypted at rest.
+  # Not sqlite3_flutter_libs/sqlcipher_flutter_libs -- both end-of-life as of
+  # sqlite3 3.x/drift 2.32+. The `hooks` block below swaps the bundled SQLite
+  # build for SQLite3MultipleCiphers; see data/local/connection.dart and
+  # encryption_key.dart for how the key is generated/applied.
   drift: ^2.23.0
   sqlite3: ^3.0.0
   path_provider: ^2.1.4
   path: ^1.9.0
+  flutter_secure_storage: ^11.2.0
 
   # Real reminder delivery for Prescription.reminderTimes (exact, daily-
   # repeating alarms -- see core/scheduling/reminder_scheduler.dart for the
@@ -55,6 +56,13 @@ flutter:
     # ../distill/export_onnx.py --emit assets/ner  (see assets/ner/README.md)
     - assets/ner/
 
+# Bundles SQLite3MultipleCiphers instead of plain SQLite, giving the sqlite3
+# package's native build real encryption support (PRAGMA key/rekey). See
+# https://drift.simonbinder.eu/platforms/encryption/.
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
+
 # Still to add later:
-#   drift + sqlcipher_flutter_libs  - encrypted local database
-#   local_auth                      - biometric / PIN app lock
+#   local_auth  - biometric / PIN app lock
