@@ -3,17 +3,20 @@ import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/pillpal_colors.dart';
 
 /// A bottom sheet combining a small live analog-clock preview with a
 /// scrolling wheel picker for the actual input -- the clock is feedback
 /// only, never tappable; every time change comes from the wheel.
-Future<TimeOfDay?> showRotaryTimePicker(BuildContext context, {TimeOfDay? initialTime}) {
+Future<TimeOfDay?> showRotaryTimePicker(BuildContext context,
+    {TimeOfDay? initialTime}) {
   return showModalBottomSheet<TimeOfDay>(
     context: context,
-    backgroundColor: AppTheme.cardWhite,
-    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
-    builder: (_) => _RotaryTimePickerSheet(initialTime: initialTime ?? TimeOfDay.now()),
+    backgroundColor: context.colors.surface,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+    builder: (_) =>
+        _RotaryTimePickerSheet(initialTime: initialTime ?? TimeOfDay.now()),
   );
 }
 
@@ -49,11 +52,13 @@ class _RotaryTimePickerSheetState extends State<_RotaryTimePickerSheet> {
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('Cancel'),
                 ),
-                const Text('Reminder Time', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('Reminder Time',
+                    style: TextStyle(fontWeight: FontWeight.w600)),
                 TextButton(
                   key: const Key('rotary_time_done'),
                   onPressed: () => Navigator.of(context).pop(_time),
-                  child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: const Text('Done',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
@@ -66,7 +71,8 @@ class _RotaryTimePickerSheetState extends State<_RotaryTimePickerSheet> {
                 mode: CupertinoDatePickerMode.time,
                 initialDateTime: _asDateTime,
                 use24hFormat: false,
-                onDateTimeChanged: (dt) => setState(() => _time = TimeOfDay(hour: dt.hour, minute: dt.minute)),
+                onDateTimeChanged: (dt) => setState(
+                    () => _time = TimeOfDay(hour: dt.hour, minute: dt.minute)),
               ),
             ),
           ],
@@ -85,25 +91,29 @@ class _AnalogClockPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(width: size, height: size, child: CustomPaint(painter: _ClockPainter(time)));
+    return SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(painter: _ClockPainter(time, context.colors)));
   }
 }
 
 class _ClockPainter extends CustomPainter {
-  _ClockPainter(this.time);
+  _ClockPainter(this.time, this.colors);
   final TimeOfDay time;
+  final PillPalColors colors;
 
   @override
   void paint(Canvas canvas, Size size) {
     final center = size.center(Offset.zero);
     final radius = size.width / 2;
 
-    canvas.drawCircle(center, radius - 1, Paint()..color = AppTheme.background);
+    canvas.drawCircle(center, radius - 1, Paint()..color = colors.background);
     canvas.drawCircle(
       center,
       radius - 1,
       Paint()
-        ..color = AppTheme.borderLight
+        ..color = colors.borderLight
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
@@ -111,7 +121,8 @@ class _ClockPainter extends CustomPainter {
     for (var i = 0; i < 12; i++) {
       final angle = i * (math.pi / 6);
       final isMajor = i % 3 == 0;
-      final outer = Offset(center.dx + (radius - 4) * math.sin(angle), center.dy - (radius - 4) * math.cos(angle));
+      final outer = Offset(center.dx + (radius - 4) * math.sin(angle),
+          center.dy - (radius - 4) * math.cos(angle));
       final inner = Offset(
         center.dx + (radius - (isMajor ? 10 : 6)) * math.sin(angle),
         center.dy - (radius - (isMajor ? 10 : 6)) * math.cos(angle),
@@ -120,34 +131,38 @@ class _ClockPainter extends CustomPainter {
         inner,
         outer,
         Paint()
-          ..color = AppTheme.textSecondary
+          ..color = colors.inkMuted
           ..strokeWidth = isMajor ? 2 : 1,
       );
     }
 
-    final hourAngle = ((time.hourOfPeriod % 12) + time.minute / 60) * (math.pi / 6);
+    final hourAngle =
+        ((time.hourOfPeriod % 12) + time.minute / 60) * (math.pi / 6);
     final minuteAngle = time.minute * (math.pi / 30);
 
     canvas.drawLine(
       center,
-      Offset(center.dx + radius * 0.45 * math.sin(hourAngle), center.dy - radius * 0.45 * math.cos(hourAngle)),
+      Offset(center.dx + radius * 0.45 * math.sin(hourAngle),
+          center.dy - radius * 0.45 * math.cos(hourAngle)),
       Paint()
-        ..color = AppTheme.textPrimary
+        ..color = colors.ink
         ..strokeWidth = 3
         ..strokeCap = StrokeCap.round,
     );
     canvas.drawLine(
       center,
-      Offset(center.dx + radius * 0.7 * math.sin(minuteAngle), center.dy - radius * 0.7 * math.cos(minuteAngle)),
+      Offset(center.dx + radius * 0.7 * math.sin(minuteAngle),
+          center.dy - radius * 0.7 * math.cos(minuteAngle)),
       Paint()
-        ..color = AppTheme.interactiveTeal
+        ..color = colors.teal
         ..strokeWidth = 2
         ..strokeCap = StrokeCap.round,
     );
 
-    canvas.drawCircle(center, 3, Paint()..color = AppTheme.interactiveTeal);
+    canvas.drawCircle(center, 3, Paint()..color = colors.teal);
   }
 
   @override
-  bool shouldRepaint(covariant _ClockPainter oldDelegate) => oldDelegate.time != time;
+  bool shouldRepaint(covariant _ClockPainter oldDelegate) =>
+      oldDelegate.time != time || oldDelegate.colors != colors;
 }

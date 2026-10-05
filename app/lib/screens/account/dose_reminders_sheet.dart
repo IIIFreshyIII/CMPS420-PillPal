@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../data/services/notification_service.dart';
 
 /// Status + grant UI for the two Android permissions dose reminders need --
@@ -24,7 +24,8 @@ class DoseRemindersSheet extends StatefulWidget {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => DoseRemindersSheet(notificationService: notificationService),
+      builder: (ctx) =>
+          DoseRemindersSheet(notificationService: notificationService),
     );
   }
 
@@ -45,8 +46,10 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
 
   Future<void> _refreshStatus() async {
     setState(() => _loading = true);
-    final notifications = await widget.notificationService.areNotificationsEnabled();
-    final exactAlarms = await widget.notificationService.hasExactAlarmPermission();
+    final notifications =
+        await widget.notificationService.areNotificationsEnabled();
+    final exactAlarms =
+        await widget.notificationService.hasExactAlarmPermission();
     if (!mounted) return;
     setState(() {
       _notificationsEnabled = notifications;
@@ -62,11 +65,12 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final allGranted = _notificationsEnabled && _exactAlarmsGranted;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFA),
+      decoration: BoxDecoration(
+        color: c.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
@@ -80,7 +84,7 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
                 width: 36,
                 height: 4.5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
+                  color: c.grabber,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -94,15 +98,18 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
                     onPressed: () => Navigator.of(context).pop(),
                     child: const Text('Close'),
                   ),
-                  const Text(
+                  Text(
                     'Dose Reminders',
-                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                    style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                        color: c.ink),
                   ),
                   const SizedBox(width: 56),
                 ],
               ),
             ),
-            const Divider(height: 1, color: AppTheme.borderLight),
+            Divider(height: 1, color: c.borderLight),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               child: Column(
@@ -111,9 +118,9 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.borderLight),
+                      border: Border.all(color: c.borderLight),
                     ),
                     child: _loading
                         ? const Padding(
@@ -122,9 +129,13 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
                           )
                         : Column(
                             children: [
-                              _StatusRow(label: 'Notifications', granted: _notificationsEnabled),
-                              const Divider(height: 20, color: AppTheme.borderLight),
-                              _StatusRow(label: 'Exact Timing', granted: _exactAlarmsGranted),
+                              _StatusRow(
+                                  label: 'Notifications',
+                                  granted: _notificationsEnabled),
+                              Divider(height: 20, color: c.borderLight),
+                              _StatusRow(
+                                  label: 'Exact Timing',
+                                  granted: _exactAlarmsGranted),
                             ],
                           ),
                   ),
@@ -135,7 +146,7 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
                       child: FilledButton(
                         key: const Key('grant_reminder_permissions_button'),
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppTheme.interactiveTeal,
+                          backgroundColor: c.teal,
                           minimumSize: const Size.fromHeight(48),
                         ),
                         onPressed: _grantMissing,
@@ -143,11 +154,11 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
                       ),
                     ),
                   const SizedBox(height: 10),
-                  const Text(
+                  Text(
                     "Both are needed for a medication's reminders to actually fire at the right "
                     "time. Exact timing requires a one-time grant on a system settings screen -- "
                     "Android shows this separately from the usual notification prompt.",
-                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                    style: TextStyle(fontSize: 11, color: c.inkMuted),
                   ),
                 ],
               ),
@@ -167,16 +178,20 @@ class _StatusRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+        Text(label,
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
         Row(
           children: [
             Icon(
-              granted ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.xmark_circle_fill,
+              granted
+                  ? CupertinoIcons.checkmark_circle_fill
+                  : CupertinoIcons.xmark_circle_fill,
               size: 18,
-              color: granted ? AppTheme.interactiveTeal : AppTheme.lowStockAlert,
+              color: granted ? c.teal : c.alert,
             ),
             const SizedBox(width: 6),
             Text(
@@ -184,7 +199,7 @@ class _StatusRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: granted ? AppTheme.interactiveTeal : AppTheme.lowStockAlert,
+                color: granted ? c.tealDeep : c.alert,
               ),
             ),
           ],

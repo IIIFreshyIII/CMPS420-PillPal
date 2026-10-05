@@ -2,6 +2,10 @@ import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../../core/theme/pillpal_colors.dart';
+import '../../core/theme/theme_controller.dart';
+import '../../data/services/app_lock_service.dart';
 import '../../data/local/app_database.dart';
 import '../../data/models/dose_event.dart';
 import '../../data/models/prescription.dart';
@@ -22,11 +26,18 @@ import '../../presentation/widgets/android_sliding_bottom_bar.dart';
 enum _ScanMode { live, upload }
 
 class HomeScaffold extends StatefulWidget {
-  const HomeScaffold({super.key, this.database});
+  const HomeScaffold({
+    super.key,
+    this.database,
+    this.themeController,
+    this.appLock,
+  });
 
   /// Injectable for tests (an in-memory `AppDatabase`); production always
   /// uses the default on-disk database created in `initState`.
   final AppDatabase? database;
+  final ThemeController? themeController;
+  final AppLockService? appLock;
 
   @override
   State<HomeScaffold> createState() => _HomeScaffoldState();
@@ -209,8 +220,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child:
-                  const Text('OK', style: TextStyle(color: Color(0xFF168B87))),
+              child: Text('OK', style: TextStyle(color: context.colors.teal)),
             ),
           ],
         ),
@@ -239,12 +249,16 @@ class _HomeScaffoldState extends State<HomeScaffold> {
 
   /// [targets] is (prescriptionId, time) pairs -- a prescription with
   /// several reminder times can have some targeted and others left alone.
-  void _handleToggleAllCompleted(List<(String, String)> targets, bool shouldMarkTaken) {
+  void _handleToggleAllCompleted(
+      List<(String, String)> targets, bool shouldMarkTaken) {
     for (final item in _prescriptions) {
-      final times = targets.where((t) => t.$1 == item.id).map((t) => t.$2).toSet();
+      final times =
+          targets.where((t) => t.$1 == item.id).map((t) => t.$2).toSet();
       if (times.isEmpty) continue;
 
-      final toMark = shouldMarkTaken ? times.difference(item.takenTimes) : times.intersection(item.takenTimes);
+      final toMark = shouldMarkTaken
+          ? times.difference(item.takenTimes)
+          : times.intersection(item.takenTimes);
       if (toMark.isEmpty) continue;
 
       if (shouldMarkTaken) {
@@ -382,6 +396,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             onUpdateProfile: _handleUpdateProfile,
             onDeleteProfile: _handleDeleteProfile,
             notificationService: _notifications,
+            themeController: widget.themeController,
+            appLock: widget.appLock,
           ),
         );
     }
@@ -425,6 +441,29 @@ class _HomeScaffoldState extends State<HomeScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: _systemBarsStyle(Theme.of(context).brightness),
+      child: _buildShell(context),
+    );
+  }
+
+  /// Status-bar icons follow the theme (dark icons in Light, light icons in
+  /// Dark); the hidden nav bar keeps its scrim + light icons in both. Set
+  /// here per theme rather than once in main(), which left dark icons on a
+  /// dark screen.
+  SystemUiOverlayStyle _systemBarsStyle(Brightness brightness) {
+    final dark = brightness == Brightness.dark;
+    return SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+      statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+      systemNavigationBarColor: context.colors.navScrim,
+      systemNavigationBarIconBrightness: Brightness.light,
+      systemNavigationBarContrastEnforced: true,
+    );
+  }
+
+  Widget _buildShell(BuildContext context) {
     final activeBody = AnimatedSwitcher(
       duration: const Duration(milliseconds: 180),
       switchInCurve: Curves.easeOut,
@@ -438,7 +477,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     // Native Full-Width Sliding Bar on Android
     if (Platform.isAndroid) {
       return Scaffold(
-        backgroundColor: const Color(0xFFF8FAFA),
+        backgroundColor: context.colors.background,
         body: SafeArea(
           bottom: false,
           child: activeBody,

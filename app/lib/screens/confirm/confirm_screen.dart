@@ -4,7 +4,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/ner/postprocess.dart' show formOptions;
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../data/models/profile.dart';
 import '../../data/models/prescription.dart';
 import '../../data/services/extraction_mapper.dart';
@@ -27,7 +27,8 @@ import 'reminder_schedule_sheet.dart';
 /// Pops with the built [Prescription], or `null` if the user backs out at
 /// either step.
 class ConfirmScreen extends StatefulWidget {
-  const ConfirmScreen({super.key, required this.extraction, required this.profiles});
+  const ConfirmScreen(
+      {super.key, required this.extraction, required this.profiles});
 
   final Extraction extraction;
   final List<Profile> profiles;
@@ -42,7 +43,8 @@ class ConfirmScreen extends StatefulWidget {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => ConfirmScreen(extraction: extraction, profiles: profiles),
+      builder: (ctx) =>
+          ConfirmScreen(extraction: extraction, profiles: profiles),
     );
   }
 
@@ -69,7 +71,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     // Only pre-select if OCR's value is already one of the canonical forms --
     // an unrecognized raw value (e.g. a garbled read) must never silently
     // become a different, wrong dropdown choice.
-    _formValue = (e.form != null && formOptions.contains(e.form)) ? e.form : null;
+    _formValue =
+        (e.form != null && formOptions.contains(e.form)) ? e.form : null;
     _profileId = widget.profiles.isNotEmpty ? widget.profiles.first.id : '';
   }
 
@@ -82,7 +85,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     super.dispose();
   }
 
-  bool get _canContinue => _drug.text.trim().isNotEmpty && _profileId.isNotEmpty;
+  bool get _canContinue =>
+      _drug.text.trim().isNotEmpty && _profileId.isNotEmpty;
 
   /// A flagged field's error message -- the raw OCR text, never a fabricated
   /// confidence score. `null` (no error shown) when the field is recognized.
@@ -93,7 +97,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
   Profile get _selectedProfile => widget.profiles.firstWhere(
         (p) => p.id == _profileId,
-        orElse: () => const Profile(id: '0', name: 'General', color: Colors.grey),
+        orElse: () =>
+            const Profile(id: '0', name: 'General', color: Colors.grey),
       );
 
   Future<void> _confirmAndContinue() async {
@@ -128,6 +133,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     bool isPrimary = false,
     bool enabled = true,
   }) {
+    final c = context.colors;
     return GestureDetector(
       key: key,
       onTap: enabled ? onTap : null,
@@ -140,22 +146,22 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
             height: 36,
             decoration: BoxDecoration(
               color: !enabled
-                  ? Colors.white.withValues(alpha: 0.5)
+                  ? c.glass.withValues(alpha: c.glass.a * (0.5 / 0.7))
                   : isPrimary
-                      ? AppTheme.interactiveTeal.withValues(alpha: 0.90)
-                      : Colors.white.withValues(alpha: 0.70),
+                      ? c.teal.withValues(alpha: 0.90)
+                      : c.glass,
               shape: BoxShape.circle,
               border: Border.all(
                 color: !enabled
-                    ? Colors.white.withValues(alpha: 0.6)
+                    ? c.glassRim.withValues(alpha: c.glassRim.a * (0.6 / 0.9))
                     : isPrimary
-                        ? AppTheme.interactiveTeal
-                        : Colors.white.withValues(alpha: 0.9),
+                        ? c.teal
+                        : c.glassRim,
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.textPrimary.withValues(alpha: 0.08),
+                  color: c.liftShadow,
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -166,10 +172,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 icon,
                 size: 18,
                 color: !enabled
-                    ? AppTheme.textSecondary.withValues(alpha: 0.5)
+                    ? c.inkMuted.withValues(alpha: 0.5)
                     : isPrimary
-                        ? Colors.white
-                        : AppTheme.textPrimary,
+                        ? c.onTeal
+                        : c.ink,
               ),
             ),
           ),
@@ -180,13 +186,14 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final e = widget.extraction;
     final profile = _selectedProfile;
 
     return Container(
       height: MediaQuery.of(context).size.height,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFA),
+      decoration: BoxDecoration(
+        color: c.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
@@ -199,7 +206,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 width: 36,
                 height: 4.5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
+                  color: c.grabber,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -213,12 +220,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                     icon: CupertinoIcons.xmark,
                     onTap: () => Navigator.of(context).pop(),
                   ),
-                  const Text(
+                  Text(
                     'Confirm Details',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
+                      color: c.ink,
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -232,7 +239,7 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                 ],
               ),
             ),
-            const Divider(height: 1, color: AppTheme.borderLight),
+            Divider(height: 1, color: c.borderLight),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
@@ -242,12 +249,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: AppTheme.borderLight),
+                      border: Border.all(color: c.borderLight),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.textPrimary.withValues(alpha: 0.03),
+                          color: c.cardShadow,
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
@@ -263,7 +270,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                             color: profile.color.withValues(alpha: 0.12),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(CupertinoIcons.capsule_fill, color: profile.color, size: 28),
+                          child: Icon(CupertinoIcons.capsule_fill,
+                              color: profile.color, size: 28),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -274,10 +282,10 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                                 key: const Key('field_drug'),
                                 controller: _drug,
                                 onChanged: (_) => setState(() {}),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.w800,
-                                  color: AppTheme.textPrimary,
+                                  color: c.ink,
                                   letterSpacing: -0.4,
                                 ),
                                 decoration: InputDecoration(
@@ -285,7 +293,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                                   isDense: true,
                                   contentPadding: EdgeInsets.zero,
                                   hintText: 'Medication name',
-                                  errorText: _flagText(e.isRecognized('drug'), e.drug),
+                                  errorText:
+                                      _flagText(e.isRecognized('drug'), e.drug),
                                   errorStyle: const TextStyle(fontSize: 11),
                                 ),
                               ),
@@ -295,17 +304,20 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                                 value: _profileId.isEmpty ? null : _profileId,
                                 isDense: true,
                                 underline: const SizedBox(),
-                                icon: const Icon(CupertinoIcons.chevron_down,
-                                    size: 12, color: AppTheme.textSecondary),
-                                style: const TextStyle(
+                                icon: Icon(CupertinoIcons.chevron_down,
+                                    size: 12, color: c.inkMuted),
+                                style: TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w600,
-                                  color: AppTheme.textSecondary,
+                                  color: c.inkMuted,
                                 ),
                                 items: widget.profiles
-                                    .map((p) => DropdownMenuItem(value: p.id, child: Text('For ${p.name}')))
+                                    .map((p) => DropdownMenuItem(
+                                        value: p.id,
+                                        child: Text('For ${p.name}')))
                                     .toList(),
-                                onChanged: (id) => setState(() => _profileId = id ?? _profileId),
+                                onChanged: (id) => setState(
+                                    () => _profileId = id ?? _profileId),
                               ),
                             ],
                           ),
@@ -316,12 +328,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
                   const SizedBox(height: 22),
 
-                  const Text(
+                  Text(
                     'MEDICATION INFORMATION',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.textSecondary,
+                      color: c.inkMuted,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -329,9 +341,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.borderLight),
+                      border: Border.all(color: c.borderLight),
                     ),
                     child: Column(
                       children: [
@@ -342,7 +354,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                           decoration: InputDecoration(
                             labelText: 'Strength',
                             border: const UnderlineInputBorder(),
-                            errorText: _flagText(e.isRecognized('strength'), e.strength),
+                            errorText: _flagText(
+                                e.isRecognized('strength'), e.strength),
                             errorMaxLines: 2,
                           ),
                         ),
@@ -354,7 +367,8 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                           decoration: InputDecoration(
                             labelText: 'Dose',
                             border: const UnderlineInputBorder(),
-                            errorText: _flagText(e.isRecognized('dose'), e.dose),
+                            errorText:
+                                _flagText(e.isRecognized('dose'), e.dose),
                             errorMaxLines: 2,
                           ),
                         ),
@@ -367,13 +381,18 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
                           decoration: InputDecoration(
                             labelText: 'Form',
                             border: const UnderlineInputBorder(),
-                            errorText: _flagText(e.isRecognized('form'), e.form),
+                            errorText:
+                                _flagText(e.isRecognized('form'), e.form),
                             errorMaxLines: 2,
                           ),
                           items: formOptions
-                              .map((f) => DropdownMenuItem(value: f, child: Text(f[0].toUpperCase() + f.substring(1))))
+                              .map((f) => DropdownMenuItem(
+                                  value: f,
+                                  child: Text(
+                                      f[0].toUpperCase() + f.substring(1))))
                               .toList(),
-                          onChanged: (value) => setState(() => _formValue = value),
+                          onChanged: (value) =>
+                              setState(() => _formValue = value),
                         ),
                         const SizedBox(height: 12),
                         TextField(

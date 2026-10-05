@@ -18,6 +18,10 @@
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
+    <!-- App lock (data/services/app_lock_service.dart): local_auth's device
+         PIN/pattern/biometric prompt. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
+
     <application
         android:label="PillPal"
         android:name="${applicationName}"

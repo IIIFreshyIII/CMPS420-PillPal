@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../core/scheduling/reminder_scheduler.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../core/utils/date_formatter.dart';
 import 'widgets/rotary_time_picker.dart';
 
@@ -21,7 +21,8 @@ import 'widgets/rotary_time_picker.dart';
 /// (`["8:00 AM", "12:00 PM", ...]`), or `null` if the user backs out --
 /// `ConfirmScreen` is the one that turns that into a saved [Prescription].
 class ReminderScheduleSheet extends StatefulWidget {
-  const ReminderScheduleSheet({super.key, required this.frequency, required this.bedtime});
+  const ReminderScheduleSheet(
+      {super.key, required this.frequency, required this.bedtime});
 
   /// Raw OCR frequency text (e.g. "every 4 hours"), or null if none was read.
   final String? frequency;
@@ -40,7 +41,8 @@ class ReminderScheduleSheet extends StatefulWidget {
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => ReminderScheduleSheet(frequency: frequency, bedtime: bedtime),
+      builder: (ctx) =>
+          ReminderScheduleSheet(frequency: frequency, bedtime: bedtime),
     );
   }
 
@@ -50,7 +52,8 @@ class ReminderScheduleSheet extends StatefulWidget {
 
 class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
   TimeOfDay? _startTime;
-  late final int? _intervalHours = parseFrequencyIntervalHours(widget.frequency);
+  late final int? _intervalHours =
+      parseFrequencyIntervalHours(widget.frequency);
 
   bool get _canSave => _startTime != null;
 
@@ -59,7 +62,8 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
     if (picked != null) setState(() => _startTime = picked);
   }
 
-  String _intervalLabel(int hours) => hours == 24 ? 'Once a day' : 'Every $hours hours';
+  String _intervalLabel(int hours) =>
+      hours == 24 ? 'Once a day' : 'Every $hours hours';
 
   void _save() {
     HapticFeedback.lightImpact();
@@ -79,6 +83,7 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
     bool isPrimary = false,
     bool enabled = true,
   }) {
+    final c = context.colors;
     return GestureDetector(
       key: key,
       onTap: enabled ? onTap : null,
@@ -91,22 +96,22 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
             height: 36,
             decoration: BoxDecoration(
               color: !enabled
-                  ? Colors.white.withValues(alpha: 0.5)
+                  ? c.glass.withValues(alpha: c.glass.a * (0.5 / 0.7))
                   : isPrimary
-                      ? AppTheme.interactiveTeal.withValues(alpha: 0.90)
-                      : Colors.white.withValues(alpha: 0.70),
+                      ? c.teal.withValues(alpha: 0.90)
+                      : c.glass,
               shape: BoxShape.circle,
               border: Border.all(
                 color: !enabled
-                    ? Colors.white.withValues(alpha: 0.6)
+                    ? c.glassRim.withValues(alpha: c.glassRim.a * (0.6 / 0.9))
                     : isPrimary
-                        ? AppTheme.interactiveTeal
-                        : Colors.white.withValues(alpha: 0.9),
+                        ? c.teal
+                        : c.glassRim,
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.textPrimary.withValues(alpha: 0.08),
+                  color: c.liftShadow,
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -117,10 +122,10 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                 icon,
                 size: 18,
                 color: !enabled
-                    ? AppTheme.textSecondary.withValues(alpha: 0.5)
+                    ? c.inkMuted.withValues(alpha: 0.5)
                     : isPrimary
-                        ? Colors.white
-                        : AppTheme.textPrimary,
+                        ? c.onTeal
+                        : c.ink,
               ),
             ),
           ),
@@ -131,6 +136,7 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final interval = _intervalHours;
     final computedTimes = _startTime == null || interval == null
         ? const <TimeOfDay>[]
@@ -142,8 +148,8 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
 
     return Container(
       height: MediaQuery.of(context).size.height,
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFA),
+      decoration: BoxDecoration(
+        color: c.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
@@ -156,7 +162,7 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                 width: 36,
                 height: 4.5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
+                  color: c.grabber,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -170,12 +176,12 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                     icon: CupertinoIcons.xmark,
                     onTap: () => Navigator.of(context).pop(),
                   ),
-                  const Text(
+                  Text(
                     'Reminder Schedule',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
+                      color: c.ink,
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -189,17 +195,17 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                 ],
               ),
             ),
-            const Divider(height: 1, color: AppTheme.borderLight),
+            Divider(height: 1, color: c.borderLight),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
                 children: [
-                  const Text(
+                  Text(
                     'START TIME',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.textSecondary,
+                      color: c.inkMuted,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -207,9 +213,9 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppTheme.borderLight),
+                      border: Border.all(color: c.borderLight),
                     ),
                     child: InkWell(
                       key: const Key('field_start_time'),
@@ -218,21 +224,23 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('First dose (required)',
-                              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                              style: TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w600)),
                           Row(
                             children: [
                               Text(
-                                _startTime != null ? formatTimeOfDayLabel(_startTime!) : 'Tap to set',
+                                _startTime != null
+                                    ? formatTimeOfDayLabel(_startTime!)
+                                    : 'Tap to set',
                                 style: TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w700,
-                                  color: _startTime != null
-                                      ? AppTheme.interactiveTeal
-                                      : AppTheme.lowStockAlert,
+                                  color: _startTime != null ? c.teal : c.alert,
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              const Icon(CupertinoIcons.chevron_right, size: 14, color: AppTheme.textSecondary),
+                              Icon(CupertinoIcons.chevron_right,
+                                  size: 14, color: c.inkMuted),
                             ],
                           ),
                         ],
@@ -241,12 +249,12 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                   ),
                   if (widget.frequency != null) ...[
                     const SizedBox(height: 22),
-                    const Text(
+                    Text(
                       'FREQUENCY',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textSecondary,
+                        color: c.inkMuted,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -254,25 +262,25 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.borderLight),
+                        border: Border.all(color: c.borderLight),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'OCR read frequency as: "${widget.frequency}"',
-                            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                            style: TextStyle(color: c.inkMuted, fontSize: 12),
                           ),
                           if (interval != null) ...[
                             const SizedBox(height: 10),
                             Text(
                               _intervalLabel(interval),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
-                                color: AppTheme.textPrimary,
+                                color: c.ink,
                               ),
                             ),
                             if (_startTime != null) ...[
@@ -282,17 +290,19 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                                 runSpacing: 8,
                                 children: computedTimes
                                     .map((t) => Container(
-                                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 6, horizontal: 12),
                                           decoration: BoxDecoration(
-                                            color: AppTheme.lightPillTint,
-                                            borderRadius: BorderRadius.circular(14),
+                                            color: c.tint,
+                                            borderRadius:
+                                                BorderRadius.circular(14),
                                           ),
                                           child: Text(
                                             formatTimeOfDayLabel(t),
-                                            style: const TextStyle(
+                                            style: TextStyle(
                                               fontSize: 13,
                                               fontWeight: FontWeight.w700,
-                                              color: AppTheme.interactiveTeal,
+                                              color: c.tealDeep,
                                             ),
                                           ),
                                         ))
@@ -304,15 +314,16 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                                   widget.bedtime != null
                                       ? 'Stops before your ${widget.bedtime} bedtime.'
                                       : 'No bedtime set for this profile yet -- stops at end of day.',
-                                  style: const TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                                  style: TextStyle(
+                                      fontSize: 11, color: c.inkMuted),
                                 ),
                               ],
                             ],
                           ] else ...[
                             const SizedBox(height: 6),
-                            const Text(
+                            Text(
                               "We couldn't turn this into a repeating schedule -- only the time above will be used.",
-                              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                              style: TextStyle(fontSize: 12, color: c.inkMuted),
                             ),
                           ],
                         ],

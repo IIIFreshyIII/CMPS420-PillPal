@@ -1,6 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_theme.dart';
+import 'package:flutter/services.dart';
+import '../../../core/theme/pillpal_colors.dart';
+import '../../../presentation/widgets/confetti_burst.dart';
+import '../../../presentation/widgets/pressable.dart';
 import '../../../data/models/prescription.dart';
 import '../../../data/models/profile.dart';
 
@@ -27,30 +30,51 @@ class MedicationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final bool isLow = item.remaining <= 5;
     final parts = time.split(' ');
     final timeDigit = parts.isNotEmpty ? parts[0] : '';
     final timePeriod = parts.length > 1 ? parts[1] : '';
 
-    return GestureDetector(
-      onTap: onViewDetails,
-      behavior: HitTestBehavior.opaque,
-      child: Opacity(
+    final instant = MediaQuery.of(context).disableAnimations;
+    final radius = BorderRadius.circular(18);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AnimatedOpacity(
         opacity: isTaken ? 0.45 : 1.0,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 12),
+        duration: instant ? Duration.zero : const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        child: Pressable(
+          onTap: onViewDetails,
+          borderRadius: radius,
+          rippleColor: c.tealRipple,
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isTaken ? AppTheme.background : AppTheme.cardWhite,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppTheme.borderLight),
+            color: isTaken ? c.background : c.surface,
+            borderRadius: radius,
+            border: Border.all(color: c.borderLight),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.textPrimary.withValues(alpha: 0.03),
+                color: c.cardShadow,
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
             ],
+          ),
+          // The check lives above the card's own tap handler, so pressing it
+          // never also shrinks/ripples the card or opens the quick view.
+          foreground: Padding(
+            padding: const EdgeInsets.only(right: 16 - (48 - 34) / 2),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _DoseCheck(
+                isTaken: isTaken,
+                profileColor: profile?.color,
+                onTap: onTakeDose,
+                instant: instant,
+              ),
+            ),
           ),
           child: Row(
             children: [
@@ -58,7 +82,7 @@ class MedicationCard extends StatelessWidget {
                 width: 58,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
-                  color: AppTheme.lightPillTint,
+                  color: c.tint,
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -66,10 +90,10 @@ class MedicationCard extends StatelessWidget {
                   children: [
                     Text(
                       timeDigit,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.interactiveTeal,
+                        color: c.tealDeep,
                         letterSpacing: -0.3,
                       ),
                     ),
@@ -78,7 +102,7 @@ class MedicationCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.interactiveTeal.withValues(alpha: 0.8),
+                        color: c.tealDeep,
                       ),
                     ),
                   ],
@@ -95,20 +119,20 @@ class MedicationCard extends StatelessWidget {
                       children: [
                         Text(
                           item.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w700,
-                            color: AppTheme.textPrimary,
+                            color: c.ink,
                             letterSpacing: -0.3,
                           ),
                         ),
                         const SizedBox(width: 6),
                         Text(
                           item.dosage,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: AppTheme.textSecondary,
+                            color: c.inkMuted,
                           ),
                         ),
                       ],
@@ -118,7 +142,8 @@ class MedicationCard extends StatelessWidget {
                       children: [
                         if (profile != null)
                           Container(
-                            padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 7),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 2, horizontal: 7),
                             margin: const EdgeInsets.only(right: 8),
                             decoration: BoxDecoration(
                               color: profile!.color,
@@ -126,8 +151,8 @@ class MedicationCard extends StatelessWidget {
                             ),
                             child: Text(
                               profile!.name,
-                              style: const TextStyle(
-                                color: Colors.white,
+                              style: TextStyle(
+                                color: c.tagText,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -137,8 +162,9 @@ class MedicationCard extends StatelessWidget {
                           '${item.remaining} left ${isLow ? '• Refill Soon' : ''}',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: isLow ? FontWeight.w700 : FontWeight.w500,
-                            color: isLow ? AppTheme.lowStockAlert : AppTheme.textSecondary,
+                            fontWeight:
+                                isLow ? FontWeight.w700 : FontWeight.w500,
+                            color: isLow ? c.alert : c.inkMuted,
                           ),
                         ),
                       ],
@@ -146,28 +172,94 @@ class MedicationCard extends StatelessWidget {
                   ],
                 ),
               ),
-              GestureDetector(
-                onTap: onTakeDose,
-                behavior: HitTestBehavior.opaque,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  width: 34,
-                  height: 34,
-                  margin: const EdgeInsets.only(left: 10),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isTaken ? AppTheme.interactiveTeal : Colors.transparent,
-                    border: Border.all(
-                      color: isTaken ? AppTheme.interactiveTeal : const Color(0xFFC7D8D7),
-                      width: 2,
-                    ),
-                  ),
-                  child: isTaken
-                      ? const Icon(CupertinoIcons.checkmark, size: 20, color: Colors.white)
-                      : null,
-                ),
-              ),
+              // Room for the check, which is drawn by `foreground` above.
+              const SizedBox(width: 10 + 34),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The 34px dose check, with a 48x48 touch target (Material minimum). Marking
+/// taken pops the check in with a medium haptic; un-marking just ticks.
+class _DoseCheck extends StatelessWidget {
+  const _DoseCheck({
+    required this.isTaken,
+    required this.profileColor,
+    required this.onTap,
+    required this.instant,
+  });
+
+  final bool isTaken;
+  final Color? profileColor;
+  final VoidCallback onTap;
+  final bool instant;
+
+  /// A tiny burst from the check's centre, in theme colours plus this
+  /// dose's profile colour. ConfettiBurst skips it under "Remove animations".
+  void _celebrate(BuildContext context) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return;
+    final c = context.colors;
+    ConfettiBurst.show(
+      context,
+      origin: box.localToGlobal(box.size.center(Offset.zero)),
+      colors: [
+        c.teal,
+        c.tealDeep,
+        c.mint,
+        c.headerTeal,
+        if (profileColor != null) profileColor!,
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final circle = AnimatedContainer(
+      duration: instant ? Duration.zero : const Duration(milliseconds: 180),
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isTaken ? c.teal : Colors.transparent,
+        border: Border.all(
+          color: isTaken ? c.teal : c.inkMuted,
+          width: 2,
+        ),
+      ),
+      child: isTaken
+          ? Icon(CupertinoIcons.checkmark, size: 20, color: c.onTeal)
+          : null,
+    );
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (isTaken) {
+          HapticFeedback.selectionClick();
+        } else {
+          HapticFeedback.mediumImpact();
+          _celebrate(context);
+        }
+        onTap();
+      },
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Center(
+          child: TweenAnimationBuilder<double>(
+            // Keyed on isTaken so the pop replays each time it's taken.
+            key: ValueKey(isTaken),
+            tween: Tween(begin: isTaken && !instant ? 0.6 : 1.0, end: 1.0),
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutBack,
+            builder: (_, scale, child) =>
+                Transform.scale(scale: scale, child: child),
+            child: circle,
           ),
         ),
       ),

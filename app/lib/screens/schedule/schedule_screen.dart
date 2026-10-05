@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
+import '../../presentation/widgets/pressable.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
@@ -18,7 +19,8 @@ class ScheduleScreen extends StatelessWidget {
   final ValueChanged<String> onSelectProfile;
   final void Function(String prescriptionId, String time) onTakeDose;
   final ValueChanged<Prescription> onViewMedication;
-  final void Function(List<(String, String)> targets, bool shouldMarkTaken) onToggleAllCompleted;
+  final void Function(List<(String, String)> targets, bool shouldMarkTaken)
+      onToggleAllCompleted;
   final VoidCallback onOpenScan;
   final bool isScanning;
 
@@ -37,6 +39,7 @@ class ScheduleScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final filteredMeds = selectedProfileId == 'all'
         ? prescriptions
         : prescriptions.where((m) => m.profileId == selectedProfileId).toList();
@@ -55,7 +58,8 @@ class ScheduleScreen extends StatelessWidget {
     final eveningSlots = slots.where((s) => s.time.contains('PM')).toList();
 
     final totalDoses = slots.length;
-    final takenDoses = slots.where((s) => s.prescription.takenTimes.contains(s.time)).length;
+    final takenDoses =
+        slots.where((s) => s.prescription.takenTimes.contains(s.time)).length;
     final allDone = totalDoses > 0 && takenDoses == totalDoses;
 
     return CustomScrollView(
@@ -63,8 +67,8 @@ class ScheduleScreen extends StatelessWidget {
         SliverToBoxAdapter(
           child: Container(
             padding: const EdgeInsets.fromLTRB(22, 24, 22, 28),
-            decoration: const BoxDecoration(
-              color: AppTheme.headerTeal,
+            decoration: BoxDecoration(
+              color: c.headerTeal,
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
             ),
             child: Row(
@@ -76,10 +80,10 @@ class ScheduleScreen extends StatelessWidget {
                   children: [
                     Text(
                       '${timeOfDayGreeting()},',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
+                        color: c.ink,
                         letterSpacing: -0.2,
                       ),
                     ),
@@ -87,60 +91,64 @@ class ScheduleScreen extends StatelessWidget {
                       profiles
                           .firstWhere(
                             (p) => p.isPrimary,
-                            orElse: () => const Profile(id: '0', name: 'there', color: Colors.grey),
+                            orElse: () => const Profile(
+                                id: '0', name: 'there', color: Colors.grey),
                           )
                           .name,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
-                        color: AppTheme.textPrimary,
+                        color: c.ink,
                         letterSpacing: -0.6,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       formatFullDate(),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
+                        color: c.ink,
                       ),
                     ),
                   ],
                 ),
-                GestureDetector(
+                Pressable(
                   onTap: isScanning ? null : onOpenScan,
+                  scale: 0.94,
                   child: Container(
                     margin: const EdgeInsets.only(top: 4),
-                    padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
                     decoration: BoxDecoration(
-                      color: AppTheme.cardWhite,
+                      color: c.surface,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.textPrimary.withValues(alpha: 0.08),
+                          color: c.liftShadow,
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
                       ],
                     ),
                     child: isScanning
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 16,
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: AppTheme.interactiveTeal,
+                              color: c.teal,
                             ),
                           )
-                        : const Row(
+                        : Row(
                             children: [
-                              Icon(CupertinoIcons.camera, size: 16, color: AppTheme.interactiveTeal),
+                              Icon(CupertinoIcons.camera,
+                                  size: 16, color: c.tealDeep),
                               SizedBox(width: 6),
                               Text(
                                 '+ Scan Bottle',
                                 style: TextStyle(
-                                  color: AppTheme.interactiveTeal,
+                                  color: c.tealDeep,
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13,
                                   letterSpacing: -0.2,
@@ -163,37 +171,43 @@ class ScheduleScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       "Today's Schedule",
                       style: TextStyle(
                         fontSize: 19,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
+                        color: c.ink,
                         letterSpacing: -0.4,
                       ),
                     ),
                     Row(
                       children: [
                         if (totalDoses > 0)
-                          GestureDetector(
+                          Pressable(
+                            scale: 0.94,
                             onTap: () {
-                              final targets = slots.map((s) => (s.prescription.id, s.time)).toList();
+                              final targets = slots
+                                  .map((s) => (s.prescription.id, s.time))
+                                  .toList();
                               onToggleAllCompleted(targets, !allDone);
                             },
                             child: Container(
                               margin: const EdgeInsets.only(right: 8),
-                              padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 5, horizontal: 10),
                               decoration: BoxDecoration(
-                                color: allDone ? const Color(0xFFE2E8F0) : AppTheme.interactiveTeal,
+                                color: allDone ? c.neutralChip : c.tealDeep,
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    allDone ? CupertinoIcons.arrow_counterclockwise : CupertinoIcons.checkmark_alt,
+                                    allDone
+                                        ? CupertinoIcons.arrow_counterclockwise
+                                        : CupertinoIcons.checkmark_alt,
                                     size: 13,
-                                    color: allDone ? const Color(0xFF475569) : Colors.white,
+                                    color: allDone ? c.neutralInk : c.onTeal,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
@@ -201,7 +215,7 @@ class ScheduleScreen extends StatelessWidget {
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: allDone ? const Color(0xFF475569) : Colors.white,
+                                      color: allDone ? c.neutralInk : c.onTeal,
                                     ),
                                   ),
                                 ],
@@ -209,17 +223,18 @@ class ScheduleScreen extends StatelessWidget {
                             ),
                           ),
                         Container(
-                          padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 12),
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 5, horizontal: 12),
                           decoration: BoxDecoration(
-                            color: AppTheme.lightPillTint,
+                            color: c.tint,
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Text(
                             '$takenDoses of $totalDoses',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: AppTheme.interactiveTeal,
+                              color: c.tealDeep,
                               letterSpacing: -0.2,
                             ),
                           ),
@@ -254,7 +269,7 @@ class ScheduleScreen extends StatelessWidget {
           ),
         ),
         if (morningSlots.isNotEmpty) ...[
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20, 20, 20, 10),
               child: Text(
@@ -262,7 +277,7 @@ class ScheduleScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.textSecondary,
+                  color: c.inkMuted,
                   letterSpacing: 0.6,
                 ),
               ),
@@ -279,7 +294,7 @@ class ScheduleScreen extends StatelessWidget {
           ),
         ],
         if (eveningSlots.isNotEmpty) ...[
-          const SliverToBoxAdapter(
+          SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(20, 16, 20, 10),
               child: Text(
@@ -287,7 +302,7 @@ class ScheduleScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.textSecondary,
+                  color: c.inkMuted,
                   letterSpacing: 0.6,
                 ),
               ),
@@ -335,17 +350,20 @@ class _ProfileChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
+      child: Pressable(
         onTap: onTap,
+        scale: 0.94,
+        haptic: isSelected ? PressHaptic.none : PressHaptic.selection,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 16),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.textPrimary : AppTheme.cardWhite,
+            color: isSelected ? c.ink : c.surface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: isSelected ? AppTheme.textPrimary : const Color(0xFFE2ECEB),
+              color: isSelected ? c.ink : c.borderChip,
             ),
           ),
           child: Text(
@@ -353,7 +371,7 @@ class _ProfileChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: isSelected ? Colors.white : AppTheme.textSecondary,
+              color: isSelected ? c.background : c.inkMuted,
               letterSpacing: -0.2,
             ),
           ),
@@ -368,23 +386,26 @@ class _EmptySchedule extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Center(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(CupertinoIcons.checkmark_seal, color: AppTheme.textSecondary.withValues(alpha: 0.4), size: 40),
+            Icon(CupertinoIcons.checkmark_seal,
+                color: c.inkMuted.withValues(alpha: 0.4), size: 40),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'Nothing due right now',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700, color: c.ink),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Scan a bottle to add a medication.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 13, color: c.inkMuted),
             ),
           ],
         ),

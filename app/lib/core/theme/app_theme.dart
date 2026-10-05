@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'pillpal_colors.dart';
+
 class AppTheme {
   AppTheme._();
 
@@ -23,6 +25,23 @@ class AppTheme {
         surface: cardWhite,
         onSurface: textPrimary,
       ),
+      extensions: const [PillPalColors.light],
+    );
+  }
+
+  static ThemeData get darkTheme {
+    const c = PillPalColors.dark;
+    return ThemeData(
+      brightness: Brightness.dark,
+      scaffoldBackgroundColor: c.background,
+      primaryColor: c.teal,
+      fontFamily: '.SF Pro Text',
+      colorScheme: ColorScheme.dark(
+        primary: c.teal,
+        surface: c.surface,
+        onSurface: c.ink,
+      ),
+      extensions: const [PillPalColors.dark],
     );
   }
 }

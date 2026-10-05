@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 
@@ -55,6 +55,7 @@ class MedicationQuickViewSheet extends StatelessWidget {
     required VoidCallback onTap,
     bool isPrimary = false,
   }) {
+    final c = context.colors;
     return GestureDetector(
       key: key,
       onTap: onTap,
@@ -66,28 +67,22 @@ class MedicationQuickViewSheet extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: isPrimary
-                  ? AppTheme.interactiveTeal.withValues(alpha: 0.90)
-                  : Colors.white.withValues(alpha: 0.70),
+              color: isPrimary ? c.teal.withValues(alpha: 0.90) : c.glass,
               shape: BoxShape.circle,
               border: Border.all(
-                color: isPrimary
-                    ? AppTheme.interactiveTeal
-                    : Colors.white.withValues(alpha: 0.9),
+                color: isPrimary ? c.teal : c.glassRim,
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.textPrimary.withValues(alpha: 0.08),
+                  color: c.liftShadow,
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
               ],
             ),
             child: Center(
-              child: Icon(icon,
-                  size: 18,
-                  color: isPrimary ? Colors.white : AppTheme.textPrimary),
+              child: Icon(icon, size: 18, color: isPrimary ? c.onTeal : c.ink),
             ),
           ),
         ),
@@ -97,6 +92,7 @@ class MedicationQuickViewSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final profile = profiles.firstWhere(
       (p) => p.id == prescription.profileId,
       orElse: () => const Profile(id: '0', name: 'General', color: Colors.grey),
@@ -104,8 +100,8 @@ class MedicationQuickViewSheet extends StatelessWidget {
     final isLow = prescription.remaining <= 5;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFA),
+      decoration: BoxDecoration(
+        color: c.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
@@ -119,7 +115,7 @@ class MedicationQuickViewSheet extends StatelessWidget {
                 width: 36,
                 height: 4.5,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
+                  color: c.grabber,
                   borderRadius: BorderRadius.circular(3),
                 ),
               ),
@@ -134,12 +130,12 @@ class MedicationQuickViewSheet extends StatelessWidget {
                     icon: CupertinoIcons.xmark,
                     onTap: () => Navigator.of(context).pop(),
                   ),
-                  const Text(
+                  Text(
                     'Medication',
                     style: TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
+                      color: c.ink,
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -156,18 +152,18 @@ class MedicationQuickViewSheet extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: AppTheme.borderLight),
+            Divider(height: 1, color: c.borderLight),
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
               child: Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: c.surface,
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: AppTheme.borderLight),
+                  border: Border.all(color: c.borderLight),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.textPrimary.withValues(alpha: 0.03),
+                      color: c.cardShadow,
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -200,10 +196,10 @@ class MedicationQuickViewSheet extends StatelessWidget {
                                     child: Text(
                                       prescription.name,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.w800,
-                                        color: AppTheme.textPrimary,
+                                        color: c.ink,
                                         letterSpacing: -0.4,
                                       ),
                                     ),
@@ -211,18 +207,16 @@ class MedicationQuickViewSheet extends StatelessWidget {
                                   const SizedBox(width: 6),
                                   Text(
                                     prescription.dosage,
-                                    style: const TextStyle(
-                                        fontSize: 13,
-                                        color: AppTheme.textSecondary),
+                                    style: TextStyle(
+                                        fontSize: 13, color: c.inkMuted),
                                   ),
                                 ],
                               ),
                               const SizedBox(height: 3),
                               Text(
                                 'Prescribed to ${profile.name}',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    color: AppTheme.textSecondary),
+                                style:
+                                    TextStyle(fontSize: 13, color: c.inkMuted),
                               ),
                             ],
                           ),
@@ -232,35 +226,35 @@ class MedicationQuickViewSheet extends StatelessWidget {
                             padding: const EdgeInsets.symmetric(
                                 vertical: 4, horizontal: 8),
                             decoration: BoxDecoration(
-                              color:
-                                  AppTheme.lowStockAlert.withValues(alpha: 0.1),
+                              color: c.alertTint,
                               borderRadius: BorderRadius.circular(8),
                             ),
-                            child: const Text(
+                            child: Text(
                               'Low Stock',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: AppTheme.lowStockAlert,
+                                color: c.alert,
                               ),
                             ),
                           ),
                       ],
                     ),
                     const SizedBox(height: 16),
-                    const Divider(height: 1, color: AppTheme.borderLight),
+                    Divider(height: 1, color: c.borderLight),
                     const SizedBox(height: 14),
                     Row(
                       children: [
                         Expanded(
                           child: _QuickStat(
                             icon: CupertinoIcons.clock,
-                            label: prescription.reminderTimes.length > 1 ? 'Reminder Times' : 'Reminder Time',
+                            label: prescription.reminderTimes.length > 1
+                                ? 'Reminder Times'
+                                : 'Reminder Time',
                             value: prescription.reminderTimes.join(', '),
                           ),
                         ),
-                        Container(
-                            width: 1, height: 36, color: AppTheme.borderLight),
+                        Container(width: 1, height: 36, color: c.borderLight),
                         Expanded(
                           child: _QuickStat(
                             icon: CupertinoIcons.calendar,
@@ -291,24 +285,21 @@ class _QuickStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Column(
       children: [
-        Icon(icon, size: 18, color: AppTheme.interactiveTeal),
+        Icon(icon, size: 18, color: c.teal),
         const SizedBox(height: 6),
         Text(
           value,
-          style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary),
+          style: TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w800, color: c.ink),
         ),
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary),
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w600, color: c.inkMuted),
         ),
       ],
     );

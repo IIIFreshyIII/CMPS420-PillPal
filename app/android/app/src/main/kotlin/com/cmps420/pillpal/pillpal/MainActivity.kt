@@ -1,7 +1,8 @@
 package com.cmps420.pillpal.pillpal
 
 import android.content.Intent
-import io.flutter.embedding.android.FlutterActivity
+import android.os.Build
+import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -17,13 +18,12 @@ import io.flutter.plugin.common.MethodChannel
  * Dart directly; nothing is ever written to disk on the Android side.
  *
  * Uses the classic `startActivityForResult`/`onActivityResult` API rather
- * than the newer Activity Result API -- `FlutterActivity` extends plain
- * `android.app.Activity`, not `ComponentActivity`, so `registerForActivityResult`
- * isn't available without switching to `FlutterFragmentActivity` (a bigger
- * change than this warrants). `ACTION_GET_CONTENT` still shows the system
- * picker UI and works on every supported API level (minSdk 24+).
+ * than the newer Activity Result API. This is a `FlutterFragmentActivity`
+ * (required by `local_auth` for the app-lock prompt), which still supports the
+ * classic pair. `ACTION_GET_CONTENT` still shows the system picker UI and
+ * works on every supported API level (minSdk 24+).
  */
-class MainActivity : FlutterActivity() {
+class MainActivity : FlutterFragmentActivity() {
     private val channelName = "pillpal/zero_disk_photo_picker"
     private val pickImageRequestCode = 4201
     private var pendingResult: MethodChannel.Result? = null
@@ -44,6 +44,25 @@ class MainActivity : FlutterActivity() {
                             addCategory(Intent.CATEGORY_OPENABLE)
                         }
                         startActivityForResult(intent, pickImageRequestCode)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // While App Lock is on, the recent-apps switcher shows a blank card
+        // instead of a snapshot of someone's medications. Recents-only (API
+        // 33+), so ordinary screenshots keep working; FLAG_SECURE would block
+        // those too. Older Android has no recents-only option: returns false.
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "pillpal/app_lock")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "setHideInRecents" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            setRecentsScreenshotEnabled(call.arguments != true)
+                            result.success(true)
+                        } else {
+                            result.success(false)
+                        }
                     }
                     else -> result.notImplemented()
                 }

@@ -1,12 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
+import '../../core/theme/theme_controller.dart';
+import '../../data/services/app_lock_service.dart';
 import '../../data/local/connection.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/notification_service.dart';
 import 'add_profile_sheet.dart';
+import 'app_lock_setting.dart';
+import 'appearance_setting.dart';
 import 'dose_reminders_sheet.dart';
 import 'edit_profile_sheet.dart';
 
@@ -18,6 +22,8 @@ class AccountScreen extends StatelessWidget {
     required this.onUpdateProfile,
     required this.onDeleteProfile,
     required this.notificationService,
+    this.themeController,
+    this.appLock,
   });
 
   final List<Profile> profiles;
@@ -25,6 +31,11 @@ class AccountScreen extends StatelessWidget {
   final ValueChanged<Profile> onUpdateProfile;
   final ValueChanged<String> onDeleteProfile;
   final NotificationService notificationService;
+
+  /// Null in widget tests that build this screen without the app root; the
+  /// Appearance tile is simply omitted then.
+  final ThemeController? themeController;
+  final AppLockService? appLock;
 
   Future<void> _exportData(BuildContext context) async {
     final file = await databaseFile();
@@ -36,7 +47,8 @@ class AccountScreen extends StatelessWidget {
           title: const Text('Nothing to Export'),
           content: const Text('No local data has been saved yet.'),
           actions: [
-            CupertinoDialogAction(child: const Text('OK'), onPressed: () => Navigator.pop(ctx)),
+            CupertinoDialogAction(
+                child: const Text('OK'), onPressed: () => Navigator.pop(ctx)),
           ],
         ),
       );
@@ -50,16 +62,17 @@ class AccountScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
         children: [
-          const Text(
+          Text(
             'Profile',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
+              color: c.ink,
               letterSpacing: -0.5,
             ),
           ),
@@ -72,24 +85,28 @@ class AccountScreen extends StatelessWidget {
                 profile: profile,
                 onUpdate: onUpdateProfile,
                 onDelete: () => onDeleteProfile(profile.id),
-                hasPrescriptions: prescriptions.any((p) => p.profileId == profile.id),
+                hasPrescriptions:
+                    prescriptions.any((p) => p.profileId == profile.id),
               ),
             ),
             const SizedBox(height: 10),
           ],
-          _AddProfileTile(onTap: () => AddProfileSheet.show(context, onAdd: onUpdateProfile)),
+          _AddProfileTile(
+              onTap: () =>
+                  AddProfileSheet.show(context, onAdd: onUpdateProfile)),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFE6FFFA),
+              color: c.privacyBg,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFF99F6E4)),
+              border: Border.all(color: c.privacyBorder),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(CupertinoIcons.shield_lefthalf_fill, size: 22, color: Color(0xFF0E8A8A)),
+                Icon(CupertinoIcons.shield_lefthalf_fill,
+                    size: 22, color: c.privacyIcon),
                 SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -100,13 +117,14 @@ class AccountScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0D6E6E),
+                          color: c.privacyTitle,
                         ),
                       ),
                       SizedBox(height: 2),
                       Text(
                         'Medication profiles and schedules are stored exclusively on this device.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF0F766E), height: 1.4),
+                        style: TextStyle(
+                            fontSize: 12, color: c.privacyBody, height: 1.4),
                       ),
                     ],
                   ),
@@ -115,26 +133,35 @@ class AccountScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
+          Text(
             'PREFERENCES & STORAGE',
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: AppTheme.textSecondary,
+              color: c.inkMuted,
               letterSpacing: 0.5,
             ),
           ),
           const SizedBox(height: 12),
+          if (themeController != null) ...[
+            AppearanceSetting(controller: themeController!),
+            const SizedBox(height: 10),
+          ],
           _SettingTile(
             icon: CupertinoIcons.tray_arrow_down,
             title: 'Export Local Data (.sqlite)',
             onTap: () => _exportData(context),
           ),
           const SizedBox(height: 10),
+          if (appLock != null) ...[
+            AppLockSetting(service: appLock!),
+            const SizedBox(height: 10),
+          ],
           _SettingTile(
             icon: CupertinoIcons.bell,
             title: 'Dose Reminders',
-            onTap: () => DoseRemindersSheet.show(context, notificationService: notificationService),
+            onTap: () => DoseRemindersSheet.show(context,
+                notificationService: notificationService),
           ),
         ],
       ),
@@ -150,21 +177,23 @@ class _ProfileTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: c.surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: AppTheme.borderLight),
+          border: Border.all(color: c.borderLight),
         ),
         child: Row(
           children: [
             CircleAvatar(
               radius: 28,
               backgroundColor: profile.color,
-              child: const Icon(CupertinoIcons.person_fill, color: Colors.white, size: 30),
+              child:
+                  Icon(CupertinoIcons.person_fill, color: c.tagText, size: 30),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -173,22 +202,24 @@ class _ProfileTile extends StatelessWidget {
                 children: [
                   Text(
                     profile.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
+                      color: c.ink,
                       letterSpacing: -0.3,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    profile.bedtime != null ? 'Bedtime: ${profile.bedtime}' : 'No bedtime set',
-                    style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                    profile.bedtime != null
+                        ? 'Bedtime: ${profile.bedtime}'
+                        : 'No bedtime set',
+                    style: TextStyle(fontSize: 13, color: c.inkMuted),
                   ),
                 ],
               ),
             ),
-            const Icon(CupertinoIcons.chevron_right, size: 16, color: AppTheme.textSecondary),
+            Icon(CupertinoIcons.chevron_right, size: 16, color: c.inkMuted),
           ],
         ),
       ),
@@ -203,23 +234,25 @@ class _AddProfileTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onTap,
       child: CustomPaint(
-        painter: _DashedBorderPainter(color: AppTheme.textSecondary.withValues(alpha: 0.4)),
+        painter: _DashedBorderPainter(color: c.inkMuted.withValues(alpha: 0.4)),
         child: Container(
           padding: const EdgeInsets.all(16),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(CupertinoIcons.add, size: 18, color: AppTheme.textSecondary.withValues(alpha: 0.8)),
+              Icon(CupertinoIcons.add,
+                  size: 18, color: c.inkMuted.withValues(alpha: 0.8)),
               const SizedBox(width: 8),
               Text(
                 'Add Family Member',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.textSecondary.withValues(alpha: 0.8),
+                  color: c.inkMuted.withValues(alpha: 0.8),
                 ),
               ),
             ],
@@ -256,14 +289,16 @@ class _DashedBorderPainter extends CustomPainter {
       var distance = 0.0;
       while (distance < metric.length) {
         final next = distance + _dashWidth;
-        canvas.drawPath(metric.extractPath(distance, next.clamp(0, metric.length)), paint);
+        canvas.drawPath(
+            metric.extractPath(distance, next.clamp(0, metric.length)), paint);
         distance = next + _gapWidth;
       }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant _DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class _SettingTile extends StatelessWidget {
@@ -279,25 +314,26 @@ class _SettingTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: c.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppTheme.borderLight),
+          border: Border.all(color: c.borderLight),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: AppTheme.textPrimary),
+            Icon(icon, size: 20, color: c.ink),
             const SizedBox(width: 12),
             Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
+                color: c.ink,
                 letterSpacing: -0.2,
               ),
             ),

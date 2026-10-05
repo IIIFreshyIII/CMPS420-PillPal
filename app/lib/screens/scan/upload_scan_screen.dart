@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../data/services/extractor.dart';
 import '../../data/services/ocr_service.dart';
 import '../../data/services/onnx_extractor.dart';
@@ -72,6 +72,7 @@ class _UploadScanScreenState extends State<UploadScanScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Scaffold(
       appBar: AppBar(title: const Text('Enter from a Photo')),
       body: Center(
@@ -79,22 +80,23 @@ class _UploadScanScreenState extends State<UploadScanScreen> {
           padding: const EdgeInsets.all(24),
           child: switch (_status) {
             _UploadStatus.pickingPhoto => const SizedBox.shrink(),
-            _UploadStatus.processing => const Column(
+            _UploadStatus.processing => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  CircularProgressIndicator(color: AppTheme.interactiveTeal),
-                  SizedBox(height: 16),
-                  Text('Reading the label...', style: TextStyle(color: AppTheme.textSecondary)),
+                  CircularProgressIndicator(color: c.teal),
+                  const SizedBox(height: 16),
+                  Text('Reading the label...',
+                      style: TextStyle(color: c.inkMuted)),
                 ],
               ),
             _UploadStatus.error => Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline, color: AppTheme.lowStockAlert, size: 48),
+                  Icon(Icons.error_outline, color: c.alert, size: 48),
                   const SizedBox(height: 16),
                   Text(
                     _errorMessage ?? 'Something went wrong.',
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: c.ink),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),

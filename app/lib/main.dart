@@ -3,9 +3,12 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_controller.dart';
+import 'data/services/app_lock_service.dart';
+import 'screens/app_lock/app_lock_gate.dart';
 import 'screens/home/home_scaffold.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Hide the bottom navigation bar entirely (kept persistently visible by
   // edgeToEdge, just made translucent) -- only the top status bar stays.
@@ -40,44 +43,71 @@ void main() {
       systemNavigationBarContrastEnforced: true,
     ),
   );
-  runApp(const PillPalApp());
+  // Read before runApp so a saved Dark choice is applied on the very first
+  // frame, with no light flash.
+  final themeController = await ThemeController.load();
+  // Also before runApp: if App Lock is on, the very first frame is the lock
+  // screen, never a glimpse of the schedule.
+  final appLock = AppLockService();
+  await appLock.load();
+  runApp(PillPalApp(themeController: themeController, appLock: appLock));
 }
 
 void _hideBottomNavBar() {
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: [SystemUiOverlay.top]);
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+      overlays: [SystemUiOverlay.top]);
 }
 
 class PillPalApp extends StatelessWidget {
-  const PillPalApp({super.key});
+  const PillPalApp({
+    super.key,
+    required this.themeController,
+    required this.appLock,
+  });
+
+  final ThemeController themeController;
+  final AppLockService appLock;
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'PillPal',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.lightTheme,
-      // Android keeps the system nav bar persistently hidden and only lets
-      // it transiently reveal via an edge swipe (re-hidden after ~2s, above).
-      // That transient reveal briefly reports a non-zero bottom
-      // padding/viewPadding through MediaQuery, and anything that reacts to
-      // it -- a bottom bar, a bottom-anchored panel, any SafeArea -- visibly
-      // jumps for that instant. Stripping the bottom inset here, once, for
-      // the whole app means nothing in the tree can react to it, instead of
-      // chasing down every current and future widget that touches it.
-      // iOS is untouched: its home-indicator inset is a real, static safe
-      // area, not a transient one, and FloatingTabBar depends on it.
-      builder: Platform.isAndroid
-          ? (context, child) => MediaQuery.removeViewPadding(
-                context: context,
-                removeBottom: true,
-                child: MediaQuery.removePadding(
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeController,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'PillPal',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: mode,
+        themeAnimationStyle: const AnimationStyle(
+          duration: Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+        ),
+        // Android keeps the system nav bar persistently hidden and only lets
+        // it transiently reveal via an edge swipe (re-hidden after ~2s, above).
+        // That transient reveal briefly reports a non-zero bottom
+        // padding/viewPadding through MediaQuery, and anything that reacts to
+        // it -- a bottom bar, a bottom-anchored panel, any SafeArea -- visibly
+        // jumps for that instant. Stripping the bottom inset here, once, for
+        // the whole app means nothing in the tree can react to it, instead of
+        // chasing down every current and future widget that touches it.
+        // iOS is untouched: its home-indicator inset is a real, static safe
+        // area, not a transient one, and FloatingTabBar depends on it.
+        builder: (context, child) => AppLockGate(
+          service: appLock,
+          child: Platform.isAndroid
+              ? MediaQuery.removeViewPadding(
                   context: context,
                   removeBottom: true,
-                  child: child!,
-                ),
-              )
-          : null,
-      home: const HomeScaffold(),
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeBottom: true,
+                    child: child!,
+                  ),
+                )
+              : child!,
+        ),
+        home: HomeScaffold(themeController: themeController, appLock: appLock),
+      ),
     );
   }
 }

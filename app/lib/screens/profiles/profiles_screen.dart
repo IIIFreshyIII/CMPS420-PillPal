@@ -1,6 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../data/models/dose_event.dart';
 import '../../data/models/prescription.dart';
@@ -50,7 +50,10 @@ class ProfilesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final todayCount = doseEvents.where((e) => isToday(e.occurredAt) && e.action == DoseAction.taken).length;
+    final c = context.colors;
+    final todayCount = doseEvents
+        .where((e) => isToday(e.occurredAt) && e.action == DoseAction.taken)
+        .length;
     final grouped = _groupByDay();
 
     return SafeArea(
@@ -62,25 +65,26 @@ class ProfilesScreen extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
+                Text(
                   'History',
                   style: TextStyle(
                     fontSize: 28,
                     fontWeight: FontWeight.w800,
-                    color: AppTheme.textPrimary,
+                    color: c.ink,
                     letterSpacing: -0.5,
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
                   decoration: BoxDecoration(
-                    color: AppTheme.lightPillTint,
+                    color: c.tint,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Text(
                     '$todayCount Today',
-                    style: const TextStyle(
-                      color: AppTheme.interactiveTeal,
+                    style: TextStyle(
+                      color: c.tealDeep,
                       fontWeight: FontWeight.w700,
                       fontSize: 13,
                     ),
@@ -100,21 +104,23 @@ class ProfilesScreen extends StatelessWidget {
                             padding: const EdgeInsets.only(bottom: 8, top: 4),
                             child: Text(
                               dayLabel.toUpperCase(),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: 0.6,
-                                color: AppTheme.textSecondary,
+                                color: c.inkMuted,
                               ),
                             ),
                           ),
                           for (final event in grouped[dayLabel]!)
                             _DoseHistoryRow(
                               event: event,
-                              prescription: _prescriptionFor(event.prescriptionId),
+                              prescription:
+                                  _prescriptionFor(event.prescriptionId),
                               profile: _profileFor(event.profileId),
                               onTap: () {
-                                final med = _prescriptionFor(event.prescriptionId);
+                                final med =
+                                    _prescriptionFor(event.prescriptionId);
                                 if (med != null) onEditMedication(med);
                               },
                             ),
@@ -133,23 +139,26 @@ class ProfilesScreen extends StatelessWidget {
 class _EmptyHistory extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(CupertinoIcons.clock, color: AppTheme.textSecondary.withValues(alpha: 0.4), size: 40),
+            Icon(CupertinoIcons.clock,
+                color: c.inkMuted.withValues(alpha: 0.4), size: 40),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No doses logged yet',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w700, color: c.ink),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               'Mark a dose taken from Schedule and it will show up here.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 13, color: c.inkMuted),
             ),
           ],
         ),
@@ -173,6 +182,7 @@ class _DoseHistoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final medName = prescription?.name ?? 'Deleted medication';
     final verb = event.action == DoseAction.taken ? 'Took' : 'Skipped';
 
@@ -182,12 +192,12 @@ class _DoseHistoryRow extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: c.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: AppTheme.borderLight),
+          border: Border.all(color: c.borderLight),
           boxShadow: [
             BoxShadow(
-              color: AppTheme.textPrimary.withValues(alpha: 0.03),
+              color: c.cardShadow,
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -203,7 +213,9 @@ class _DoseHistoryRow extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: Icon(
-                event.action == DoseAction.taken ? CupertinoIcons.checkmark_alt : CupertinoIcons.xmark,
+                event.action == DoseAction.taken
+                    ? CupertinoIcons.checkmark_alt
+                    : CupertinoIcons.xmark,
                 color: profile.color,
                 size: 20,
               ),
@@ -215,10 +227,10 @@ class _DoseHistoryRow extends StatelessWidget {
                 children: [
                   Text(
                     '$verb $medName',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary,
+                      color: c.ink,
                       letterSpacing: -0.3,
                     ),
                   ),
@@ -228,23 +240,24 @@ class _DoseHistoryRow extends StatelessWidget {
                       if (prescription != null)
                         Text(
                           prescription!.dosage,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: AppTheme.textSecondary,
+                            color: c.inkMuted,
                           ),
                         ),
                       if (prescription != null) const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 6),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 2, horizontal: 6),
                         decoration: BoxDecoration(
                           color: profile.color,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           profile.name,
-                          style: const TextStyle(
-                            color: Colors.white,
+                          style: TextStyle(
+                            color: c.tagText,
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
                           ),
@@ -257,10 +270,10 @@ class _DoseHistoryRow extends StatelessWidget {
             ),
             Text(
               formatTimeOfDay(event.occurredAt),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: AppTheme.textSecondary,
+                color: c.inkMuted,
               ),
             ),
           ],

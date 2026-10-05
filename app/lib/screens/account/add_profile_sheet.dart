@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../data/models/profile.dart';
 import 'edit_profile_sheet.dart' show presetColors;
 
@@ -55,15 +55,17 @@ class _AddProfileSheetState extends State<AddProfileSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     // Same keyboard-reactive, content-sized pattern as EditProfileSheet --
     // see its build() comment for why.
     return AnimatedPadding(
       duration: const Duration(milliseconds: 100),
       curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFFF8FAFA),
+        decoration: BoxDecoration(
+          color: c.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SafeArea(
@@ -77,13 +79,14 @@ class _AddProfileSheetState extends State<AddProfileSheet> {
                   width: 36,
                   height: 4.5,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
+                    color: c.grabber,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -91,27 +94,31 @@ class _AddProfileSheetState extends State<AddProfileSheet> {
                       onPressed: () => Navigator.of(context).pop(),
                       child: const Text('Cancel'),
                     ),
-                    const Text(
+                    Text(
                       'Add Family Member',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                      style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: c.ink),
                     ),
                     TextButton(
                       key: const Key('add_profile_save_button'),
                       onPressed: _canSave ? _save : null,
-                      child: const Text('Add', style: TextStyle(fontWeight: FontWeight.w700)),
+                      child: const Text('Add',
+                          style: TextStyle(fontWeight: FontWeight.w700)),
                     ),
                   ],
                 ),
               ),
-              const Divider(height: 1, color: AppTheme.borderLight),
+              Divider(height: 1, color: c.borderLight),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: c.surface,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: AppTheme.borderLight),
+                    border: Border.all(color: c.borderLight),
                   ),
                   child: Column(
                     children: [
@@ -119,7 +126,8 @@ class _AddProfileSheetState extends State<AddProfileSheet> {
                         key: const Key('field_new_profile_name'),
                         controller: _name,
                         autofocus: true,
-                        decoration: const InputDecoration(labelText: 'Name', border: UnderlineInputBorder()),
+                        decoration: const InputDecoration(
+                            labelText: 'Name', border: UnderlineInputBorder()),
                         onChanged: (_) => setState(() {}),
                       ),
                       const SizedBox(height: 16),
@@ -127,17 +135,20 @@ class _AddProfileSheetState extends State<AddProfileSheet> {
                         alignment: Alignment.centerLeft,
                         child: Wrap(
                           spacing: 10,
-                          children: presetColors.map((c) {
-                            final selected = c.toARGB32() == _color.toARGB32();
+                          children: presetColors.map((swatch) {
+                            final selected =
+                                swatch.toARGB32() == _color.toARGB32();
                             return GestureDetector(
-                              onTap: () => setState(() => _color = c),
+                              onTap: () => setState(() => _color = swatch),
                               child: Container(
                                 width: 32,
                                 height: 32,
                                 decoration: BoxDecoration(
-                                  color: c,
+                                  color: swatch,
                                   shape: BoxShape.circle,
-                                  border: selected ? Border.all(color: AppTheme.textPrimary, width: 2.5) : null,
+                                  border: selected
+                                      ? Border.all(color: c.ink, width: 2.5)
+                                      : null,
                                 ),
                               ),
                             );

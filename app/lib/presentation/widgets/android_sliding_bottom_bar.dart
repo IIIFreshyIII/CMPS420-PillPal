@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../../core/theme/pillpal_colors.dart';
 
 class AndroidSlidingBottomBar extends StatelessWidget {
   final int selectedIndex;
@@ -37,14 +40,15 @@ class AndroidSlidingBottomBar extends StatelessWidget {
     // every such swipe. Fixed at 0 so this bar never moves.
     const double bottomInset = 0.0;
     const double barHeight = 80.0;
+    final c = context.colors;
 
     return Container(
       decoration: BoxDecoration(
         // Crisp, distinct container surface
-        color: const Color(0xFFF1F6F5),
+        color: c.navSurface,
         border: Border(
           top: BorderSide(
-            color: const Color(0xFFD9E2EC),
+            color: c.navBorder,
             width: 1.0,
           ),
         ),
@@ -56,7 +60,8 @@ class AndroidSlidingBottomBar extends StatelessWidget {
           final tabWidth = constraints.maxWidth / _tabs.length;
           const double pillWidth = 64.0;
           const double pillHeight = 32.0;
-          final pillLeft = (selectedIndex * tabWidth) + (tabWidth - pillWidth) / 2;
+          final pillLeft =
+              (selectedIndex * tabWidth) + (tabWidth - pillWidth) / 2;
 
           return Stack(
             children: [
@@ -70,58 +75,65 @@ class AndroidSlidingBottomBar extends StatelessWidget {
                 height: pillHeight,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFBBE5E2), // Defined mint pill
+                    color: c.mint,
                     borderRadius: BorderRadius.circular(16.0),
                   ),
                 ),
               ),
 
-              // Interactive buttons
-              Row(
-                children: List.generate(_tabs.length, (index) {
-                  final isSelected = selectedIndex == index;
-                  final item = _tabs[index];
+              // Interactive buttons. A transparent Material of its own, so the
+              // ripple draws above the bar's fill and pill rather than on the
+              // Scaffold's Material underneath them, where it was invisible.
+              Material(
+                type: MaterialType.transparency,
+                child: Row(
+                  children: List.generate(_tabs.length, (index) {
+                    final isSelected = selectedIndex == index;
+                    final item = _tabs[index];
 
-                  return Expanded(
-                    child: InkWell(
-                      onTap: () => onTabSelected(index),
-                      splashColor: Colors.transparent,
-                      highlightColor: Colors.transparent,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 12, bottom: 8),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SizedBox(
-                              height: pillHeight,
-                              child: Center(
-                                child: Icon(
-                                  isSelected ? item.activeIcon : item.icon,
-                                  size: 22,
-                                  color: isSelected
-                                      ? const Color(0xFF106864)
-                                      : const Color(0xFF627D98),
+                    return Expanded(
+                      child: InkWell(
+                        onTap: () {
+                          if (!isSelected) HapticFeedback.selectionClick();
+                          onTabSelected(index);
+                        },
+                        splashColor: c.tealRipple,
+                        highlightColor: Colors.transparent,
+                        radius: 32,
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 12, bottom: 8),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                height: pillHeight,
+                                child: Center(
+                                  child: Icon(
+                                    isSelected ? item.activeIcon : item.icon,
+                                    size: 22,
+                                    color: isSelected ? c.tealDeep : c.inkMuted,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                                color: isSelected
-                                    ? const Color(0xFF106864)
-                                    : const Color(0xFF627D98),
-                                letterSpacing: 0.2,
+                              const SizedBox(height: 4),
+                              Text(
+                                item.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: isSelected ? c.tealDeep : c.inkMuted,
+                                  letterSpacing: 0.2,
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                }),
+                    );
+                  }),
+                ),
               ),
             ],
           );

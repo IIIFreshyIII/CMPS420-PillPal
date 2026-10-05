@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 
 import '../../core/permissions/camera_permission.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../data/services/extractor.dart';
 import '../../data/services/ocr_service.dart';
 import '../../data/services/onnx_extractor.dart';
@@ -30,7 +30,13 @@ class LiveScanScreen extends StatefulWidget {
   State<LiveScanScreen> createState() => _LiveScanScreenState();
 }
 
-enum _ScanStatus { requestingPermission, permissionDenied, initializing, scanning, error }
+enum _ScanStatus {
+  requestingPermission,
+  permissionDenied,
+  initializing,
+  scanning,
+  error
+}
 
 /// Fields that must all be recognized before auto-advancing. Previously only
 /// drug/strength/frequency were checked, which let the scan confirm and move
@@ -54,7 +60,8 @@ const _ocrThrottle = Duration(milliseconds: 400);
 /// "clear" needed for the common case.
 const _lineExpiry = Duration(seconds: 5);
 
-class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObserver {
+class _LiveScanScreenState extends State<LiveScanScreen>
+    with WidgetsBindingObserver {
   _ScanStatus _status = _ScanStatus.requestingPermission;
   String? _errorMessage;
 
@@ -134,7 +141,8 @@ class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObse
     if (!mounted) return;
 
     final now = DateTime.now();
-    for (final line in text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty)) {
+    for (final line
+        in text.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty)) {
       _lineLastSeen[line] = now;
     }
 
@@ -148,7 +156,8 @@ class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObse
     if (_lineLastSeen.isEmpty) return;
 
     final activeText = _lineLastSeen.keys.join('\n');
-    if (activeText == _lastExtractedText) return; // buffer unchanged, skip re-running the model
+    if (activeText == _lastExtractedText)
+      return; // buffer unchanged, skip re-running the model
     _lastExtractedText = activeText;
 
     final extractor = _extractor;
@@ -156,7 +165,8 @@ class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObse
     final extraction = await extractor.extract(activeText);
     if (!mounted) return;
 
-    final ready = _requiredFields.every((f) => extraction.isRecognized(f) && _fieldValue(extraction, f) != null) &&
+    final ready = _requiredFields.every((f) =>
+            extraction.isRecognized(f) && _fieldValue(extraction, f) != null) &&
         extraction.daysSupply != null;
     setState(() {
       _liveExtraction = extraction;
@@ -224,7 +234,8 @@ class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObse
     if (controller == null || !controller.value.isInitialized) return;
     if (state == AppLifecycleState.inactive) {
       controller.stopImageStream();
-    } else if (state == AppLifecycleState.resumed && _status == _ScanStatus.scanning) {
+    } else if (state == AppLifecycleState.resumed &&
+        _status == _ScanStatus.scanning) {
       controller.startImageStream(_onFrame);
     }
   }
@@ -247,10 +258,13 @@ class _LiveScanScreenState extends State<LiveScanScreen> with WidgetsBindingObse
         title: const Text('Scan Label'),
       ),
       body: switch (_status) {
-        _ScanStatus.requestingPermission || _ScanStatus.initializing => _CenteredMessage(
+        _ScanStatus.requestingPermission ||
+        _ScanStatus.initializing =>
+          _CenteredMessage(
             child: const CircularProgressIndicator(color: Colors.white),
           ),
-        _ScanStatus.permissionDenied => _PermissionDeniedView(onOpenSettings: openCameraPermissionSettings),
+        _ScanStatus.permissionDenied =>
+          _PermissionDeniedView(onOpenSettings: openCameraPermissionSettings),
         _ScanStatus.error => _CenteredMessage(
             child: Text(
               "Couldn't start the camera.\n${_errorMessage ?? ''}",
@@ -274,7 +288,8 @@ class _CenteredMessage extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Center(child: Padding(padding: const EdgeInsets.all(24), child: child));
+  Widget build(BuildContext context) =>
+      Center(child: Padding(padding: const EdgeInsets.all(24), child: child));
 }
 
 class _PermissionDeniedView extends StatelessWidget {
@@ -287,7 +302,8 @@ class _PermissionDeniedView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.no_photography_outlined, color: Colors.white70, size: 48),
+          const Icon(Icons.no_photography_outlined,
+              color: Colors.white70, size: 48),
           const SizedBox(height: 16),
           const Text(
             "PillPal needs camera access to scan a label.",
@@ -295,7 +311,8 @@ class _PermissionDeniedView extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          FilledButton(onPressed: onOpenSettings, child: const Text('Open Settings')),
+          FilledButton(
+              onPressed: onOpenSettings, child: const Text('Open Settings')),
         ],
       ),
     );
@@ -356,11 +373,16 @@ class _ScanningView extends StatelessWidget {
                     runSpacing: 8,
                     alignment: WrapAlignment.center,
                     children: [
-                      if (extraction!.drug != null) _FieldChip('Drug', extraction!.drug!),
-                      if (extraction!.strength != null) _FieldChip('Strength', extraction!.strength!),
-                      if (extraction!.dose != null) _FieldChip('Dose', extraction!.dose!),
-                      if (extraction!.form != null) _FieldChip('Form', extraction!.form!),
-                      if (extraction!.frequency != null) _FieldChip('Frequency', extraction!.frequency!),
+                      if (extraction!.drug != null)
+                        _FieldChip('Drug', extraction!.drug!),
+                      if (extraction!.strength != null)
+                        _FieldChip('Strength', extraction!.strength!),
+                      if (extraction!.dose != null)
+                        _FieldChip('Dose', extraction!.dose!),
+                      if (extraction!.form != null)
+                        _FieldChip('Form', extraction!.form!),
+                      if (extraction!.frequency != null)
+                        _FieldChip('Frequency', extraction!.frequency!),
                       if (extraction!.daysSupply != null)
                         _FieldChip('Days Supply', '${extraction!.daysSupply}'),
                     ],
@@ -382,7 +404,10 @@ class _ScanningView extends StatelessWidget {
                     if (onClear != null) const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: AppTheme.interactiveTeal),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: context.colors.teal,
+                          foregroundColor: context.colors.onTeal,
+                        ),
                         onPressed: onDone,
                         child: const Text('Done'),
                       ),

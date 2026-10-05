@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 
@@ -172,6 +172,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
     required VoidCallback onTap,
     bool isPrimary = false,
   }) {
+    final c = context.colors;
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(
@@ -182,19 +183,15 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: isPrimary
-                  ? AppTheme.interactiveTeal.withValues(alpha: 0.90)
-                  : Colors.white.withValues(alpha: 0.70),
+              color: isPrimary ? c.teal.withValues(alpha: 0.90) : c.glass,
               shape: BoxShape.circle,
               border: Border.all(
-                color: isPrimary
-                    ? AppTheme.interactiveTeal
-                    : Colors.white.withValues(alpha: 0.9),
+                color: isPrimary ? c.teal : c.glassRim,
                 width: 1.2,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.textPrimary.withValues(alpha: 0.08),
+                  color: c.liftShadow,
                   blurRadius: 10,
                   offset: const Offset(0, 3),
                 ),
@@ -204,7 +201,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
               child: Icon(
                 icon,
                 size: 18,
-                color: isPrimary ? Colors.white : AppTheme.textPrimary,
+                color: isPrimary ? c.onTeal : c.ink,
               ),
             ),
           ),
@@ -215,6 +212,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     final profile = widget.profiles.firstWhere(
       (p) => p.id == _selectedProfileId,
       orElse: () => const Profile(id: '0', name: 'General', color: Colors.grey),
@@ -228,8 +226,8 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
       },
       child: Container(
         height: MediaQuery.of(context).size.height,
-        decoration: const BoxDecoration(
-          color: Color(0xFFF8FAFA),
+        decoration: BoxDecoration(
+          color: c.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SafeArea(
@@ -243,7 +241,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                   width: 36,
                   height: 4.5,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
+                    color: c.grabber,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -260,12 +258,12 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                       icon: CupertinoIcons.xmark,
                       onTap: _handleClose,
                     ),
-                    const Text(
+                    Text(
                       'Prescription Details',
                       style: TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textPrimary,
+                        color: c.ink,
                         letterSpacing: -0.3,
                       ),
                     ),
@@ -277,7 +275,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: AppTheme.borderLight),
+              Divider(height: 1, color: c.borderLight),
 
               Expanded(
                 child: ListView(
@@ -287,12 +285,12 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                     Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(22),
-                        border: Border.all(color: AppTheme.borderLight),
+                        border: Border.all(color: c.borderLight),
                         boxShadow: [
                           BoxShadow(
-                            color: AppTheme.textPrimary.withValues(alpha: 0.03),
+                            color: c.cardShadow,
                             blurRadius: 10,
                             offset: const Offset(0, 4),
                           ),
@@ -319,19 +317,18 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                   children: [
                                     Text(
                                       widget.prescription.name,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontSize: 20,
                                         fontWeight: FontWeight.w800,
-                                        color: AppTheme.textPrimary,
+                                        color: c.ink,
                                         letterSpacing: -0.4,
                                       ),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
                                       'Prescribed to ${profile.name}',
-                                      style: const TextStyle(
-                                          fontSize: 13,
-                                          color: AppTheme.textSecondary),
+                                      style: TextStyle(
+                                          fontSize: 13, color: c.inkMuted),
                                     ),
                                   ],
                                 ),
@@ -341,16 +338,15 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                   padding: const EdgeInsets.symmetric(
                                       vertical: 4, horizontal: 8),
                                   decoration: BoxDecoration(
-                                    color: AppTheme.lowStockAlert
-                                        .withValues(alpha: 0.1),
+                                    color: c.alertTint,
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Text(
+                                  child: Text(
                                     'Low Stock',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      color: AppTheme.lowStockAlert,
+                                      color: c.alert,
                                     ),
                                   ),
                                 ),
@@ -363,12 +359,12 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                     const SizedBox(height: 22),
 
                     // Inventory & Supply Section
-                    const Text(
+                    Text(
                       'INVENTORY & SUPPLY',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textSecondary,
+                        color: c.inkMuted,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -376,9 +372,9 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.borderLight),
+                        border: Border.all(color: c.borderLight),
                       ),
                       child: Column(
                         children: [
@@ -394,18 +390,15 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                           fontSize: 15)),
                                   const SizedBox(height: 2),
                                   Text('$_daysSupply days remaining',
-                                      style: const TextStyle(
-                                          fontSize: 12,
-                                          color: AppTheme.textSecondary)),
+                                      style: TextStyle(
+                                          fontSize: 12, color: c.inkMuted)),
                                 ],
                               ),
                               Row(
                                 children: [
                                   IconButton(
-                                    icon: const Icon(
-                                        CupertinoIcons.minus_circle,
-                                        color: AppTheme.interactiveTeal,
-                                        size: 26),
+                                    icon: Icon(CupertinoIcons.minus_circle,
+                                        color: c.teal, size: 26),
                                     onPressed: () {
                                       if (_remaining > 0) {
                                         HapticFeedback.lightImpact();
@@ -428,9 +421,8 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                     ),
                                   ),
                                   IconButton(
-                                    icon: const Icon(CupertinoIcons.plus_circle,
-                                        color: AppTheme.interactiveTeal,
-                                        size: 26),
+                                    icon: Icon(CupertinoIcons.plus_circle,
+                                        color: c.teal, size: 26),
                                     onPressed: () {
                                       HapticFeedback.lightImpact();
                                       setState(() {
@@ -443,21 +435,20 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                               ),
                             ],
                           ),
-                          const Divider(
-                              height: 20, color: AppTheme.borderLight),
+                          Divider(height: 20, color: c.borderLight),
                           Row(
                             children: [
                               Expanded(
                                 child: CupertinoButton(
-                                  color: AppTheme.lightPillTint,
+                                  color: c.tint,
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 10),
                                   borderRadius: BorderRadius.circular(12),
                                   onPressed: () => _handleQuickRefill(30),
-                                  child: const Text(
+                                  child: Text(
                                     '+30 Refill',
                                     style: TextStyle(
-                                      color: AppTheme.interactiveTeal,
+                                      color: c.tealDeep,
                                       fontWeight: FontWeight.w700,
                                       fontSize: 13,
                                     ),
@@ -467,15 +458,15 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: CupertinoButton(
-                                  color: AppTheme.lightPillTint,
+                                  color: c.tint,
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 10),
                                   borderRadius: BorderRadius.circular(12),
                                   onPressed: () => _handleQuickRefill(60),
-                                  child: const Text(
+                                  child: Text(
                                     '+60 Refill',
                                     style: TextStyle(
-                                      color: AppTheme.interactiveTeal,
+                                      color: c.tealDeep,
                                       fontWeight: FontWeight.w700,
                                       fontSize: 13,
                                     ),
@@ -485,15 +476,15 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: CupertinoButton(
-                                  color: AppTheme.lightPillTint,
+                                  color: c.tint,
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 10),
                                   borderRadius: BorderRadius.circular(12),
                                   onPressed: () => _handleQuickRefill(90),
-                                  child: const Text(
+                                  child: Text(
                                     '+90 Refill',
                                     style: TextStyle(
-                                      color: AppTheme.interactiveTeal,
+                                      color: c.tealDeep,
                                       fontWeight: FontWeight.w700,
                                       fontSize: 13,
                                     ),
@@ -509,12 +500,12 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                     const SizedBox(height: 22),
 
                     // Medication Info Section
-                    const Text(
+                    Text(
                       'MEDICATION INFORMATION',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textSecondary,
+                        color: c.inkMuted,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -522,9 +513,9 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.borderLight),
+                        border: Border.all(color: c.borderLight),
                       ),
                       child: Column(
                         children: [
@@ -560,17 +551,16 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                 child: Text(
                                   widget.prescription.reminderTimes.join(', '),
                                   textAlign: TextAlign.end,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
-                                    color: AppTheme.textSecondary,
+                                    color: c.inkMuted,
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                          const Divider(
-                              height: 16, color: AppTheme.borderLight),
+                          Divider(height: 16, color: c.borderLight),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -593,8 +583,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                               ),
                             ],
                           ),
-                          const Divider(
-                              height: 16, color: AppTheme.borderLight),
+                          Divider(height: 16, color: c.borderLight),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -608,7 +597,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                               ),
                               Switch(
                                 value: _allowAfterBedtime,
-                                activeThumbColor: AppTheme.interactiveTeal,
+                                activeThumbColor: c.teal,
                                 onChanged: (val) =>
                                     setState(() => _allowAfterBedtime = val),
                               ),
@@ -624,7 +613,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                     SizedBox(
                       width: double.infinity,
                       child: CupertinoButton(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(16),
                         onPressed: _confirmDelete,
                         child: const Text(

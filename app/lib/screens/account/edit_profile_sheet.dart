@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/pillpal_colors.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../data/models/profile.dart';
 import '../confirm/widgets/rotary_time_picker.dart';
@@ -123,6 +123,7 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final c = context.colors;
     // This sheet is deliberately content-sized (mainAxisSize.min), not
     // full-height like the other sheets -- so there's no internal
     // Scrollable for a focused TextField's built-in "scroll into view"
@@ -136,8 +137,8 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
       padding:
           EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFFF8FAFA),
+        decoration: BoxDecoration(
+          color: c.background,
           borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SafeArea(
@@ -151,7 +152,7 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                   width: 36,
                   height: 4.5,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFCBD5E1),
+                    color: c.grabber,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -166,12 +167,12 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                       onPressed: () => Navigator.of(context).pop(),
                       child: const Text('Cancel'),
                     ),
-                    const Text(
+                    Text(
                       'Edit Profile',
                       style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary),
+                          color: c.ink),
                     ),
                     TextButton(
                       key: const Key('edit_profile_save_button'),
@@ -182,7 +183,7 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                   ],
                 ),
               ),
-              const Divider(height: 1, color: AppTheme.borderLight),
+              Divider(height: 1, color: c.borderLight),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
                 child: Column(
@@ -191,9 +192,9 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.borderLight),
+                        border: Border.all(color: c.borderLight),
                       ),
                       child: Column(
                         children: [
@@ -210,21 +211,19 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                             alignment: Alignment.centerLeft,
                             child: Wrap(
                               spacing: 10,
-                              children: presetColors.map((c) {
+                              children: presetColors.map((swatch) {
                                 final selected =
-                                    c.toARGB32() == _color.toARGB32();
+                                    swatch.toARGB32() == _color.toARGB32();
                                 return GestureDetector(
-                                  onTap: () => setState(() => _color = c),
+                                  onTap: () => setState(() => _color = swatch),
                                   child: Container(
                                     width: 32,
                                     height: 32,
                                     decoration: BoxDecoration(
-                                      color: c,
+                                      color: swatch,
                                       shape: BoxShape.circle,
                                       border: selected
-                                          ? Border.all(
-                                              color: AppTheme.textPrimary,
-                                              width: 2.5)
+                                          ? Border.all(color: c.ink, width: 2.5)
                                           : null,
                                     ),
                                   ),
@@ -236,12 +235,12 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                       ),
                     ),
                     const SizedBox(height: 22),
-                    const Text(
+                    Text(
                       'BEDTIME',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
-                        color: AppTheme.textSecondary,
+                        color: c.inkMuted,
                         letterSpacing: 0.5,
                       ),
                     ),
@@ -249,9 +248,9 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: c.surface,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: AppTheme.borderLight),
+                        border: Border.all(color: c.borderLight),
                       ),
                       child: InkWell(
                         key: const Key('field_bedtime'),
@@ -268,15 +267,15 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                                   _bedtime != null
                                       ? formatTimeOfDayLabel(_bedtime!)
                                       : 'Not set',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w700,
-                                    color: AppTheme.interactiveTeal,
+                                    color: c.teal,
                                   ),
                                 ),
                                 const SizedBox(width: 4),
-                                const Icon(CupertinoIcons.chevron_right,
-                                    size: 14, color: AppTheme.textSecondary),
+                                Icon(CupertinoIcons.chevron_right,
+                                    size: 14, color: c.inkMuted),
                               ],
                             ),
                           ],
@@ -284,18 +283,17 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                       ),
                     ),
                     const SizedBox(height: 6),
-                    const Text(
+                    Text(
                       "Medications computed from a label's frequency (e.g. \"every 4 hours\") "
                       "stop generating reminders at this time.",
-                      style: TextStyle(
-                          fontSize: 11, color: AppTheme.textSecondary),
+                      style: TextStyle(fontSize: 11, color: c.inkMuted),
                     ),
                     if (!widget.profile.isPrimary) ...[
                       const SizedBox(height: 22),
                       if (widget.hasPrescriptions)
-                        const Text(
+                        Text(
                           'Reassign or delete their medications first to delete this profile.',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                          style: TextStyle(fontSize: 12, color: c.inkMuted),
                         )
                       else
                         Center(
