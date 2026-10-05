@@ -37,21 +37,3 @@ class Extraction {
 abstract class Extractor {
   Future<Extraction> extract(String labelText);
 }
-
-/// Placeholder until OCR + the NER model are wired in. Returns a fixed example
-/// so the screens can be built and demoed now.
-class StubExtractor implements Extractor {
-  @override
-  Future<Extraction> extract(String labelText) async {
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    return Extraction(rawText: labelText)
-      ..drug = 'Metformin HCl'
-      ..strength = '500 mg'
-      ..dose = '1 tablet'
-      ..form = 'tablet'
-      ..route = 'by mouth'
-      ..frequency = 'twice daily'
-      ..fillDate = DateTime.now()
-      ..daysSupply = 30;
-  }
-}

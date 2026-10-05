@@ -42,6 +42,10 @@ dependencies:
   timezone: ^0.9.4
   flutter_timezone: ^5.1.0
 
+  # Real "Export Local Data" -- shares the actual (encrypted) pillpal.sqlite
+  # file via the OS share sheet, instead of just claiming success.
+  share_plus: ^13.3.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

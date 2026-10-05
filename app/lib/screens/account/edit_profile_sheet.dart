@@ -6,28 +6,43 @@ import '../../core/utils/date_formatter.dart';
 import '../../data/models/profile.dart';
 import '../confirm/widgets/rotary_time_picker.dart';
 
-/// Minimal editing for an *existing* profile -- name, color, and Bedtime
-/// (the cutoff `core/scheduling/reminder_scheduler.dart` uses so a
-/// medication's computed reminders never land overnight). No add/delete
-/// profile here -- not asked for, out of scope.
+/// Editing for an *existing* profile -- name, color, and Bedtime (the cutoff
+/// `core/scheduling/reminder_scheduler.dart` uses so a medication's computed
+/// reminders never land overnight) -- plus deleting the profile outright.
+/// [hasPrescriptions] and the primary-profile check together decide whether
+/// a delete action is even offered (see [_canDelete]).
 class EditProfileSheet extends StatefulWidget {
-  const EditProfileSheet(
-      {super.key, required this.profile, required this.onUpdate});
+  const EditProfileSheet({
+    super.key,
+    required this.profile,
+    required this.onUpdate,
+    required this.onDelete,
+    required this.hasPrescriptions,
+  });
 
   final Profile profile;
   final ValueChanged<Profile> onUpdate;
+  final VoidCallback onDelete;
+  final bool hasPrescriptions;
 
   static Future<void> show(
     BuildContext context, {
     required Profile profile,
     required ValueChanged<Profile> onUpdate,
+    required VoidCallback onDelete,
+    required bool hasPrescriptions,
   }) {
     return showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => EditProfileSheet(profile: profile, onUpdate: onUpdate),
+      builder: (ctx) => EditProfileSheet(
+        profile: profile,
+        onUpdate: onUpdate,
+        onDelete: onDelete,
+        hasPrescriptions: hasPrescriptions,
+      ),
     );
   }
 
@@ -37,7 +52,7 @@ class EditProfileSheet extends StatefulWidget {
 
 /// A handful of preset swatches, matching the colors already used for seed
 /// profiles elsewhere (`home_scaffold.dart`) -- not a full color picker.
-const _presetColors = [
+const presetColors = [
   Color(0xFF3B82F6),
   Color(0xFF8B5CF6),
   Color(0xFFEC4899),
@@ -78,6 +93,32 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
     );
     widget.onUpdate(updated);
     Navigator.of(context).pop();
+  }
+
+  void _confirmDelete() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text('Delete "${widget.profile.name}"?'),
+        message: const Text('This cannot be undone.'),
+        actions: [
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context);
+              widget.onDelete();
+            },
+            child: const Text('Delete Profile'),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Cancel'),
+        ),
+      ),
+    );
   }
 
   @override
@@ -169,7 +210,7 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                             alignment: Alignment.centerLeft,
                             child: Wrap(
                               spacing: 10,
-                              children: _presetColors.map((c) {
+                              children: presetColors.map((c) {
                                 final selected =
                                     c.toARGB32() == _color.toARGB32();
                                 return GestureDetector(
@@ -249,6 +290,27 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                       style: TextStyle(
                           fontSize: 11, color: AppTheme.textSecondary),
                     ),
+                    if (!widget.profile.isPrimary) ...[
+                      const SizedBox(height: 22),
+                      if (widget.hasPrescriptions)
+                        const Text(
+                          'Reassign or delete their medications first to delete this profile.',
+                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                        )
+                      else
+                        Center(
+                          child: TextButton(
+                            onPressed: _confirmDelete,
+                            child: const Text(
+                              'Delete Profile',
+                              style: TextStyle(
+                                color: CupertinoColors.destructiveRed,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),

@@ -8,10 +8,16 @@ import 'package:sqlite3/sqlite3.dart' as sqlite3;
 
 import 'encryption_key.dart';
 
+/// The on-disk database file's path -- shared by [openConnection] and
+/// anything else that needs to point at the real file (e.g. exporting it).
+Future<File> databaseFile() async {
+  final dir = await getApplicationDocumentsDirectory();
+  return File(p.join(dir.path, 'pillpal.sqlite'));
+}
+
 LazyDatabase openConnection() {
   return LazyDatabase(() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final file = File(p.join(dir.path, 'pillpal.sqlite'));
+    final file = await databaseFile();
     final key = await EncryptionKeyStore().getOrCreateKey();
 
     if (file.existsSync() && _isPlaintext(file)) {

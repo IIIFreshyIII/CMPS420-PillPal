@@ -3,8 +3,7 @@ import 'extractor.dart';
 
 /// The real [Extractor]: on-device NER (distilled from Med7, run via ONNX)
 /// for drug/strength/dose/form/route/frequency/duration, plus regex for
-/// fill date and days-supply -- replacing [StubExtractor] now that the
-/// pipeline actually exists (`core/ner/`).
+/// fill date and days-supply.
 class OnnxExtractor implements Extractor {
   OnnxExtractor(this._engine);
 

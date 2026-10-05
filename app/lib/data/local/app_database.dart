@@ -80,6 +80,15 @@ class AppDatabase extends _$AppDatabase {
     return (delete(prescriptions)..where((t) => t.id.equals(id))).go();
   }
 
+  /// No cascade to that profile's prescriptions/dose history -- the caller
+  /// (AccountScreen/EditProfileSheet) is expected to have already blocked
+  /// this when the profile still has prescriptions assigned. Silently
+  /// wiping someone's medication history as a side effect of removing their
+  /// profile card is the wrong default for a health-tracking app.
+  Future<void> deleteProfile(String id) {
+    return (delete(profiles)..where((t) => t.id.equals(id))).go();
+  }
+
   Future<void> insertDoseEvent(DoseEvent event) {
     return into(doseEvents).insert(DoseEventsCompanion.insert(
       id: event.id,

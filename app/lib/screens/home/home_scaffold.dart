@@ -154,6 +154,10 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     _db.upsertProfile(updated);
   }
 
+  void _handleDeleteProfile(String id) {
+    _db.deleteProfile(id);
+  }
+
   /// Writes a `DoseEvent` only when a dose actually gets marked taken --
   /// toggling it back off is treated as undoing a mis-tap, not a loggable
   /// "skipped" event, so the history feed reflects real doses taken.
@@ -374,7 +378,9 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           key: const ValueKey('screen_profile'),
           child: AccountScreen(
             profiles: _profiles,
+            prescriptions: _prescriptions,
             onUpdateProfile: _handleUpdateProfile,
+            onDeleteProfile: _handleDeleteProfile,
             notificationService: _notifications,
           ),
         );

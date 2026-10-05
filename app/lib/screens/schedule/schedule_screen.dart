@@ -71,12 +71,12 @@ class ScheduleScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Column(
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Good morning,',
-                      style: TextStyle(
+                      '${timeOfDayGreeting()},',
+                      style: const TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
@@ -84,18 +84,23 @@ class ScheduleScreen extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Cade',
-                      style: TextStyle(
+                      profiles
+                          .firstWhere(
+                            (p) => p.isPrimary,
+                            orElse: () => const Profile(id: '0', name: 'there', color: Colors.grey),
+                          )
+                          .name,
+                      style: const TextStyle(
                         fontSize: 28,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.textPrimary,
                         letterSpacing: -0.6,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
-                      'Wednesday, September 2',
-                      style: TextStyle(
+                      formatFullDate(),
+                      style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary,
@@ -298,6 +303,7 @@ class ScheduleScreen extends StatelessWidget {
             ),
           ),
         ],
+        if (slots.isEmpty) const SliverToBoxAdapter(child: _EmptySchedule()),
         const SliverToBoxAdapter(child: SizedBox(height: 120)),
       ],
     );
@@ -351,6 +357,36 @@ class _ProfileChip extends StatelessWidget {
               letterSpacing: -0.2,
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EmptySchedule extends StatelessWidget {
+  const _EmptySchedule();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(CupertinoIcons.checkmark_seal, color: AppTheme.textSecondary.withValues(alpha: 0.4), size: 40),
+            const SizedBox(height: 12),
+            const Text(
+              'Nothing due right now',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Scan a bottle to add a medication.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+          ],
         ),
       ),
     );
