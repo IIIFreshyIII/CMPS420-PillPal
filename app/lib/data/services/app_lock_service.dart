@@ -29,16 +29,25 @@ class AppLockService extends ChangeNotifier {
   DateTime? _backgroundedAt;
 
   Future<void> load() async {
-    _enabled = await _storage.read(key: _enabledKey) == 'true';
+    try {
+      _enabled = await _storage.read(key: _enabledKey) == 'true';
+    } catch (_) {
+      _enabled = false;
+    }
     await _syncRecentsPreview();
   }
 
   Future<void> setEnabled(bool value) async {
     _enabled = value;
-    await _storage.write(key: _enabledKey, value: '$value');
+    try {
+      await _storage.write(key: _enabledKey, value: '$value');
+    } catch (_) {
+      // Best effort
+    }
     await _syncRecentsPreview();
     notifyListeners();
   }
+
 
   /// Blank recent-apps card while the lock is on (Android 13+; see
   /// MainActivity). Missing channel (tests, other platforms) is ignored.

@@ -7,12 +7,19 @@ import '../../data/services/app_lock_service.dart';
 import '../../data/local/connection.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
+import '../../data/local/app_database.dart';
+import '../../data/models/dose_event.dart';
+import '../../data/services/data_retention_service.dart';
 import '../../data/services/notification_service.dart';
+import '../../core/theme/liquid_glass_controller.dart';
+import '../../core/utils/ios_design_era.dart';
 import 'add_profile_sheet.dart';
 import 'app_lock_setting.dart';
 import 'appearance_setting.dart';
+import 'dose_log_retention_sheet.dart';
 import 'dose_reminders_sheet.dart';
 import 'edit_profile_sheet.dart';
+import 'liquid_glass_setting.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({
@@ -23,19 +30,28 @@ class AccountScreen extends StatelessWidget {
     required this.onDeleteProfile,
     required this.notificationService,
     this.themeController,
+    this.liquidGlassController,
     this.appLock,
+    this.doseEvents = const [],
+    this.retentionService,
+    this.database,
   });
 
   final List<Profile> profiles;
   final List<Prescription> prescriptions;
+  final List<DoseEvent> doseEvents;
   final ValueChanged<Profile> onUpdateProfile;
   final ValueChanged<String> onDeleteProfile;
   final NotificationService notificationService;
+  final DataRetentionService? retentionService;
+  final AppDatabase? database;
 
   /// Null in widget tests that build this screen without the app root; the
   /// Appearance tile is simply omitted then.
   final ThemeController? themeController;
+  final LiquidGlassController? liquidGlassController;
   final AppLockService? appLock;
+
 
   Future<void> _exportData(BuildContext context) async {
     final file = await databaseFile();
@@ -107,7 +123,7 @@ class AccountScreen extends StatelessWidget {
               children: [
                 Icon(CupertinoIcons.shield_lefthalf_fill,
                     size: 22, color: c.privacyIcon),
-                SizedBox(width: 12),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -120,7 +136,7 @@ class AccountScreen extends StatelessWidget {
                           color: c.privacyTitle,
                         ),
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
                         'Medication profiles and schedules are stored exclusively on this device.',
                         style: TextStyle(
@@ -147,10 +163,28 @@ class AccountScreen extends StatelessWidget {
             AppearanceSetting(controller: themeController!),
             const SizedBox(height: 10),
           ],
+          if (liquidGlassController != null &&
+              currentIOSDesignEra(context) == IOSDesignEra.liquidGlass) ...[
+            LiquidGlassSetting(controller: liquidGlassController!),
+            const SizedBox(height: 10),
+          ],
           _SettingTile(
             icon: CupertinoIcons.tray_arrow_down,
             title: 'Export Local Data (.sqlite)',
             onTap: () => _exportData(context),
+          ),
+          const SizedBox(height: 10),
+          _SettingTile(
+            icon: CupertinoIcons.archivebox,
+            title: 'Dose Log Retention',
+            onTap: () => DoseLogRetentionSheet.show(
+              context,
+              retentionService: retentionService ?? DataRetentionService(),
+              doseEvents: doseEvents,
+              prescriptions: prescriptions,
+              profiles: profiles,
+              database: database,
+            ),
           ),
           const SizedBox(height: 10),
           if (appLock != null) ...[

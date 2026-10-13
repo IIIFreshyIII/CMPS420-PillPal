@@ -53,7 +53,7 @@ class AndroidSlidingBottomBar extends StatelessWidget {
           ),
         ),
       ),
-      padding: EdgeInsets.only(bottom: bottomInset),
+      padding: const EdgeInsets.only(bottom: bottomInset),
       height: barHeight + bottomInset,
       child: LayoutBuilder(
         builder: (context, constraints) {

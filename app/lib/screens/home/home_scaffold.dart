@@ -21,7 +21,13 @@ import '../scan/upload_scan_screen.dart';
 import '../schedule/schedule_screen.dart';
 import '../medication_detail/medication_detail_sheet.dart';
 import '../medication_detail/medication_quick_view_sheet.dart';
+import '../../core/utils/date_formatter.dart';
+import '../../data/services/data_retention_service.dart';
 import '../../presentation/widgets/android_sliding_bottom_bar.dart';
+import '../../presentation/widgets/classic_ios_tab_bar.dart';
+import '../../core/services/ios_accessibility_service.dart';
+import '../../core/theme/liquid_glass_controller.dart';
+import '../../core/utils/ios_design_era.dart';
 
 enum _ScanMode { live, upload }
 
@@ -30,26 +36,33 @@ class HomeScaffold extends StatefulWidget {
     super.key,
     this.database,
     this.themeController,
+    this.liquidGlassController,
     this.appLock,
+    this.initialTab = AppTab.schedule,
   });
 
   /// Injectable for tests (an in-memory `AppDatabase`); production always
   /// uses the default on-disk database created in `initState`.
   final AppDatabase? database;
   final ThemeController? themeController;
+  final LiquidGlassController? liquidGlassController;
   final AppLockService? appLock;
+  final AppTab initialTab;
+
 
   @override
   State<HomeScaffold> createState() => _HomeScaffoldState();
 }
 
 class _HomeScaffoldState extends State<HomeScaffold> {
-  AppTab _activeTab = AppTab.schedule;
+  late AppTab _activeTab;
   String _selectedProfileId = 'all';
   bool _isScanning = false;
 
   late final AppDatabase _db;
   late final NotificationService _notifications;
+  late final DataRetentionService _retentionService;
+  late final LiquidGlassController _liquidGlassController;
   bool _notificationPermissionsRequested = false;
   StreamSubscription<List<Profile>>? _profilesSub;
   StreamSubscription<List<Prescription>>? _prescriptionsSub;
@@ -58,6 +71,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   List<Profile> _profiles = const [];
   List<Prescription> _prescriptions = const [];
   List<DoseEvent> _doseEvents = const [];
+
 
   static const _seedProfiles = [
     Profile(id: '1', name: 'Me', color: Color(0xFF3B82F6), isPrimary: true),
@@ -94,23 +108,89 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     ),
   ];
 
+  static List<DoseEvent> _seedDoseEvents() {
+    final now = DateTime.now();
+    final events = <DoseEvent>[];
+    for (int i = 6; i >= 0; i--) {
+      final day =
+          DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+      // Allegra: 8:05 AM (on time)
+      events.add(DoseEvent(
+        id: 'seed_allegra_$i',
+        prescriptionId: '1',
+        profileId: '1',
+        occurredAt: DateTime(day.year, day.month, day.day, 8, 5),
+        action: DoseAction.taken,
+      ));
+      // Lisinopril: on time, except i == 2 (late at 11:30 AM), i == 4 (skipped)
+      if (i == 4) {
+        events.add(DoseEvent(
+          id: 'seed_lisinopril_$i',
+          prescriptionId: '2',
+          profileId: '2',
+          occurredAt: DateTime(day.year, day.month, day.day, 8, 0),
+          action: DoseAction.skipped,
+        ));
+      } else {
+        events.add(DoseEvent(
+          id: 'seed_lisinopril_$i',
+          prescriptionId: '2',
+          profileId: '2',
+          occurredAt: i == 2
+              ? DateTime(day.year, day.month, day.day, 11, 30)
+              : DateTime(day.year, day.month, day.day, 8, 12),
+          action: i == 2 ? DoseAction.late : DoseAction.taken,
+        ));
+      }
+      // Metformin: 12:15 PM (on time), except i == 1 (late at 3:15 PM)
+      events.add(DoseEvent(
+        id: 'seed_metformin_$i',
+        prescriptionId: '3',
+        profileId: '2',
+        occurredAt: i == 1
+            ? DateTime(day.year, day.month, day.day, 15, 15)
+            : DateTime(day.year, day.month, day.day, 12, 15),
+        action: i == 1 ? DoseAction.late : DoseAction.taken,
+      ));
+    }
+    return events;
+  }
+
   @override
   void initState() {
     super.initState();
+    _activeTab = widget.initialTab;
     _db = widget.database ?? AppDatabase();
     _notifications = NotificationService();
-    _db.seedIfEmpty(_seedProfiles, _seedPrescriptions);
+    _retentionService = DataRetentionService();
+    _liquidGlassController =
+        widget.liquidGlassController ?? LiquidGlassController();
+    unawaited(_retentionService.load());
+    unawaited(IOSAccessibilityService.instance.updateAccessibilitySettings());
+    _db
+        .seedIfEmpty(_seedProfiles, _seedPrescriptions, _seedDoseEvents())
+        .catchError((e) {
+      debugPrint('Error seeding database: $e');
+    });
+
     _profilesSub = _db.watchProfiles().listen((rows) {
       if (mounted) setState(() => _profiles = rows);
       _syncNotifications();
+    }, onError: (e) {
+      debugPrint('Error watching profiles: $e');
     });
     _prescriptionsSub = _db.watchPrescriptions().listen((rows) {
       if (mounted) setState(() => _prescriptions = rows);
       _syncNotifications();
+    }, onError: (e) {
+      debugPrint('Error watching prescriptions: $e');
     });
     _doseEventsSub = _db.watchDoseEvents().listen((rows) {
       if (mounted) setState(() => _doseEvents = rows);
+    }, onError: (e) {
+      debugPrint('Error watching dose events: $e');
     });
+
   }
 
   bool _syncingNotifications = false;
@@ -200,12 +280,28 @@ class _HomeScaffoldState extends State<HomeScaffold> {
 
     _db.upsertPrescription(updated);
     if (willBeTaken) {
+      final now = DateTime.now();
+      final scheduledTod = parseTimeOfDayLabel(time);
+      var action = DoseAction.taken;
+      if (scheduledTod != null) {
+        final scheduledToday = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          scheduledTod.hour,
+          scheduledTod.minute,
+        );
+        if (now.isAfter(scheduledToday.add(const Duration(hours: 2)))) {
+          action = DoseAction.late;
+        }
+      }
+
       _db.insertDoseEvent(DoseEvent(
-        id: '${id}_${DateTime.now().microsecondsSinceEpoch}',
+        id: '${id}_${now.microsecondsSinceEpoch}',
         prescriptionId: id,
         profileId: item.profileId,
-        occurredAt: DateTime.now(),
-        action: DoseAction.taken,
+        occurredAt: now,
+        action: action,
       ));
     }
   }
@@ -270,12 +366,27 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           daysSupply: newDays,
         ));
         for (final time in toMark) {
+          final now = DateTime.now();
+          final scheduledTod = parseTimeOfDayLabel(time);
+          var action = DoseAction.taken;
+          if (scheduledTod != null) {
+            final scheduledToday = DateTime(
+              now.year,
+              now.month,
+              now.day,
+              scheduledTod.hour,
+              scheduledTod.minute,
+            );
+            if (now.isAfter(scheduledToday.add(const Duration(hours: 2)))) {
+              action = DoseAction.late;
+            }
+          }
           _db.insertDoseEvent(DoseEvent(
-            id: '${item.id}_${time}_${DateTime.now().microsecondsSinceEpoch}',
+            id: '${item.id}_${time}_${now.microsecondsSinceEpoch}',
             prescriptionId: item.id,
             profileId: item.profileId,
-            occurredAt: DateTime.now(),
-            action: DoseAction.taken,
+            occurredAt: now,
+            action: action,
           ));
         }
       } else {
@@ -372,6 +483,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             onSelectProfile: (id) => setState(() => _selectedProfileId = id),
             onTakeDose: _handleTakeDose,
             onViewMedication: _handleViewMedication,
+            onEditMedication: _handleEditMedication,
+            onDeleteMedication: _handleDeleteMedication,
             onToggleAllCompleted: _handleToggleAllCompleted,
             onOpenScan: _openScan,
             isScanning: _isScanning,
@@ -385,6 +498,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             prescriptions: _prescriptions,
             doseEvents: _doseEvents,
             onEditMedication: _handleEditMedication,
+            retentionService: _retentionService,
+            database: _db,
           ),
         );
       case AppTab.profile:
@@ -397,7 +512,11 @@ class _HomeScaffoldState extends State<HomeScaffold> {
             onDeleteProfile: _handleDeleteProfile,
             notificationService: _notifications,
             themeController: widget.themeController,
+            liquidGlassController: _liquidGlassController,
             appLock: widget.appLock,
+            doseEvents: _doseEvents,
+            retentionService: _retentionService,
+            database: _db,
           ),
         );
     }
@@ -489,7 +608,24 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       );
     }
 
-    // Default iOS Floating Frosted Pill Dock
+    // Pre-iOS 26 or home-button iPhones (no Liquid Glass): classic docked iOS tab bar.
+    // Content scrolls underneath it, as with a stock UITabBar; each tab's
+    // existing bottom padding already clears the bar.
+    if (currentIOSDesignEra(context) == IOSDesignEra.classic) {
+      return Scaffold(
+        extendBody: true,
+        body: SafeArea(
+          bottom: false,
+          child: activeBody,
+        ),
+        bottomNavigationBar: ClassicIOSTabBar(
+          activeTab: _activeTab,
+          onTabPress: (tab) => setState(() => _activeTab = tab),
+        ),
+      );
+    }
+
+    // Default iOS Floating Frosted Pill Dock (iOS 26+ Liquid Glass)
     return Scaffold(
       body: Stack(
         children: [
@@ -500,7 +636,9 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           FloatingTabBar(
             activeTab: _activeTab,
             onTabPress: (tab) => setState(() => _activeTab = tab),
+            controller: _liquidGlassController,
           ),
+
         ],
       ),
     );

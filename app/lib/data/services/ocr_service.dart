@@ -1,8 +1,33 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+
+class _YuvConversionData {
+  _YuvConversionData({
+    required this.width,
+    required this.height,
+    required this.yPlaneBytes,
+    required this.yBytesPerRow,
+    required this.uPlaneBytes,
+    required this.uBytesPerRow,
+    required this.uBytesPerPixel,
+    required this.vPlaneBytes,
+    required this.vBytesPerRow,
+    required this.vBytesPerPixel,
+  });
+  final int width;
+  final int height;
+  final Uint8List yPlaneBytes;
+  final int yBytesPerRow;
+  final Uint8List uPlaneBytes;
+  final int uBytesPerRow;
+  final int uBytesPerPixel;
+  final Uint8List vPlaneBytes;
+  final int vBytesPerRow;
+  final int vBytesPerPixel;
+}
 
 /// Wraps `google_mlkit_text_recognition` (on-device OCR) behind the two
 /// shapes the app actually needs input in -- a live camera frame, and an
@@ -21,7 +46,25 @@ class OcrService {
   /// device's current orientation, since that's screen/controller state,
   /// not something an OCR wrapper should own.
   Future<String> recognizeFrame(CameraImage image, InputImageRotation rotation) async {
-    final bytes = _yuv420ToNv21(image);
+    final yPlane = image.planes[0];
+    final uPlane = image.planes[1];
+    final vPlane = image.planes[2];
+
+    final data = _YuvConversionData(
+      width: image.width,
+      height: image.height,
+      yPlaneBytes: yPlane.bytes,
+      yBytesPerRow: yPlane.bytesPerRow,
+      uPlaneBytes: uPlane.bytes,
+      uBytesPerRow: uPlane.bytesPerRow,
+      uBytesPerPixel: uPlane.bytesPerPixel ?? 2,
+      vPlaneBytes: vPlane.bytes,
+      vBytesPerRow: vPlane.bytesPerRow,
+      vBytesPerPixel: vPlane.bytesPerPixel ?? 2,
+    );
+
+    // Offload heavy byte-packing to a background thread to prevent UI jank.
+    final bytes = await compute(_yuv420ToNv21Isolate, data);
 
     final inputImage = InputImage.fromBytes(
       bytes: bytes,
@@ -48,35 +91,35 @@ class OcrService {
   /// strips the row padding and re-packs everything into a standard,
   /// tightly-packed NV21 buffer (Y plane, then interleaved V/U) that ML Kit
   /// can rely on having no hidden padding.
-  Uint8List _yuv420ToNv21(CameraImage image) {
-    final width = image.width;
-    final height = image.height;
+  static Uint8List _yuv420ToNv21Isolate(_YuvConversionData data) {
+    final width = data.width;
+    final height = data.height;
     final ySize = width * height;
     final uvSize = width * height ~/ 2;
     final nv21 = Uint8List(ySize + uvSize);
 
-    final yPlane = image.planes[0];
+    final yPlaneBytes = data.yPlaneBytes;
     var offset = 0;
     for (var row = 0; row < height; row++) {
-      final rowStart = row * yPlane.bytesPerRow;
-      nv21.setRange(offset, offset + width, yPlane.bytes, rowStart);
+      final rowStart = row * data.yBytesPerRow;
+      nv21.setRange(offset, offset + width, yPlaneBytes, rowStart);
       offset += width;
     }
 
-    final uPlane = image.planes[1];
-    final vPlane = image.planes[2];
-    final uPixelStride = uPlane.bytesPerPixel ?? 2;
-    final vPixelStride = vPlane.bytesPerPixel ?? 2;
+    final uPlaneBytes = data.uPlaneBytes;
+    final vPlaneBytes = data.vPlaneBytes;
+    final uPixelStride = data.uBytesPerPixel;
+    final vPixelStride = data.vBytesPerPixel;
     final chromaWidth = width ~/ 2;
     final chromaHeight = height ~/ 2;
 
     var uvIndex = ySize;
     for (var row = 0; row < chromaHeight; row++) {
-      final uRowStart = row * uPlane.bytesPerRow;
-      final vRowStart = row * vPlane.bytesPerRow;
+      final uRowStart = row * data.uBytesPerRow;
+      final vRowStart = row * data.vBytesPerRow;
       for (var col = 0; col < chromaWidth; col++) {
-        nv21[uvIndex++] = vPlane.bytes[vRowStart + col * vPixelStride];
-        nv21[uvIndex++] = uPlane.bytes[uRowStart + col * uPixelStride];
+        nv21[uvIndex++] = vPlaneBytes[vRowStart + col * vPixelStride];
+        nv21[uvIndex++] = uPlaneBytes[uRowStart + col * uPixelStride];
       }
     }
 

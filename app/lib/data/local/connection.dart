@@ -22,6 +22,10 @@ LazyDatabase openConnection() {
 
     if (file.existsSync() && _isPlaintext(file)) {
       _migrateToEncrypted(file, key);
+    } else if (file.existsSync() && !_canDecrypt(file, key)) {
+      try {
+        file.deleteSync();
+      } catch (_) {}
     }
 
     return NativeDatabase(
@@ -47,10 +51,27 @@ LazyDatabase openConnection() {
 
 String _escapeSqlString(String source) => source.replaceAll("'", "''");
 
+/// Whether [file] can be successfully decrypted and read with [key].
+bool _canDecrypt(File file, String key) {
+  try {
+    final db = sqlite3.sqlite3.open(file.path);
+    try {
+      db.execute("PRAGMA key = '${_escapeSqlString(key)}';");
+      db.select('SELECT count(*) FROM sqlite_master;');
+      return true;
+    } finally {
+      db.close();
+    }
+  } catch (_) {
+    return false;
+  }
+}
+
 /// Whether [file] is a pre-encryption, plain-SQLite database: openable and
 /// readable without a key. An already-encrypted file throws on the trial
 /// read instead (its pages are unparseable without the right key).
 bool _isPlaintext(File file) {
+
   try {
     final db = sqlite3.sqlite3.open(file.path, mode: sqlite3.OpenMode.readOnly);
     try {

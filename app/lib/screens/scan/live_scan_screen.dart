@@ -156,8 +156,9 @@ class _LiveScanScreenState extends State<LiveScanScreen>
     if (_lineLastSeen.isEmpty) return;
 
     final activeText = _lineLastSeen.keys.join('\n');
-    if (activeText == _lastExtractedText)
+    if (activeText == _lastExtractedText) {
       return; // buffer unchanged, skip re-running the model
+    }
     _lastExtractedText = activeText;
 
     final extractor = _extractor;
@@ -260,11 +261,11 @@ class _LiveScanScreenState extends State<LiveScanScreen>
       body: switch (_status) {
         _ScanStatus.requestingPermission ||
         _ScanStatus.initializing =>
-          _CenteredMessage(
-            child: const CircularProgressIndicator(color: Colors.white),
+          const _CenteredMessage(
+            child: CircularProgressIndicator(color: Colors.white),
           ),
         _ScanStatus.permissionDenied =>
-          _PermissionDeniedView(onOpenSettings: openCameraPermissionSettings),
+          const _PermissionDeniedView(onOpenSettings: openCameraPermissionSettings),
         _ScanStatus.error => _CenteredMessage(
             child: Text(
               "Couldn't start the camera.\n${_errorMessage ?? ''}",

@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>PillPal needs camera access to scan prescription bottle labels.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>PillPal uses Face ID to securely authenticate and protect your medication records.</string>
 </dict>
 </plist>

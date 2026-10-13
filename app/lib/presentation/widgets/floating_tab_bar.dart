@@ -1,19 +1,27 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/liquid_glass_controller.dart';
+import '../../core/theme/liquid_glass_mode.dart';
+import '../../core/theme/liquid_glass_style.dart';
 
 enum AppTab { schedule, meds, profile }
 
 class FloatingTabBar extends StatefulWidget {
   final AppTab activeTab;
   final ValueChanged<AppTab> onTabPress;
+  final LiquidGlassController? controller;
+  final LiquidGlassMode? debugModeOverride;
 
   const FloatingTabBar({
     super.key,
     required this.activeTab,
     required this.onTabPress,
+    this.controller,
+    this.debugModeOverride,
   });
 
   @override
@@ -21,13 +29,16 @@ class FloatingTabBar extends StatefulWidget {
 }
 
 class _FloatingTabBarState extends State<FloatingTabBar> {
-  bool _isDragging = false;
+  bool _isLifted = false;
   double _dragRatio = 0.0;
+  double _downDx = 0.0;
+  bool _hasDragged = false;
+  Timer? _holdTimer;
 
   @override
   void didUpdateWidget(FloatingTabBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_isDragging) {
+    if (!_isLifted) {
       _dragRatio = widget.activeTab.index.toDouble();
     }
   }
@@ -38,14 +49,42 @@ class _FloatingTabBarState extends State<FloatingTabBar> {
     _dragRatio = widget.activeTab.index.toDouble();
   }
 
-  void _handleDragStart(DragStartDetails details) {
-    HapticFeedback.mediumImpact();
-    setState(() => _isDragging = true);
+  @override
+  void dispose() {
+    _holdTimer?.cancel();
+    super.dispose();
   }
 
-  void _handleDragUpdate(DragUpdateDetails details, double totalWidth) {
+  void _handlePanDown(DragDownDetails details, double totalWidth) {
+    _downDx = details.localPosition.dx;
+    _hasDragged = false;
+    _holdTimer?.cancel();
+    // Only lift if held down for a true press-and-hold (> 160ms), preventing
+    // quick taps/clicks from causing an accidental scale pop.
+    _holdTimer = Timer(const Duration(milliseconds: 160), () {
+      if (mounted) {
+        HapticFeedback.mediumImpact();
+        setState(() {
+          _isLifted = true;
+        });
+      }
+    });
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details, double totalWidth) {
     final tabWidth = totalWidth / AppTab.values.length;
-    final newRatio = (details.localPosition.dx / tabWidth - 0.5).clamp(0.0, 2.0);
+    final delta = (details.localPosition.dx - _downDx).abs();
+    if (delta > 4.0) {
+      _hasDragged = true;
+      _holdTimer?.cancel();
+      if (!_isLifted) {
+        HapticFeedback.mediumImpact();
+        _isLifted = true;
+      }
+    }
+
+    final newRatio =
+        (details.localPosition.dx / tabWidth - 0.5).clamp(0.0, (AppTab.values.length - 1).toDouble());
 
     final previousTarget = _dragRatio.round();
     final newTarget = newRatio.round();
@@ -58,144 +97,195 @@ class _FloatingTabBarState extends State<FloatingTabBar> {
     });
   }
 
-  void _handleDragEnd() {
-    final targetIndex = _dragRatio.round().clamp(0, AppTab.values.length - 1);
+  void _handlePanEnd(DragEndDetails details, double totalWidth) {
+    _holdTimer?.cancel();
+    final tabWidth = totalWidth / AppTab.values.length;
+    final int targetIndex;
+    if (_hasDragged) {
+      targetIndex = _dragRatio.round().clamp(0, AppTab.values.length - 1);
+    } else {
+      // Tap in place without drag
+      targetIndex = (_downDx / tabWidth).floor().clamp(0, AppTab.values.length - 1);
+    }
+
+    final wasLifted = _isLifted;
     setState(() {
-      _isDragging = false;
+      _isLifted = false;
+      _hasDragged = false;
       _dragRatio = targetIndex.toDouble();
     });
-    HapticFeedback.lightImpact();
+
+    if (wasLifted) {
+      HapticFeedback.lightImpact();
+    } else {
+      HapticFeedback.selectionClick();
+    }
     widget.onTabPress(AppTab.values[targetIndex]);
+  }
+
+  void _handlePanCancel() {
+    _holdTimer?.cancel();
+    setState(() {
+      _isLifted = false;
+      _hasDragged = false;
+      _dragRatio = widget.activeTab.index.toDouble();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final activeIndex = _isDragging ? _dragRatio.round() : widget.activeTab.index;
-    // The app now draws edge-to-edge (main.dart), so the system gesture bar
-    // no longer reserves its own space -- add its actual height (varies by
-    // device/gesture-nav settings) on top of the visual margin, or this bar
-    // would sit flush against, or under, the gesture area.
-    final gestureBarInset = MediaQuery.of(context).padding.bottom;
+    if (widget.controller != null) {
+      return ValueListenableBuilder<LiquidGlassMode>(
+        valueListenable: widget.controller!,
+        builder: (context, _, __) => _buildBar(context),
+      );
+    }
+    return _buildBar(context);
+  }
 
-    return Positioned(
-      bottom: 28 + gestureBarInset,
-      left: 24,
-      right: 24,
-      child: Center(
-        child: AnimatedScale(
-          scale: _isDragging ? 1.04 : 1.0,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          child: Container(
-            height: 56,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(38),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.textPrimary.withValues(alpha: _isDragging ? 0.15 : 0.08),
-                  blurRadius: _isDragging ? 28 : 20,
-                  offset: Offset(0, _isDragging ? 12 : 8),
+  Widget _buildBar(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final activeIndex = _isLifted
+        ? _dragRatio.round().clamp(0, AppTab.values.length - 1)
+        : widget.activeTab.index;
+
+    final selectedMode = widget.debugModeOverride ??
+        widget.controller?.value ??
+        LiquidGlassMode.auto;
+
+    final style = LiquidGlassStyle.resolve(
+      context,
+      isDark: isDark,
+      isLifted: _isLifted,
+      mode: selectedMode,
+    );
+
+    Widget barContent = Container(
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(38),
+        gradient: style.backgroundGradient,
+        color: style.solidBackgroundColor,
+        border: style.border,
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final totalWidth = constraints.maxWidth;
+          final tabWidth = totalWidth / AppTab.values.length;
+          final currentRatio =
+              _isLifted ? _dragRatio : widget.activeTab.index.toDouble();
+          final pillLeft = currentRatio * tabWidth;
+
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onPanDown: (d) => _handlePanDown(d, totalWidth),
+            onPanUpdate: (d) => _handlePanUpdate(d, totalWidth),
+            onPanEnd: (d) => _handlePanEnd(d, totalWidth),
+            onPanCancel: _handlePanCancel,
+            child: Stack(
+              children: [
+                AnimatedPositioned(
+                  duration: style.disableAnimations
+                      ? Duration.zero
+                      : (_isLifted
+                          ? const Duration(milliseconds: 30)
+                          : const Duration(milliseconds: 260)),
+                  curve: Curves.easeOutCubic,
+                  left: pillLeft,
+                  top: 0,
+                  bottom: 0,
+                  width: tabWidth,
+                  child: AnimatedContainer(
+                    duration: style.disableAnimations
+                        ? Duration.zero
+                        : const Duration(milliseconds: 200),
+                    curve: Curves.easeOutCubic,
+                    margin: EdgeInsets.symmetric(
+                      horizontal: _isLifted ? 2 : 3,
+                      vertical: _isLifted ? 1 : 2,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(30),
+                      gradient: style.activePillGradient,
+                      color: style.activePillColor,
+                      border: style.activePillBorder,
+                      boxShadow: style.activePillShadows,
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    _buildTabItem(
+                      label: 'Schedule',
+                      icon: CupertinoIcons.calendar_today,
+                      activeIcon: CupertinoIcons.calendar,
+                      isActive: activeIndex == 0,
+                      isDark: isDark,
+                      disableAnimations: style.disableAnimations,
+                    ),
+                    _buildTabItem(
+                      label: 'Meds',
+                      icon: CupertinoIcons.capsule,
+                      activeIcon: CupertinoIcons.capsule_fill,
+                      isActive: activeIndex == 1,
+                      isDark: isDark,
+                      disableAnimations: style.disableAnimations,
+                    ),
+                    _buildTabItem(
+                      label: 'Profile',
+                      icon: CupertinoIcons.person_crop_circle,
+                      activeIcon: CupertinoIcons.person_crop_circle_fill,
+                      isActive: activeIndex == 2,
+                      isDark: isDark,
+                      disableAnimations: style.disableAnimations,
+                    ),
+                  ],
                 ),
               ],
+            ),
+          );
+        },
+      ),
+    );
+
+    // If blur is enabled, wrap with BackdropFilter.
+    // If blur is false (opaque mode / high-contrast / reduce transparency),
+    // skip BackdropFilter entirely to eliminate off-screen render pass.
+    if (style.hasBlur) {
+      barContent = BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: style.blurSigma,
+          sigmaY: style.blurSigma,
+        ),
+        child: barContent,
+      );
+    }
+
+    return Positioned(
+      bottom: 28.0,
+      left: 24.0,
+      right: 24.0,
+      child: Center(
+        child: AnimatedScale(
+          scale: style.liftScale,
+          duration: style.disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 220),
+          curve: Curves.easeOutBack,
+          child: AnimatedContainer(
+            duration: style.disableAnimations
+                ? Duration.zero
+                : const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            height: 58,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(38),
+              boxShadow: style.shadows,
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(38),
               clipBehavior: Clip.antiAlias,
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                child: Container(
-                  padding: const EdgeInsets.all(5),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(38),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.95),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final totalWidth = constraints.maxWidth;
-                      final tabWidth = totalWidth / AppTab.values.length;
-                      final currentRatio = _isDragging ? _dragRatio : widget.activeTab.index.toDouble();
-                      final pillLeft = currentRatio * tabWidth;
-
-                      return GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onHorizontalDragStart: _handleDragStart,
-                        onHorizontalDragUpdate: (d) => _handleDragUpdate(d, totalWidth),
-                        onHorizontalDragEnd: (d) => _handleDragEnd(),
-                        onHorizontalDragCancel: () => setState(() {
-                          _isDragging = false;
-                          _dragRatio = widget.activeTab.index.toDouble();
-                        }),
-                        child: Stack(
-                          children: [
-                            AnimatedPositioned(
-                              duration: _isDragging
-                                  ? const Duration(milliseconds: 20)
-                                  : const Duration(milliseconds: 260),
-                              curve: Curves.easeOutCubic,
-                              left: pillLeft,
-                              top: 0,
-                              bottom: 0,
-                              width: tabWidth,
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                curve: Curves.easeOutCubic,
-                                margin: EdgeInsets.symmetric(
-                                  horizontal: _isDragging ? 1 : 2,
-                                  vertical: _isDragging ? 0 : 1,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: _isDragging
-                                      ? AppTheme.headerTeal.withValues(alpha: 0.55)
-                                      : AppTheme.headerTeal.withValues(alpha: 0.35),
-                                  borderRadius: BorderRadius.circular(30),
-                                  boxShadow: _isDragging
-                                      ? [
-                                          BoxShadow(
-                                            color: AppTheme.interactiveTeal.withValues(alpha: 0.20),
-                                            blurRadius: 10,
-                                            offset: const Offset(0, 3),
-                                          ),
-                                        ]
-                                      : null,
-                                ),
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                _buildTabItem(
-                                  label: 'Schedule',
-                                  icon: CupertinoIcons.calendar_today,
-                                  activeIcon: CupertinoIcons.calendar,
-                                  isActive: activeIndex == 0,
-                                  onTap: () => widget.onTabPress(AppTab.schedule),
-                                ),
-                                _buildTabItem(
-                                  label: 'Meds',
-                                  icon: CupertinoIcons.capsule,
-                                  activeIcon: CupertinoIcons.capsule_fill,
-                                  isActive: activeIndex == 1,
-                                  onTap: () => widget.onTabPress(AppTab.meds),
-                                ),
-                                _buildTabItem(
-                                  label: 'Profile',
-                                  icon: CupertinoIcons.person_crop_circle,
-                                  activeIcon: CupertinoIcons.person_crop_circle_fill,
-                                  isActive: activeIndex == 2,
-                                  onTap: () => widget.onTabPress(AppTab.profile),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
+              child: barContent,
             ),
           ),
         ),
@@ -208,23 +298,26 @@ class _FloatingTabBarState extends State<FloatingTabBar> {
     required IconData icon,
     required IconData activeIcon,
     required bool isActive,
-    required VoidCallback onTap,
+    required bool isDark,
+    required bool disableAnimations,
   }) {
     return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () {
-          HapticFeedback.selectionClick();
-          onTap();
-        },
-        child: Center(
+      child: Center(
+        child: AnimatedScale(
+          scale: isActive ? 1.04 : 1.0,
+          duration: disableAnimations
+              ? Duration.zero
+              : const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 isActive ? activeIcon : icon,
                 size: 19,
-                color: isActive ? AppTheme.interactiveTeal : AppTheme.textSecondary,
+                color: isActive
+                    ? AppTheme.interactiveTeal
+                    : (isDark ? Colors.white60 : AppTheme.textSecondary),
               ),
               const SizedBox(width: 6),
               Text(
@@ -232,7 +325,9 @@ class _FloatingTabBarState extends State<FloatingTabBar> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-                  color: isActive ? AppTheme.interactiveTeal : AppTheme.textSecondary,
+                  color: isActive
+                      ? AppTheme.interactiveTeal
+                      : (isDark ? Colors.white70 : AppTheme.textSecondary),
                   letterSpacing: -0.2,
                 ),
               ),

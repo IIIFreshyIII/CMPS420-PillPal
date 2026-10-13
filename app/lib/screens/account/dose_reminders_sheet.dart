@@ -71,7 +71,7 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
     return Container(
       decoration: BoxDecoration(
         color: c.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
         top: false,

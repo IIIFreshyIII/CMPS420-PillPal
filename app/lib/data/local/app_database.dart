@@ -99,9 +99,19 @@ class AppDatabase extends _$AppDatabase {
     ));
   }
 
-  /// Inserts the given profiles/prescriptions only if the tables are
+  Future<int> deleteDoseEventsBefore(DateTime cutoff) {
+    return (delete(doseEvents)
+          ..where((t) => t.occurredAt.isSmallerThanValue(cutoff)))
+        .go();
+  }
+
+  /// Inserts the given profiles/prescriptions (and optional dose events) only if the tables are
   /// currently empty -- first-launch demo data, not a reset-on-every-run.
-  Future<void> seedIfEmpty(List<Profile> seedProfiles, List<Prescription> seedPrescriptions) async {
+  Future<void> seedIfEmpty(
+    List<Profile> seedProfiles,
+    List<Prescription> seedPrescriptions, [
+    List<DoseEvent>? seedDoseEvents,
+  ]) async {
     // Checked independently (not "seed everything if profiles is empty"):
     // a schema migration that only reshapes Prescriptions (e.g. v1 -> v2's
     // time -> reminderTimes change) can leave Profiles populated but
@@ -109,6 +119,7 @@ class AppDatabase extends _$AppDatabase {
     // than leaving Schedule silently blank.
     final hasProfiles = await select(profiles).get();
     final hasPrescriptions = await select(prescriptions).get();
+    final hasDoseEvents = await select(doseEvents).get();
 
     await batch((b) {
       if (hasProfiles.isEmpty) {
@@ -136,6 +147,20 @@ class AppDatabase extends _$AppDatabase {
                 remaining: m.remaining,
                 daysSupply: m.daysSupply,
                 allowAfterBedtime: Value(m.allowAfterBedtime),
+              )),
+        );
+      }
+      if (seedDoseEvents != null &&
+          seedDoseEvents.isNotEmpty &&
+          hasDoseEvents.isEmpty) {
+        b.insertAll(
+          doseEvents,
+          seedDoseEvents.map((e) => DoseEventsCompanion.insert(
+                id: e.id,
+                prescriptionId: e.prescriptionId,
+                profileId: e.profileId,
+                occurredAt: e.occurredAt,
+                action: e.action.name,
               )),
         );
       }
@@ -172,7 +197,10 @@ class AppDatabase extends _$AppDatabase {
       prescriptionId: row.prescriptionId,
       profileId: row.profileId,
       occurredAt: row.occurredAt,
-      action: DoseAction.values.byName(row.action),
+      action: DoseAction.values.firstWhere(
+        (a) => a.name == row.action,
+        orElse: () => DoseAction.taken,
+      ),
     );
   }
 }

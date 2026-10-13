@@ -66,7 +66,7 @@ class _AddProfileSheetState extends State<AddProfileSheet> {
       child: Container(
         decoration: BoxDecoration(
           color: c.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SafeArea(
           top: false,

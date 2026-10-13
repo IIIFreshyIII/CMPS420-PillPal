@@ -139,7 +139,7 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
       child: Container(
         decoration: BoxDecoration(
           color: c.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SafeArea(
           top: false,

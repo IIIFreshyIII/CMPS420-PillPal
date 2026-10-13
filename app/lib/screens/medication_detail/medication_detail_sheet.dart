@@ -228,7 +228,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
         height: MediaQuery.of(context).size.height,
         decoration: BoxDecoration(
           color: c.background,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
         ),
         child: SafeArea(
           top: false,

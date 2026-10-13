@@ -59,7 +59,7 @@ class DoseEvents extends Table {
   TextColumn get prescriptionId => text().references(Prescriptions, #id)();
   TextColumn get profileId => text().references(Profiles, #id)();
   DateTimeColumn get occurredAt => dateTime()();
-  TextColumn get action => text()(); // 'taken' | 'skipped' -- see DoseAction
+  TextColumn get action => text()(); // 'taken' | 'late' | 'skipped' -- see DoseAction
 
   @override
   Set<Column> get primaryKey => {id};

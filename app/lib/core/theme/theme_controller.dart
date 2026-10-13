@@ -8,20 +8,31 @@ class ThemeController extends ValueNotifier<ThemeMode> {
   ThemeController._(super.value);
 
   static const _key = 'appearance';
-  static const _storage = FlutterSecureStorage();
+  static const _storage = FlutterSecureStorage(
+    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+  );
 
   static Future<ThemeController> load() async {
-    final saved = await _storage.read(key: _key);
-    return ThemeController._(
-      ThemeMode.values
-          .firstWhere((m) => m.name == saved, orElse: () => ThemeMode.system),
-    );
+    try {
+      final saved = await _storage.read(key: _key);
+      return ThemeController._(
+        ThemeMode.values
+            .firstWhere((m) => m.name == saved, orElse: () => ThemeMode.system),
+      );
+    } catch (_) {
+      return ThemeController._(ThemeMode.system);
+    }
   }
 
   Future<void> select(ThemeMode mode) async {
     if (mode == value) return;
     HapticFeedback.selectionClick();
     value = mode;
-    await _storage.write(key: _key, value: mode.name);
+    try {
+      await _storage.write(key: _key, value: mode.name);
+    } catch (_) {
+      // Best effort on un-entitled simulator environments
+    }
   }
+
 }

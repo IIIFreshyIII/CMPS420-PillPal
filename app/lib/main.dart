@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/liquid_glass_controller.dart';
 import 'core/theme/theme_controller.dart';
 import 'data/services/app_lock_service.dart';
 import 'screens/app_lock/app_lock_gate.dart';
@@ -46,11 +47,16 @@ Future<void> main() async {
   // Read before runApp so a saved Dark choice is applied on the very first
   // frame, with no light flash.
   final themeController = await ThemeController.load();
+  final liquidGlassController = await LiquidGlassController.load();
   // Also before runApp: if App Lock is on, the very first frame is the lock
   // screen, never a glimpse of the schedule.
   final appLock = AppLockService();
   await appLock.load();
-  runApp(PillPalApp(themeController: themeController, appLock: appLock));
+  runApp(PillPalApp(
+    themeController: themeController,
+    liquidGlassController: liquidGlassController,
+    appLock: appLock,
+  ));
 }
 
 void _hideBottomNavBar() {
@@ -62,10 +68,12 @@ class PillPalApp extends StatelessWidget {
   const PillPalApp({
     super.key,
     required this.themeController,
+    required this.liquidGlassController,
     required this.appLock,
   });
 
   final ThemeController themeController;
+  final LiquidGlassController liquidGlassController;
   final AppLockService appLock;
 
   @override
@@ -106,8 +114,13 @@ class PillPalApp extends StatelessWidget {
                 )
               : child!,
         ),
-        home: HomeScaffold(themeController: themeController, appLock: appLock),
+        home: HomeScaffold(
+          themeController: themeController,
+          liquidGlassController: liquidGlassController,
+          appLock: appLock,
+        ),
       ),
     );
   }
 }
+

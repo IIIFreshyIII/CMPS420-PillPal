@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:pillpal/data/models/prescription.dart';
 import 'package:pillpal/data/models/profile.dart';
+import 'package:pillpal/core/theme/liquid_glass_controller.dart';
 import 'package:pillpal/data/services/notification_service.dart';
 import 'package:pillpal/screens/account/account_screen.dart';
 
@@ -124,4 +125,29 @@ void main() {
     expect(find.text('Delete Profile'), findsNothing);
     expect(find.text('Reassign or delete their medications first to delete this profile.'), findsNothing);
   });
+
+  testWidgets('renders LiquidGlassSetting under Preferences when liquidGlassController is provided', (tester) async {
+
+    final controller = LiquidGlassController();
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(
+          size: Size(393, 852),
+          padding: EdgeInsets.only(top: 59, bottom: 34),
+        ),
+        child: AccountScreen(
+          profiles: const [me],
+          prescriptions: const [],
+          onUpdateProfile: (_) {},
+          onDeleteProfile: (_) {},
+          notificationService: NotificationService(),
+          liquidGlassController: controller,
+        ),
+      ),
+    ));
+
+    expect(find.text('Liquid Glass Effect'), findsOneWidget);
+    expect(find.text('Auto'), findsWidgets);
+  });
 }
+
