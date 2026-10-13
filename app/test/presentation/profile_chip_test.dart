@@ -60,4 +60,63 @@ void main() {
     expect(decoration.borderRadius, BorderRadius.circular(20));
     expect(decoration.boxShadow, isNull);
   });
+
+  testWidgets('All chip selected in Dark mode renders teal background and dark text',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.darkTheme,
+      home: Scaffold(
+        body: Center(
+          child: ProfileChip(
+            label: 'All',
+            isSelected: true,
+            onTap: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final container = tester.widget<Container>(
+      find.ancestor(of: find.text('All'), matching: find.byType(Container)).first,
+    );
+    final decoration = container.decoration as BoxDecoration;
+    // Should be dark mode c.teal, NOT bright white c.ink
+    expect(decoration.color, const Color(0xFF2FB5AE));
+
+    final defaultTextStyle = tester.widget<AnimatedDefaultTextStyle>(
+      find.ancestor(of: find.text('All'), matching: find.byType(AnimatedDefaultTextStyle)).first,
+    );
+    // Text color should be c.onTeal (0xFF0C1514) for high contrast
+    expect(defaultTextStyle.style.color, const Color(0xFF0C1514));
+  });
+
+  testWidgets('All chip selected in Light mode renders dark ink background and white text',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: Scaffold(
+        body: Center(
+          child: ProfileChip(
+            label: 'All',
+            isSelected: true,
+            onTap: () {},
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final container = tester.widget<Container>(
+      find.ancestor(of: find.text('All'), matching: find.byType(Container)).first,
+    );
+    final decoration = container.decoration as BoxDecoration;
+    expect(decoration.color, const Color(0xFF102A29));
+
+    final defaultTextStyle = tester.widget<AnimatedDefaultTextStyle>(
+      find.ancestor(of: find.text('All'), matching: find.byType(AnimatedDefaultTextStyle)).first,
+    );
+    expect(defaultTextStyle.style.color, Colors.white);
+  });
 }
+

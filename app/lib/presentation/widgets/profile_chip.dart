@@ -22,11 +22,14 @@ class ProfileChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final activeColor = selectedColor ?? c.ink;
+    final isThemeDark = Theme.of(context).brightness == Brightness.dark;
+    final activeColor = selectedColor ?? (isThemeDark ? c.teal : c.ink);
     final isDark =
         ThemeData.estimateBrightnessForColor(activeColor) == Brightness.dark;
     final textColor = isSelected
-        ? (isDark ? Colors.white : c.ink)
+        ? (selectedColor == null
+            ? (isThemeDark ? c.onTeal : Colors.white)
+            : (isDark ? Colors.white : c.ink))
         : c.inkMuted;
 
     return Padding(

@@ -225,8 +225,8 @@ class LiquidGlassStyle {
         end: Alignment.bottomCenter,
         colors: isDark
             ? [
-                const Color(0xFF1E293B).withValues(alpha: 0.82),
-                const Color(0xFF0F172A).withValues(alpha: 0.88),
+                const Color(0xFF182C2A).withValues(alpha: 0.85),
+                const Color(0xFF101F1E).withValues(alpha: 0.90),
               ]
             : [
                 Colors.white.withValues(alpha: 0.90),
@@ -236,7 +236,7 @@ class LiquidGlassStyle {
       solidBackgroundColor: null,
       border: Border.all(
         color: isDark
-            ? Colors.white.withValues(alpha: isLifted ? 0.26 : 0.18)
+            ? const Color(0xFF2C3D3B).withValues(alpha: isLifted ? 0.90 : 0.65)
             : const Color(0xFFE2E8F0),
         width: 1.2,
       ),
@@ -310,7 +310,7 @@ class LiquidGlassStyle {
       solidBackgroundColor:
           isDark ? const Color(0xFF141D1C) : const Color(0xFFFFFFFF),
       border: Border.all(
-        color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+        color: isDark ? const Color(0xFF2C3D3B) : const Color(0xFFCBD5E1),
         width: 1.5,
       ),
       shadows: [

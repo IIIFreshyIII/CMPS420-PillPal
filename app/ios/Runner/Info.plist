@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>PillPal needs camera access to scan prescription bottle labels.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>PillPal uses Face ID to securely authenticate and protect your medication records.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -66,9 +70,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSCameraUsageDescription</key>
-	<string>PillPal needs camera access to scan prescription bottle labels.</string>
-	<key>NSFaceIDUsageDescription</key>
-	<string>PillPal uses Face ID to securely authenticate and protect your medication records.</string>
 </dict>
 </plist>

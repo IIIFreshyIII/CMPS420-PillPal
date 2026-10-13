@@ -58,20 +58,27 @@ post_install do |installer|
     File.write(file, new_content) if content != new_content
   end
 
-  # Patch precompiled static frameworks that lack native arm64 simulator slices
-  patch_framework_to_sim = lambda do |framework_binary_path|
+  # Prepare precompiled static frameworks for both physical device (iOS) and Apple Silicon simulator (iOS-simulator)
+  prepare_dual_framework_slices = lambda do |framework_binary_path|
     return unless File.exist?(framework_binary_path)
-    info = `lipo -info "#{framework_binary_path}" 2>/dev/null`
+
+    device_path = "#{framework_binary_path}.device"
+    sim_path = "#{framework_binary_path}.simulator"
+
+    # Save initial pristine binary as .device if not already present
+    FileUtils.cp(framework_binary_path, device_path) unless File.exist?(device_path)
+
+    info = `lipo -info "#{device_path}" 2>/dev/null`
     return unless info.include?('arm64')
 
     arm64_path = "#{framework_binary_path}_arm64"
     x86_64_path = "#{framework_binary_path}_x86_64"
 
-    system('lipo', '-thin', 'arm64', framework_binary_path, '-output', arm64_path)
+    system('lipo', '-thin', 'arm64', device_path, '-output', arm64_path)
     return unless File.exist?(arm64_path)
 
     has_x86 = info.include?('x86_64')
-    system('lipo', '-thin', 'x86_64', framework_binary_path, '-output', x86_64_path) if has_x86
+    system('lipo', '-thin', 'x86_64', device_path, '-output', x86_64_path) if has_x86
 
     buf = File.binread(arm64_path)
     i = 0
@@ -101,9 +108,9 @@ post_install do |installer|
     if patched
       File.binwrite(arm64_path, buf)
       if has_x86 && File.exist?(x86_64_path)
-        system('lipo', '-create', arm64_path, x86_64_path, '-output', framework_binary_path)
+        system('lipo', '-create', arm64_path, x86_64_path, '-output', sim_path)
       else
-        FileUtils.cp(arm64_path, framework_binary_path)
+        FileUtils.cp(arm64_path, sim_path)
       end
     end
     File.delete(arm64_path) if File.exist?(arm64_path)
@@ -111,7 +118,7 @@ post_install do |installer|
   end
 
   Dir.glob(File.join(__dir__, 'Pods', '**', '*.framework', '*')).each do |bin|
-    next if bin.end_with?('.plist') || bin.end_with?('.h') || bin.include?('.framework/_CodeSignature') || File.directory?(bin)
-    patch_framework_to_sim.call(bin)
+    next if bin.end_with?('.plist') || bin.end_with?('.h') || bin.include?('.framework/_CodeSignature') || bin.end_with?('.device') || bin.end_with?('.simulator') || File.directory?(bin)
+    prepare_dual_framework_slices.call(bin)
   end
 end
