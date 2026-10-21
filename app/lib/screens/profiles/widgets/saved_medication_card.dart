@@ -8,12 +8,14 @@ import '../../../presentation/widgets/pressable.dart';
 class SavedMedicationCard extends StatelessWidget {
   final Prescription prescription;
   final Profile? profile;
+  final bool showProfileBadge;
   final VoidCallback onTap;
 
   const SavedMedicationCard({
     super.key,
     required this.prescription,
     required this.profile,
+    this.showProfileBadge = true,
     required this.onTap,
   });
 
@@ -101,7 +103,7 @@ class SavedMedicationCard extends StatelessWidget {
                   // Profile tag & stock info
                   Row(
                     children: [
-                      if (profile != null) ...[
+                      if (profile != null && showProfileBadge) ...[
                         Container(
                           padding: const EdgeInsets.symmetric(
                               vertical: 2, horizontal: 6),

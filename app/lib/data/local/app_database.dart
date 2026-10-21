@@ -105,6 +105,14 @@ class AppDatabase extends _$AppDatabase {
         .go();
   }
 
+  /// Completely wipes all user profiles, prescriptions, and dose event history.
+  /// Used during testing resets and developer debug switcher presets.
+  Future<void> clearAllData() async {
+    await delete(doseEvents).go();
+    await delete(prescriptions).go();
+    await delete(profiles).go();
+  }
+
   /// Inserts the given profiles/prescriptions (and optional dose events) only if the tables are
   /// currently empty -- first-launch demo data, not a reset-on-every-run.
   Future<void> seedIfEmpty(

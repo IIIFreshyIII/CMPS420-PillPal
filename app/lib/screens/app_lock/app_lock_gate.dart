@@ -9,24 +9,30 @@ import '../../data/services/app_lock_service.dart';
 /// device's own unlock. The app stays mounted underneath, so unlocking
 /// doesn't reset where you were.
 class AppLockGate extends StatefulWidget {
-  const AppLockGate({super.key, required this.service, required this.child});
+  const AppLockGate({
+    super.key,
+    required this.service,
+    required this.child,
+    this.enabled = true,
+  });
 
   final AppLockService service;
   final Widget child;
+  final bool enabled;
 
   @override
   State<AppLockGate> createState() => _AppLockGateState();
 }
 
 class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
-  late bool _locked = widget.service.isEnabled; // cold start: locked if on
+  late bool _locked = widget.enabled && widget.service.isEnabled; // cold start: locked if on
   bool _prompting = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (_locked) {
+    if (_locked && widget.enabled) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _unlock());
     }
   }
@@ -39,6 +45,7 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!widget.enabled) return;
     final service = widget.service;
     if (!service.isEnabled || _locked) return;
     // Only time spent while *unlocked* counts: the device-credential prompt
@@ -72,6 +79,7 @@ class _AppLockGateState extends State<AppLockGate> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.enabled) return widget.child;
     return Stack(
       children: [
         ExcludeSemantics(

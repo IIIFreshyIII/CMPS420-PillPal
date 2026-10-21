@@ -6,6 +6,7 @@ void main() {
   tearDown(() {
     debugIOSMajorVersionOverride = null;
     debugIsHomeButtonOverride = null;
+    debugIsLiquidGlassSupportedOverride = null;
   });
 
   group('parseIOSMajorVersion', () {
@@ -150,6 +151,34 @@ void main() {
       );
 
       expect(era, IOSDesignEra.liquidGlass);
+    });
+  });
+
+  group('isLiquidGlassSupported', () {
+    test('returns true for non-home-button iPhone on iOS 26+', () {
+      debugIsHomeButtonOverride = false;
+      debugIOSMajorVersionOverride = 26;
+      expect(isLiquidGlassSupported(), isTrue);
+    });
+
+    test('returns false for home-button iPhone on iOS 26+', () {
+      debugIsHomeButtonOverride = true;
+      debugIOSMajorVersionOverride = 26;
+      expect(isLiquidGlassSupported(), isFalse);
+    });
+
+    test('returns false on pre-iOS 26 versions (e.g. iOS 18)', () {
+      debugIsHomeButtonOverride = false;
+      debugIOSMajorVersionOverride = 18;
+      expect(isLiquidGlassSupported(), isFalse);
+    });
+
+    test('respects explicit debugIsLiquidGlassSupportedOverride', () {
+      debugIsLiquidGlassSupportedOverride = false;
+      expect(isLiquidGlassSupported(), isFalse);
+
+      debugIsLiquidGlassSupportedOverride = true;
+      expect(isLiquidGlassSupported(), isTrue);
     });
   });
 }

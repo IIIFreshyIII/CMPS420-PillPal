@@ -327,6 +327,7 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
               SavedMedicationCard(
                 prescription: prescription,
                 profile: _profileFor(prescription.profileId),
+                showProfileBadge: widget.profiles.length > 1,
                 onTap: () => widget.onEditMedication(prescription),
               ),
         ],

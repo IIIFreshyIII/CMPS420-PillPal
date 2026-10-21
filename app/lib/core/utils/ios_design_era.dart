@@ -30,6 +30,10 @@ int? debugIOSMajorVersionOverride;
 @visibleForTesting
 bool? debugIsHomeButtonOverride;
 
+/// Test hook: overrides whether Liquid Glass styling is supported.
+@visibleForTesting
+bool? debugIsLiquidGlassSupportedOverride;
+
 /// Known Apple machine model identifiers for iPhones with physical home buttons.
 const _kHomeButtonModelIdentifiers = {
   // iPhone SE (1st, 2nd, 3rd gen)
@@ -156,6 +160,7 @@ bool isHomeButtonIPhone([BuildContext? context]) {
 /// - The device has a physical home button (iPhone SE 2/3, iPhone 8, etc.)
 /// - The iOS version is prior to iOS 26 (iOS 15 through iOS 18)
 IOSDesignEra currentIOSDesignEra([BuildContext? context]) {
+  if (Platform.isAndroid) return IOSDesignEra.classic;
   if (_kForceClassic) return IOSDesignEra.classic;
   if (isHomeButtonIPhone(context)) return IOSDesignEra.classic;
   final major = iosMajorVersion();
@@ -163,4 +168,19 @@ IOSDesignEra currentIOSDesignEra([BuildContext? context]) {
   return major >= kLiquidGlassMinIOSMajor
       ? IOSDesignEra.liquidGlass
       : IOSDesignEra.classic;
+}
+
+/// Whether Liquid Glass styling is supported on the current device.
+///
+/// Returns `true` only on iOS 26+ devices without a physical home button
+/// (and during host test environments when simulated).
+///
+/// Returns `false` on Android, Web, pre-iOS 26 iOS versions, and
+/// iPhones with a physical home button.
+bool isLiquidGlassSupported([BuildContext? context]) {
+  if (debugIsLiquidGlassSupportedOverride != null) {
+    return debugIsLiquidGlassSupportedOverride!;
+  }
+  if (kIsWeb || Platform.isAndroid) return false;
+  return currentIOSDesignEra(context) == IOSDesignEra.liquidGlass;
 }

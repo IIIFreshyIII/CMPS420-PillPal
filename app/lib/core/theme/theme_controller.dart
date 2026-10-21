@@ -35,4 +35,12 @@ class ThemeController extends ValueNotifier<ThemeMode> {
     }
   }
 
+  /// Resets the appearance mode to [ThemeMode.system] and clears any saved preference.
+  Future<void> resetToSystem() async {
+    value = ThemeMode.system;
+    try {
+      await _storage.delete(key: _key);
+    } catch (_) {}
+  }
+
 }

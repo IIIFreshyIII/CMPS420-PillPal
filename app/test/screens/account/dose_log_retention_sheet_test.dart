@@ -51,7 +51,7 @@ void main() {
     expect(find.text('30 Days (1 Month)'), findsOneWidget);
     expect(find.text('90 Days (3 Months)'), findsOneWidget);
     expect(find.text('180 Days (6 Months)'), findsOneWidget);
-    expect(find.text('Keep All (Never Purge)'), findsOneWidget);
+    expect(find.text('Not at all (0 Days - No History)'), findsOneWidget);
     expect(find.text('Total Logs'), findsOneWidget);
     expect(find.text('1'), findsOneWidget);
     expect(find.text('Export (.csv)'), findsOneWidget);

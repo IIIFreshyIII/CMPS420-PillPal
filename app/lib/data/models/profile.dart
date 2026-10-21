@@ -19,6 +19,22 @@ class Profile {
     this.bedtime,
   });
 
+  Color get badgeColor => color;
+  bool get isPrimaryUser => isPrimary;
+
+  /// Returns 1 or 2 uppercase initials for avatar badges (e.g. "JD", "M").
+  String get initials {
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty || parts.first.isEmpty) return 'U';
+    if (parts.length == 1) {
+      final s = parts.first;
+      return s.substring(0, s.length.clamp(1, 2)).toUpperCase();
+    }
+    final first = parts[0].isNotEmpty ? parts[0][0] : '';
+    final second = parts[1].isNotEmpty ? parts[1][0] : '';
+    return '$first$second'.toUpperCase();
+  }
+
   Profile copyWith({
     String? id,
     String? name,
@@ -35,3 +51,6 @@ class Profile {
     );
   }
 }
+
+/// Person model for multi-person medication scheduling and profile assignment.
+typedef CareRecipient = Profile;

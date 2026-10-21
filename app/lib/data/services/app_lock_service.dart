@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -10,7 +12,11 @@ import 'package:local_auth/local_auth.dart';
 class AppLockService extends ChangeNotifier {
   AppLockService({LocalAuthentication? auth, FlutterSecureStorage? storage})
       : _auth = auth ?? LocalAuthentication(),
-        _storage = storage ?? const FlutterSecureStorage();
+        _storage = storage ??
+            const FlutterSecureStorage(
+              iOptions:
+                  IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+            );
 
   final LocalAuthentication _auth;
   final FlutterSecureStorage _storage;
@@ -52,12 +58,13 @@ class AppLockService extends ChangeNotifier {
   /// Blank recent-apps card while the lock is on (Android 13+; see
   /// MainActivity). Missing channel (tests, other platforms) is ignored.
   Future<void> _syncRecentsPreview() async {
+    if (kIsWeb || !Platform.isAndroid || Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
     try {
       await _channel.invokeMethod<bool>('setHideInRecents', _enabled);
-    } on MissingPluginException {
-      // no native side here
-    } on PlatformException {
-      // best effort: never block the lock itself on this
+    } catch (_) {
+      // Best effort: no native side here, or test environment without binding
     }
   }
 

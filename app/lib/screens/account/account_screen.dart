@@ -164,7 +164,7 @@ class AccountScreen extends StatelessWidget {
             const SizedBox(height: 10),
           ],
           if (liquidGlassController != null &&
-              currentIOSDesignEra(context) == IOSDesignEra.liquidGlass) ...[
+              isLiquidGlassSupported(context)) ...[
             LiquidGlassSetting(controller: liquidGlassController!),
             const SizedBox(height: 10),
           ],

@@ -174,4 +174,31 @@ void main() {
     expect(find.text('Allegra'), findsOneWidget);
     expect(find.text('Lisinopril'), findsOneWidget);
   });
+
+  testWidgets(
+      'hides profile badge on SavedMedicationCard when only 1 profile exists',
+      (tester) async {
+    await tester.pumpWidget(buildScreen(profiles: const [me]));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Allegra'), findsOneWidget);
+    // Profile badge 'Me' should not be rendered when single profile
+    expect(find.text('Me'), findsNothing);
+  });
+
+  testWidgets(
+      'shows profile badge on SavedMedicationCard when multiple profiles exist',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    const mom = Profile(id: '2', name: 'Mom', color: Colors.purple);
+    await tester.pumpWidget(buildScreen(profiles: const [me, mom]));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Allegra'), findsOneWidget);
+    // Profile badge 'Me' is rendered (both in filter tabs and on the card)
+    expect(find.text('Me'), findsWidgets);
+  });
 }

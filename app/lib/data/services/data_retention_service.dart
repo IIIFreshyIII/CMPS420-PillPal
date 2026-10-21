@@ -27,7 +27,7 @@ class DataRetentionService extends ChangeNotifier {
   static const _key = 'dose_log_retention_days';
   static const defaultRetentionDays = 365;
 
-  static const presetOptions = [30, 90, 180, 365, 0];
+  static const presetOptions = [30, 90, 180, 270, 365, 0];
 
   int _retentionDays = defaultRetentionDays;
   int get retentionDays => _retentionDays;
@@ -43,14 +43,18 @@ class DataRetentionService extends ChangeNotifier {
         return '90 Days (3 Months)';
       case 180:
         return '180 Days (6 Months)';
+      case 270:
+        return '270 Days (9 Months)';
       case 365:
         return '1 Year (Default)';
       case 0:
-        return 'Keep All (Never Purge)';
+        return 'Not at all (0 Days - No History)';
       default:
         return '$days Days';
     }
   }
+
+  bool get isOptedOut => _retentionDays == 0;
 
   Future<void> load() async {
     final raw = await _storage.read(key: _key);
@@ -73,8 +77,11 @@ class DataRetentionService extends ChangeNotifier {
 
   DateTime? getCutoffDate({int? customDays, DateTime? now}) {
     final days = customDays ?? _retentionDays;
-    if (days <= 0) return null;
     final current = now ?? DateTime.now();
+    if (days <= 0) {
+      // 0 Days: Opt-out mode. All historical dose logs are expired.
+      return current;
+    }
     return current.subtract(Duration(days: days));
   }
 

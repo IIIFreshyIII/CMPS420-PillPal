@@ -25,7 +25,9 @@ import '../../core/utils/date_formatter.dart';
 import '../../data/services/data_retention_service.dart';
 import '../../presentation/widgets/android_sliding_bottom_bar.dart';
 import '../../presentation/widgets/classic_ios_tab_bar.dart';
+import '../../presentation/widgets/keep_alive_tab_stack.dart';
 import '../../core/services/ios_accessibility_service.dart';
+import '../../core/state/app_state_manager.dart';
 import '../../core/theme/liquid_glass_controller.dart';
 import '../../core/utils/ios_design_era.dart';
 
@@ -38,6 +40,7 @@ class HomeScaffold extends StatefulWidget {
     this.themeController,
     this.liquidGlassController,
     this.appLock,
+    this.appStateManager,
     this.initialTab = AppTab.schedule,
   });
 
@@ -47,6 +50,7 @@ class HomeScaffold extends StatefulWidget {
   final ThemeController? themeController;
   final LiquidGlassController? liquidGlassController;
   final AppLockService? appLock;
+  final AppStateManager? appStateManager;
   final AppTab initialTab;
 
 
@@ -167,30 +171,83 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         widget.liquidGlassController ?? LiquidGlassController();
     unawaited(_retentionService.load());
     unawaited(IOSAccessibilityService.instance.updateAccessibilitySettings());
-    _db
-        .seedIfEmpty(_seedProfiles, _seedPrescriptions, _seedDoseEvents())
-        .catchError((e) {
-      debugPrint('Error seeding database: $e');
-    });
+
+    // Pre-populate _profiles with user's name to eliminate the 1-second
+    // "Good afternoon, there" / blank schedule flash.
+    final initialUserName = widget.appStateManager?.userName.trim();
+    if (initialUserName != null && initialUserName.isNotEmpty) {
+      _profiles = [
+        Profile(
+          id: '1',
+          name: initialUserName,
+          color: const Color(0xFF168B87),
+          isPrimary: true,
+        ),
+      ];
+    }
+
+    final isSeeded = widget.appStateManager?.isSeededTestingMode ?? true;
+    if (isSeeded) {
+      _db
+          .seedIfEmpty(_seedProfiles, _seedPrescriptions, _seedDoseEvents())
+          .catchError((e) {
+        debugPrint('Error seeding database: $e');
+      });
+    }
 
     _profilesSub = _db.watchProfiles().listen((rows) {
-      if (mounted) setState(() => _profiles = rows);
+      if (mounted) setState(() => _profiles = _applySeedFilterProfiles(rows));
       _syncNotifications();
     }, onError: (e) {
       debugPrint('Error watching profiles: $e');
     });
     _prescriptionsSub = _db.watchPrescriptions().listen((rows) {
-      if (mounted) setState(() => _prescriptions = rows);
+      if (mounted) setState(() => _prescriptions = _applySeedFilterPrescriptions(rows));
       _syncNotifications();
     }, onError: (e) {
       debugPrint('Error watching prescriptions: $e');
     });
     _doseEventsSub = _db.watchDoseEvents().listen((rows) {
-      if (mounted) setState(() => _doseEvents = rows);
+      if (mounted) setState(() => _doseEvents = _applySeedFilterDoseEvents(rows));
     }, onError: (e) {
       debugPrint('Error watching dose events: $e');
     });
 
+    widget.appStateManager?.addListener(_onAppStateChanged);
+  }
+
+  List<Profile> _applySeedFilterProfiles(List<Profile> rows) {
+    if (widget.appStateManager?.isSeededTestingMode == false) {
+      return rows.where((p) => p.id != '2').toList();
+    }
+    return rows;
+  }
+
+  List<Prescription> _applySeedFilterPrescriptions(List<Prescription> rows) {
+    if (widget.appStateManager?.isSeededTestingMode == false) {
+      return rows.where((p) => p.id != '1' && p.id != '2' && p.id != '3').toList();
+    }
+    return rows;
+  }
+
+  List<DoseEvent> _applySeedFilterDoseEvents(List<DoseEvent> rows) {
+    if (widget.appStateManager?.isSeededTestingMode == false) {
+      return rows.where((e) => !e.id.startsWith('seed_')).toList();
+    }
+    return rows;
+  }
+
+  void _onAppStateChanged() {
+    if (!mounted) return;
+    final isSeeded = widget.appStateManager?.isSeededTestingMode ?? true;
+    if (isSeeded) {
+      _db
+          .seedIfEmpty(_seedProfiles, _seedPrescriptions, _seedDoseEvents())
+          .catchError((e) {
+        debugPrint('Error seeding database: $e');
+      });
+    }
+    setState(() {});
   }
 
   bool _syncingNotifications = false;
@@ -296,13 +353,15 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         }
       }
 
-      _db.insertDoseEvent(DoseEvent(
-        id: '${id}_${now.microsecondsSinceEpoch}',
-        prescriptionId: id,
-        profileId: item.profileId,
-        occurredAt: now,
-        action: action,
-      ));
+      if (_retentionService.retentionDays > 0) {
+        _db.insertDoseEvent(DoseEvent(
+          id: '${id}_${now.microsecondsSinceEpoch}',
+          prescriptionId: id,
+          profileId: item.profileId,
+          occurredAt: now,
+          action: action,
+        ));
+      }
     }
   }
 
@@ -381,13 +440,15 @@ class _HomeScaffoldState extends State<HomeScaffold> {
               action = DoseAction.late;
             }
           }
-          _db.insertDoseEvent(DoseEvent(
-            id: '${item.id}_${time}_${now.microsecondsSinceEpoch}',
-            prescriptionId: item.id,
-            profileId: item.profileId,
-            occurredAt: now,
-            action: action,
-          ));
+          if (_retentionService.retentionDays > 0) {
+            _db.insertDoseEvent(DoseEvent(
+              id: '${item.id}_${time}_${now.microsecondsSinceEpoch}',
+              prescriptionId: item.id,
+              profileId: item.profileId,
+              occurredAt: now,
+              action: action,
+            ));
+          }
         }
       } else {
         _db.upsertPrescription(item.copyWith(
@@ -471,63 +532,61 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     );
   }
 
-  Widget _buildActiveScreen() {
-    switch (_activeTab) {
-      case AppTab.schedule:
-        return KeyedSubtree(
-          key: const ValueKey('screen_schedule'),
-          child: ScheduleScreen(
-            prescriptions: _prescriptions,
-            profiles: _profiles,
-            selectedProfileId: _selectedProfileId,
-            onSelectProfile: (id) => setState(() => _selectedProfileId = id),
-            onTakeDose: _handleTakeDose,
-            onViewMedication: _handleViewMedication,
-            onEditMedication: _handleEditMedication,
-            onDeleteMedication: _handleDeleteMedication,
-            onToggleAllCompleted: _handleToggleAllCompleted,
-            onOpenScan: _openScan,
-            isScanning: _isScanning,
-          ),
-        );
-      case AppTab.meds:
-        return KeyedSubtree(
-          key: const ValueKey('screen_meds'),
-          child: ProfilesScreen(
-            profiles: _profiles,
-            prescriptions: _prescriptions,
-            doseEvents: _doseEvents,
-            onEditMedication: _handleEditMedication,
-            retentionService: _retentionService,
-            database: _db,
-          ),
-        );
-      case AppTab.profile:
-        return KeyedSubtree(
-          key: const ValueKey('screen_profile'),
-          child: AccountScreen(
-            profiles: _profiles,
-            prescriptions: _prescriptions,
-            onUpdateProfile: _handleUpdateProfile,
-            onDeleteProfile: _handleDeleteProfile,
-            notificationService: _notifications,
-            themeController: widget.themeController,
-            liquidGlassController: _liquidGlassController,
-            appLock: widget.appLock,
-            doseEvents: _doseEvents,
-            retentionService: _retentionService,
-            database: _db,
-          ),
-        );
-    }
-  }
+  List<WidgetBuilder> get _tabBuilders => [
+    (context) => KeyedSubtree(
+      key: const ValueKey('screen_schedule'),
+      child: ScheduleScreen(
+        prescriptions: _prescriptions,
+        profiles: _profiles,
+        selectedProfileId: _selectedProfileId,
+        onSelectProfile: (id) => setState(() => _selectedProfileId = id),
+        onTakeDose: _handleTakeDose,
+        onViewMedication: _handleViewMedication,
+        onEditMedication: _handleEditMedication,
+        onDeleteMedication: _handleDeleteMedication,
+        onToggleAllCompleted: _handleToggleAllCompleted,
+        onOpenScan: _openScan,
+        isScanning: _isScanning,
+      ),
+    ),
+    (context) => KeyedSubtree(
+      key: const ValueKey('screen_meds'),
+      child: ProfilesScreen(
+        profiles: _profiles,
+        prescriptions: _prescriptions,
+        doseEvents: _doseEvents,
+        onEditMedication: _handleEditMedication,
+        retentionService: _retentionService,
+        database: _db,
+      ),
+    ),
+    (context) => KeyedSubtree(
+      key: const ValueKey('screen_profile'),
+      child: AccountScreen(
+        profiles: _profiles,
+        prescriptions: _prescriptions,
+        onUpdateProfile: _handleUpdateProfile,
+        onDeleteProfile: _handleDeleteProfile,
+        notificationService: _notifications,
+        themeController: widget.themeController,
+        liquidGlassController: _liquidGlassController,
+        appLock: widget.appLock ?? widget.appStateManager?.appLockService,
+        doseEvents: _doseEvents,
+        retentionService: _retentionService,
+        database: _db,
+      ),
+    ),
+  ];
 
   @override
   void dispose() {
+    widget.appStateManager?.removeListener(_onAppStateChanged);
     _profilesSub?.cancel();
     _prescriptionsSub?.cancel();
     _doseEventsSub?.cancel();
-    _db.close();
+    if (widget.database == null) {
+      _db.close();
+    }
     super.dispose();
   }
 
@@ -583,14 +642,9 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   Widget _buildShell(BuildContext context) {
-    final activeBody = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 180),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      transitionBuilder: (child, animation) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-      child: _buildActiveScreen(),
+    final activeBody = KeepAliveTabStack(
+      selectedIndex: _activeTabIndex,
+      builders: _tabBuilders,
     );
 
     // Native Full-Width Sliding Bar on Android

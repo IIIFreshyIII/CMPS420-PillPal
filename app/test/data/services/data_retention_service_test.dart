@@ -12,8 +12,9 @@ void main() {
     expect(DataRetentionService.retentionLabel(30), '30 Days (1 Month)');
     expect(DataRetentionService.retentionLabel(90), '90 Days (3 Months)');
     expect(DataRetentionService.retentionLabel(180), '180 Days (6 Months)');
+    expect(DataRetentionService.retentionLabel(270), '270 Days (9 Months)');
     expect(DataRetentionService.retentionLabel(365), '1 Year (Default)');
-    expect(DataRetentionService.retentionLabel(0), 'Keep All (Never Purge)');
+    expect(DataRetentionService.retentionLabel(0), 'Not at all (0 Days - No History)');
   });
 
   test('getCutoffDate computes cutoff correctly', () {
@@ -21,8 +22,8 @@ void main() {
     final cutoff1Y = service.getCutoffDate(customDays: 365, now: refDate);
     expect(cutoff1Y, refDate.subtract(const Duration(days: 365)));
 
-    final cutoffForever = service.getCutoffDate(customDays: 0, now: refDate);
-    expect(cutoffForever, isNull);
+    final cutoffOptOut = service.getCutoffDate(customDays: 0, now: refDate);
+    expect(cutoffOptOut, refDate);
   });
 
   test('getExpiredEvents correctly identifies events older than cutoff', () {
@@ -50,9 +51,9 @@ void main() {
     expect(expired.length, 1);
     expect(expired.first.id, '2');
 
-    final expiredKeepAll =
+    final expiredOptOut =
         service.getExpiredEvents(events, customDays: 0, now: refDate);
-    expect(expiredKeepAll.isEmpty, isTrue);
+    expect(expiredOptOut.length, 2);
   });
 
   test('buildCsv formats logs into CSV structure', () {

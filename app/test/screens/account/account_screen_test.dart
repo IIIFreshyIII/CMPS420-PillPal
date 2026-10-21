@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:pillpal/core/utils/ios_design_era.dart';
 import 'package:pillpal/data/models/prescription.dart';
 import 'package:pillpal/data/models/profile.dart';
 import 'package:pillpal/core/theme/liquid_glass_controller.dart';
@@ -8,6 +9,10 @@ import 'package:pillpal/data/services/notification_service.dart';
 import 'package:pillpal/screens/account/account_screen.dart';
 
 void main() {
+  tearDown(() {
+    debugIsLiquidGlassSupportedOverride = null;
+  });
+
   const me = Profile(id: '1', name: 'Me', color: Colors.blue, isPrimary: true);
   const mom = Profile(id: '2', name: 'Mom', color: Colors.purple);
   const momsRx = Prescription(
@@ -148,6 +153,29 @@ void main() {
 
     expect(find.text('Liquid Glass Effect'), findsOneWidget);
     expect(find.text('Auto'), findsWidgets);
+  });
+
+  testWidgets('hides LiquidGlassSetting when Liquid Glass is not supported (Android or pre-iOS 26)', (tester) async {
+    debugIsLiquidGlassSupportedOverride = false;
+    final controller = LiquidGlassController();
+    await tester.pumpWidget(MaterialApp(
+      home: MediaQuery(
+        data: const MediaQueryData(
+          size: Size(393, 852),
+          padding: EdgeInsets.only(top: 59, bottom: 34),
+        ),
+        child: AccountScreen(
+          profiles: const [me],
+          prescriptions: const [],
+          onUpdateProfile: (_) {},
+          onDeleteProfile: (_) {},
+          notificationService: NotificationService(),
+          liquidGlassController: controller,
+        ),
+      ),
+    ));
+
+    expect(find.text('Liquid Glass Effect'), findsNothing);
   });
 }
 

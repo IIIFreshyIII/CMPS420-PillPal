@@ -169,22 +169,28 @@ class _MedicationCardState extends State<MedicationCard>
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: [
-                      Text(
-                        widget.item.name,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: c.ink,
-                          letterSpacing: -0.3,
+                      Flexible(
+                        child: Text(
+                          widget.item.name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: c.ink,
+                            letterSpacing: -0.3,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        widget.item.dosage,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: c.inkMuted,
+                      Flexible(
+                        child: Text(
+                          widget.item.dosage,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: c.inkMuted,
+                          ),
                         ),
                       ),
                     ],

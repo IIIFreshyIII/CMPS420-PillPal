@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/pillpal_colors.dart';
 import '../../presentation/widgets/pressable.dart';
 import '../../presentation/widgets/profile_chip.dart';
+import '../../presentation/widgets/scan_bottle_button.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
@@ -151,49 +152,11 @@ class ScheduleScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                Pressable(
-                  onTap: isScanning ? null : onOpenScan,
-                  scale: 0.94,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 4),
-                    padding:
-                        const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
-                    decoration: BoxDecoration(
-                      color: c.surface,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(
-                          color: c.liftShadow,
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: isScanning
-                        ? SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: c.teal,
-                            ),
-                          )
-                        : Row(
-                            children: [
-                              Icon(CupertinoIcons.camera,
-                                  size: 16, color: c.tealDeep),
-                              const SizedBox(width: 6),
-                              Text(
-                                '+ Scan Bottle',
-                                style: TextStyle(
-                                  color: c.tealDeep,
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
-                                  letterSpacing: -0.2,
-                                ),
-                              ),
-                            ],
-                          ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: ScanBottleButton(
+                    onTap: onOpenScan,
+                    isLoading: isScanning,
                   ),
                 ),
               ],
@@ -215,28 +178,30 @@ class ScheduleScreen extends StatelessWidget {
                     letterSpacing: -0.4,
                   ),
                 ),
-                const SizedBox(height: 14),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _ProfileChip(
-                        label: 'All',
-                        isSelected: selectedProfileId == 'all',
-                        onTap: () => onSelectProfile('all'),
-                      ),
-                      ...profiles.map((p) {
-                        final isSelected = selectedProfileId == p.id;
-                        return _ProfileChip(
-                          label: '${p.name}${p.isPrimary ? ' (Me)' : ''}',
-                          isSelected: isSelected,
-                          selectedColor: p.color,
-                          onTap: () => onSelectProfile(p.id),
-                        );
-                      }),
-                    ],
+                if (profiles.length > 1) ...[
+                  const SizedBox(height: 14),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        _ProfileChip(
+                          label: 'All',
+                          isSelected: selectedProfileId == 'all',
+                          onTap: () => onSelectProfile('all'),
+                        ),
+                        ...profiles.map((p) {
+                          final isSelected = selectedProfileId == p.id;
+                          return _ProfileChip(
+                            label: '${p.name}${p.isPrimary ? ' (Me)' : ''}',
+                            isSelected: isSelected,
+                            selectedColor: p.color,
+                            onTap: () => onSelectProfile(p.id),
+                          );
+                        }),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -504,10 +469,12 @@ class ScheduleScreen extends StatelessWidget {
       item: slot.prescription,
       time: slot.time,
       isTaken: slot.prescription.takenTimes.contains(slot.time),
-      profile: profiles.cast<Profile?>().firstWhere(
-            (p) => p?.id == slot.prescription.profileId,
-            orElse: () => null,
-          ),
+      profile: profiles.length > 1
+          ? profiles.cast<Profile?>().firstWhere(
+                (p) => p?.id == slot.prescription.profileId,
+                orElse: () => null,
+              )
+          : null,
       onTakeDose: () => onTakeDose(slot.prescription.id, slot.time),
       onViewDetails: () => onViewMedication(slot.prescription),
       onEdit: onEditMedication != null ? () => onEditMedication!(slot.prescription) : null,
