@@ -96,6 +96,9 @@ class _LiveScanScreenState extends State<LiveScanScreen>
       final extractorFuture = OnnxExtractor.load();
 
       final cameras = await availableCameras();
+      if (cameras.isEmpty) {
+        throw Exception('No cameras available on this device/emulator.');
+      }
       final back = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,

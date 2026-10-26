@@ -2,7 +2,8 @@
     <!-- Live label scanning (med-tracker-spec.md §1) and the photo-upload
          fallback both need the camera; scanning is a core app feature. -->
     <uses-permission android:name="android.permission.CAMERA"/>
-    <uses-feature android:name="android.hardware.camera" android:required="true"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
 
     <!-- Dose-reminder notifications (data/services/notification_service.dart).
          POST_NOTIFICATIONS: Android 13+ runtime permission to show any
