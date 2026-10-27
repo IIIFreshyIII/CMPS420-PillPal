@@ -156,25 +156,31 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
   WalkthroughStep get _activeStep => widget.steps[_currentIndex];
 
   Rect? _measureKeyRect(GlobalKey key, EdgeInsets padding) {
+    if (!mounted || _isClosing) return null;
     final ctx = key.currentContext;
-    if (ctx == null) return null;
-    final renderObj = ctx.findRenderObject();
-    if (renderObj is! RenderBox || !renderObj.hasSize || !renderObj.attached) {
+    if (ctx == null || !ctx.mounted) return null;
+    try {
+      final renderObj = ctx.findRenderObject();
+      if (renderObj is! RenderBox || !renderObj.hasSize || !renderObj.attached) {
+        return null;
+      }
+      final topLeft = renderObj.localToGlobal(Offset.zero);
+      final size = renderObj.size;
+      if (size.width <= 0 || size.height <= 0) return null;
+      final raw = topLeft & size;
+      return Rect.fromLTRB(
+        raw.left - padding.left,
+        raw.top - padding.top,
+        raw.right + padding.right,
+        raw.bottom + padding.bottom,
+      );
+    } catch (_) {
       return null;
     }
-    final topLeft = renderObj.localToGlobal(Offset.zero);
-    final size = renderObj.size;
-    if (size.width <= 0 || size.height <= 0) return null;
-    final raw = topLeft & size;
-    return Rect.fromLTRB(
-      raw.left - padding.left,
-      raw.top - padding.top,
-      raw.right + padding.right,
-      raw.bottom + padding.bottom,
-    );
   }
 
   List<Rect> _measureKeyRects(List<GlobalKey> keys, EdgeInsets padding) {
+    if (!mounted || _isClosing) return const [];
     final rects = <Rect>[];
     for (final key in keys) {
       final r = _measureKeyRect(key, padding);
@@ -186,6 +192,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
   }
 
   List<Rect> get _activeTargetRects {
+    if (!mounted || _isClosing) return _outgoingRects;
     final step = _activeStep;
     if (step.targetKeys != null && step.targetKeys!.isNotEmpty) {
       final rects = _measureKeyRects(step.targetKeys!, step.padding);
@@ -195,6 +202,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
   }
 
   Rect? get _activeCombinedRect {
+    if (!mounted || _isClosing) return _currentRect;
     final multi = _activeTargetRects;
     if (multi.isNotEmpty) {
       double left = multi.first.left;
@@ -273,10 +281,11 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
   }
 
   Future<void> _close({required bool skipped}) async {
+    if (!mounted || _isClosing) return;
     setState(() => _isClosing = true);
     final disableAnimations =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    if (!disableAnimations) {
+        mounted ? (MediaQuery.maybeOf(context)?.disableAnimations ?? false) : true;
+    if (!disableAnimations && mounted) {
       await _transitionController.animateBack(
         0.0,
         duration: const Duration(milliseconds: 140),
