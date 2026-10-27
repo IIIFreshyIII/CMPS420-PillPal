@@ -1,4 +1,6 @@
+#if canImport(ActivityKit)
 import ActivityKit
+#endif
 import AVFoundation
 import Flutter
 import UIKit
@@ -78,6 +80,7 @@ import UIKit
         result(nil)
         return
       }
+      #if canImport(ActivityKit)
       guard #available(iOS 16.1, *) else {
         result(
           FlutterError(
@@ -101,9 +104,19 @@ import UIKit
       default:
         result(FlutterMethodNotImplemented)
       }
+      #else
+      result(
+        FlutterError(
+          code: "ACTIVITYKIT_UNAVAILABLE",
+          message: "ActivityKit is not supported or linked on this build configuration.",
+          details: nil
+        )
+      )
+      #endif
     }
   }
 
+  #if canImport(ActivityKit)
   @available(iOS 16.1, *)
   private func handleStartSnoozeActivity(args: [String: Any], result: @escaping FlutterResult) {
     guard
@@ -258,6 +271,7 @@ import UIKit
       }
     }
   }
+  #endif
 
   private func setupAccessibilityChannel(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(

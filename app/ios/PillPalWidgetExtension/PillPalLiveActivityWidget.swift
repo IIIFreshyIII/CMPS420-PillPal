@@ -1,3 +1,4 @@
+#if canImport(ActivityKit) && canImport(WidgetKit)
 import ActivityKit
 import AppIntents
 import SwiftUI
@@ -339,3 +340,4 @@ private struct LiveActivityActionButtonsRow: View {
     }
   }
 }
+#endif

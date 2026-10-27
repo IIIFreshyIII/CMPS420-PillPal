@@ -1,11 +1,13 @@
-import ActivityKit
-import AppIntents
 import Foundation
 
 @available(iOS 16.1, *)
 public enum LiveReminderIntentBridge {
   public static let actionNotification = Notification.Name("com.pillpal.app.liveReminderAction")
 }
+
+#if canImport(ActivityKit) && canImport(AppIntents)
+import ActivityKit
+import AppIntents
 
 @available(iOS 16.1, *)
 public struct LogTakenLiveActivityIntent: LiveActivityIntent {
@@ -129,3 +131,4 @@ public struct SnoozeLiveActivityIntent: LiveActivityIntent {
     return .result()
   }
 }
+#endif

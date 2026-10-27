@@ -1,3 +1,4 @@
+#if canImport(ActivityKit)
 import ActivityKit
 import Foundation
 
@@ -87,3 +88,4 @@ public struct MedicationLiveActivityAttributes: ActivityAttributes {
     self.batchId = batchId
   }
 }
+#endif

@@ -27,6 +27,8 @@
 		AA1100072F10000100000001 /* PillPalWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA1100152F10000100000001 /* PillPalWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA1100082F10000100000001 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1100162F10000100000001 /* WidgetKit.framework */; };
 		AA1100092F10000100000001 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1100172F10000100000001 /* SwiftUI.framework */; };
+		AA11000A2F10000100000001 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1100182F10000100000001 /* ActivityKit.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
+		AA11000B2F10000100000001 /* ActivityKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1100182F10000100000001 /* ActivityKit.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -104,6 +106,7 @@
 		AA1100152F10000100000001 /* PillPalWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PillPalWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA1100162F10000100000001 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		AA1100172F10000100000001 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		AA1100182F10000100000001 /* ActivityKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ActivityKit.framework; path = System/Library/Frameworks/ActivityKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -113,6 +116,7 @@
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
 				386D430A18C96C1A9C472479 /* Pods_Runner.framework in Frameworks */,
+				AA11000A2F10000100000001 /* ActivityKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -122,6 +126,7 @@
 			files = (
 				AA1100082F10000100000001 /* WidgetKit.framework in Frameworks */,
 				AA1100092F10000100000001 /* SwiftUI.framework in Frameworks */,
+				AA11000B2F10000100000001 /* ActivityKit.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -227,6 +232,7 @@
 				E28BCC4644B84B30238323DC /* Pods_RunnerTests.framework */,
 				AA1100162F10000100000001 /* WidgetKit.framework */,
 				AA1100172F10000100000001 /* SwiftUI.framework */,
+				AA1100182F10000100000001 /* ActivityKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
