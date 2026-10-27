@@ -10,6 +10,7 @@ class ProfileChip extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
   final Color? selectedColor;
+  final Key? contentKey;
 
   const ProfileChip({
     super.key,
@@ -17,6 +18,7 @@ class ProfileChip extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     this.selectedColor,
+    this.contentKey,
   });
 
   @override
@@ -35,6 +37,7 @@ class ProfileChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Pressable(
+        key: contentKey,
         onTap: onTap,
         scale: 0.94,
         haptic: isSelected ? PressHaptic.none : PressHaptic.selection,

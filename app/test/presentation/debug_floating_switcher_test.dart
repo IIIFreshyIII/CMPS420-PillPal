@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pillpal/core/navigation/navigator_key.dart';
 import 'package:pillpal/core/state/app_state_manager.dart';
 import 'package:pillpal/presentation/widgets/debug_floating_switcher.dart';
+import 'package:pillpal/services/live_reminder_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MockSecureStorage extends Fake implements FlutterSecureStorage {
   final Map<String, String> _data = {};
@@ -152,5 +155,43 @@ void main() {
     expect(appStateManager.hasSeenScheduleTour, isFalse);
     expect(appStateManager.hasSeenMedsTour, isFalse);
     expect(appStateManager.hasSeenAccountTour, isFalse);
+  });
+
+  testWidgets(
+      'DebugFloatingSwitcher triggers overdue dose snooze over live_reminders channel',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({
+      SnoozeSettingsService.keyDefaultSnoozeDuration: 15,
+    });
+    const channel = MethodChannel(LiveReminderService.channelName);
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return 'activity-1';
+    });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    await tester.pumpWidget(createTestWidget());
+    await tester.pump();
+
+    await tester.tap(find.text('Debug'));
+    await tester.pumpAndSettle();
+
+    final triggerFinder =
+        find.byKey(const Key('debug_trigger_snooze_live_activity'));
+    await tester.ensureVisible(triggerFinder);
+    await tester.tap(triggerFinder);
+    await tester.pumpAndSettle();
+
+    expect(calls, hasLength(1));
+    expect(calls.single.method, 'startSnoozeActivity');
+    expect(calls.single.arguments['batchId'], 'batch_08_00');
+    expect(calls.single.arguments['snoozeDurationMinutes'], 15);
+    expect(calls.single.arguments['remainingCount'], 2);
+    expect(calls.single.arguments['medicationNames'], ['Allegra', 'Lisinopril']);
   });
 }

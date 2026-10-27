@@ -30,6 +30,9 @@ import '../../core/services/ios_accessibility_service.dart';
 import '../../core/state/app_state_manager.dart';
 import '../../core/theme/liquid_glass_controller.dart';
 import '../../core/utils/ios_design_era.dart';
+import '../../services/live_reminder_service.dart';
+import '../../services/walkthrough_service.dart';
+import '../../ui/widgets/walkthrough_overlay.dart';
 
 enum _ScanMode { live, upload }
 
@@ -41,6 +44,9 @@ class HomeScaffold extends StatefulWidget {
     this.liquidGlassController,
     this.appLock,
     this.appStateManager,
+    this.walkthroughService,
+    this.snoozeSettingsService,
+    this.liveReminderService,
     this.initialTab = AppTab.schedule,
   });
 
@@ -51,6 +57,9 @@ class HomeScaffold extends StatefulWidget {
   final LiquidGlassController? liquidGlassController;
   final AppLockService? appLock;
   final AppStateManager? appStateManager;
+  final WalkthroughService? walkthroughService;
+  final SnoozeSettingsService? snoozeSettingsService;
+  final LiveReminderService? liveReminderService;
   final AppTab initialTab;
 
 
@@ -62,11 +71,27 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   late AppTab _activeTab;
   String _selectedProfileId = 'all';
   bool _isScanning = false;
+  bool _isShowingWalkthrough = false;
+  OverlayEntry? _walkthroughOverlayEntry;
+
+  final GlobalKey _firstMedCardKey =
+      GlobalKey(debugLabel: 'walkthrough_first_med_card');
+  final GlobalKey _profileSwitcherKey =
+      GlobalKey(debugLabel: 'walkthrough_profile_switcher');
+  final List<GlobalKey> _profileChipKeys = List.generate(
+    8,
+    (i) => GlobalKey(debugLabel: 'walkthrough_profile_chip_$i'),
+  );
+  final GlobalKey _scanButtonKey =
+      GlobalKey(debugLabel: 'walkthrough_scan_button');
 
   late final AppDatabase _db;
   late final NotificationService _notifications;
   late final DataRetentionService _retentionService;
   late final LiquidGlassController _liquidGlassController;
+  late final WalkthroughService _walkthroughService;
+  late final SnoozeSettingsService _snoozeSettingsService;
+  late final LiveReminderService _liveReminderService;
   bool _notificationPermissionsRequested = false;
   StreamSubscription<List<Profile>>? _profilesSub;
   StreamSubscription<List<Prescription>>? _prescriptionsSub;
@@ -169,6 +194,21 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     _retentionService = DataRetentionService();
     _liquidGlassController =
         widget.liquidGlassController ?? LiquidGlassController();
+    _walkthroughService = widget.walkthroughService ??
+        widget.appStateManager?.walkthroughService ??
+        WalkthroughService();
+    _snoozeSettingsService =
+        widget.snoozeSettingsService ?? SnoozeSettingsService();
+    _liveReminderService = widget.liveReminderService ??
+        LiveReminderService(snoozeSettings: _snoozeSettingsService);
+    _liveReminderService.onNativeAction = _handleNativeReminderAction;
+    _liveReminderService.registerNativeCallbackHandler();
+    if (!_walkthroughService.isLoaded) {
+      unawaited(_walkthroughService.load());
+    }
+    if (!_snoozeSettingsService.isLoaded) {
+      unawaited(_snoozeSettingsService.load());
+    }
     unawaited(_retentionService.load());
     unawaited(IOSAccessibilityService.instance.updateAccessibilitySettings());
 
@@ -196,13 +236,19 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     }
 
     _profilesSub = _db.watchProfiles().listen((rows) {
-      if (mounted) setState(() => _profiles = _applySeedFilterProfiles(rows));
+      if (mounted) {
+        setState(() => _profiles = _applySeedFilterProfiles(rows));
+        _maybeLaunchPostOnboardingWalkthrough();
+      }
       _syncNotifications();
     }, onError: (e) {
       debugPrint('Error watching profiles: $e');
     });
     _prescriptionsSub = _db.watchPrescriptions().listen((rows) {
-      if (mounted) setState(() => _prescriptions = _applySeedFilterPrescriptions(rows));
+      if (mounted) {
+        setState(() => _prescriptions = _applySeedFilterPrescriptions(rows));
+        _maybeLaunchPostOnboardingWalkthrough();
+      }
       _syncNotifications();
     }, onError: (e) {
       debugPrint('Error watching prescriptions: $e');
@@ -214,6 +260,10 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     });
 
     widget.appStateManager?.addListener(_onAppStateChanged);
+    _walkthroughService.addListener(_onWalkthroughStateChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeLaunchPostOnboardingWalkthrough();
+    });
   }
 
   List<Profile> _applySeedFilterProfiles(List<Profile> rows) {
@@ -306,6 +356,59 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     _db.deleteProfile(id);
   }
 
+  Future<void> _handleNativeReminderAction(
+    String action,
+    Map<String, dynamic> payload,
+  ) async {
+    if (action == 'openSchedule') {
+      if (mounted) {
+        setState(() {
+          _activeTab = AppTab.schedule;
+        });
+      }
+      return;
+    }
+
+    final batchId = (payload['batchId'] as String?)?.trim() ?? '';
+    String? matchedTimeSlot;
+    Prescription? firstUntakenPrescription;
+
+    for (final prescription in _prescriptions) {
+      for (final time in prescription.reminderTimes) {
+        final slotBatchId = batchIdForTimeSlot(time);
+        if (batchId.isEmpty || slotBatchId == batchId) {
+          matchedTimeSlot ??= time;
+          final alreadyTaken = prescription.takenTimes.any(
+            (t) => isSameTimeSlot(t, time),
+          );
+          if (!alreadyTaken && firstUntakenPrescription == null) {
+            firstUntakenPrescription = prescription;
+            matchedTimeSlot = time;
+          }
+        }
+      }
+    }
+
+    if (action == 'logTaken') {
+      if (firstUntakenPrescription != null && matchedTimeSlot != null) {
+        _handleTakeDose(firstUntakenPrescription.id, matchedTimeSlot);
+      } else if (batchId.isNotEmpty) {
+        await _liveReminderService.dismissActivity(batchId: batchId);
+      }
+    } else if (action == 'snooze' && matchedTimeSlot != null) {
+      if (payload['alreadyActive'] == true) {
+        // Snooze acknowledged while an active countdown is already running;
+        // let the existing countdown continue running undisturbed.
+        return;
+      }
+      await _liveReminderService.startSnoozeForTimeSlot(
+        timeSlot: matchedTimeSlot,
+        prescriptions: _prescriptions,
+        profiles: _profiles,
+      );
+    }
+  }
+
   /// Writes a `DoseEvent` only when a dose actually gets marked taken --
   /// toggling it back off is treated as undoing a mis-tap, not a loggable
   /// "skipped" event, so the history feed reflects real doses taken.
@@ -336,6 +439,14 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     }
 
     _db.upsertPrescription(updated);
+    final updatedList = [
+      for (final p in _prescriptions) p.id == updated.id ? updated : p,
+    ];
+    unawaited(_liveReminderService.syncTimeSlotDoses(
+      timeSlot: time,
+      prescriptions: updatedList,
+      profiles: _profiles,
+    ));
     if (willBeTaken) {
       final now = DateTime.now();
       final scheduledTod = parseTimeOfDayLabel(time);
@@ -458,6 +569,25 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         ));
       }
     }
+
+    final affectedTimeSlots = targets.map((t) => t.$2).toSet();
+    final updatedPrescriptions = _prescriptions.map((item) {
+      final times =
+          targets.where((t) => t.$1 == item.id).map((t) => t.$2).toSet();
+      if (times.isEmpty) return item;
+      return item.copyWith(
+        takenTimes: shouldMarkTaken
+            ? {...item.takenTimes, ...times}
+            : item.takenTimes.difference(times),
+      );
+    }).toList();
+    for (final slot in affectedTimeSlots) {
+      unawaited(_liveReminderService.syncTimeSlotDoses(
+        timeSlot: slot,
+        prescriptions: updatedPrescriptions,
+        profiles: _profiles,
+      ));
+    }
   }
 
   Future<void> _openScan() async {
@@ -532,6 +662,87 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     );
   }
 
+  void _onWalkthroughStateChanged() {
+    if (!mounted) return;
+    _maybeLaunchPostOnboardingWalkthrough();
+    setState(() {});
+  }
+
+  void _maybeLaunchPostOnboardingWalkthrough() {
+    if (!mounted || _isShowingWalkthrough) return;
+    if (_activeTab != AppTab.schedule) return;
+    if (_walkthroughService.hasSeenMainFeedTour) return;
+    if (!_walkthroughService.shouldTriggerPostOnboardingTour) return;
+    if (_prescriptions.isEmpty) return;
+
+    _isShowingWalkthrough = true;
+    _walkthroughService.consumePostOnboardingTrigger();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        _isShowingWalkthrough = false;
+        return;
+      }
+      final overlay = Overlay.maybeOf(context, rootOverlay: true);
+      if (overlay == null) {
+        _isShowingWalkthrough = false;
+        return;
+      }
+
+      final steps = <WalkthroughStep>[
+        WalkthroughStep(
+          targetKey: _firstMedCardKey,
+          title: 'Your Daily Timeline',
+          description:
+              'Tap any medication card to expand dose details, or use the check ring and swipe actions to log or edit routines.',
+          icon: CupertinoIcons.calendar_today,
+          borderRadius: 18.0,
+        ),
+        WalkthroughStep(
+          targetKey: _profileSwitcherKey,
+          targetKeys: _profileChipKeys,
+          title: 'CareRecipient Switcher',
+          description:
+              'Switch views or filter daily schedules between yourself and family care recipients in one tap.',
+          icon: CupertinoIcons.person_2_fill,
+          borderRadius: 20.0,
+        ),
+        WalkthroughStep(
+          targetKey: _scanButtonKey,
+          title: 'Quick-Scan More Bottles',
+          description:
+              'Tap + Scan Bottle anytime to scan additional prescription labels with live on-device OCR.',
+          icon: CupertinoIcons.camera_fill,
+          borderRadius: 20.0,
+        ),
+      ];
+
+      _walkthroughOverlayEntry = WalkthroughOverlay.show(
+        context: context,
+        steps: steps,
+        onStepChanged: (idx) {
+          if (idx == 1) {
+            unawaited(_walkthroughService.markProfileSwitchHintSeen());
+          } else if (idx == 2) {
+            unawaited(_walkthroughService.markScannerTipSeen());
+          }
+        },
+        onComplete: () {
+          _isShowingWalkthrough = false;
+          _walkthroughOverlayEntry = null;
+          unawaited(_walkthroughService.markMainFeedTourSeen());
+          unawaited(widget.appStateManager?.setTourSeen(schedule: true));
+        },
+        onSkip: () {
+          _isShowingWalkthrough = false;
+          _walkthroughOverlayEntry = null;
+          unawaited(_walkthroughService.markMainFeedTourSeen());
+          unawaited(widget.appStateManager?.setTourSeen(schedule: true));
+        },
+      );
+    });
+  }
+
   List<WidgetBuilder> get _tabBuilders => [
     (context) => KeyedSubtree(
       key: const ValueKey('screen_schedule'),
@@ -547,6 +758,10 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         onToggleAllCompleted: _handleToggleAllCompleted,
         onOpenScan: _openScan,
         isScanning: _isScanning,
+        firstMedCardKey: _firstMedCardKey,
+        profileSwitcherKey: _profileSwitcherKey,
+        profileChipKeys: _profileChipKeys,
+        scanButtonKey: _scanButtonKey,
       ),
     ),
     (context) => KeyedSubtree(
@@ -558,6 +773,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         onEditMedication: _handleEditMedication,
         retentionService: _retentionService,
         database: _db,
+        walkthroughService: _walkthroughService,
       ),
     ),
     (context) => KeyedSubtree(
@@ -573,13 +789,20 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         appLock: widget.appLock ?? widget.appStateManager?.appLockService,
         doseEvents: _doseEvents,
         retentionService: _retentionService,
+        snoozeSettingsService: _snoozeSettingsService,
         database: _db,
+        walkthroughService: _walkthroughService,
       ),
     ),
   ];
 
   @override
   void dispose() {
+    if (_walkthroughOverlayEntry?.mounted ?? false) {
+      _walkthroughOverlayEntry?.remove();
+    }
+    _walkthroughOverlayEntry = null;
+    _walkthroughService.removeListener(_onWalkthroughStateChanged);
     widget.appStateManager?.removeListener(_onAppStateChanged);
     _profilesSub?.cancel();
     _prescriptionsSub?.cancel();

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart' show TimeOfDay;
 
-import '../utils/date_formatter.dart' show parseTimeOfDayLabel;
+import '../../data/models/prescription.dart';
+import '../../data/models/profile.dart';
+import '../utils/date_formatter.dart' show formatTimeOfDayLabel, parseTimeOfDayLabel;
 
 /// Converts a label's free-text frequency into a fixed hourly repeat
 /// interval, when the phrase actually describes one. Returns `null` for
@@ -128,4 +130,284 @@ int notificationIdFor(String prescriptionId, String time) {
     hash = (hash * 0x01000193) & 0xFFFFFFFF; // FNV prime, wrapped to 32 bits
   }
   return hash & 0x7FFFFFFF;
+}
+
+/// Snapshot of all medications sharing an exact scheduled time slot, along
+/// with the untaken (`remainingDosesCount`) subset used to drive native iOS
+/// ActivityKit Live Activities and Android Ongoing Notifications.
+class DoseBatch {
+  const DoseBatch({
+    required this.batchId,
+    required this.timeSlot,
+    required this.scheduledPrescriptions,
+    required this.remainingPrescriptions,
+    required this.remainingDosesCount,
+    required this.medicationNames,
+    this.profileName,
+  });
+
+  /// Deterministic identifier for this scheduled time slot (e.g. `batch_08_00`).
+  final String batchId;
+
+  /// Canonical formatted time slot label (e.g. `8:00 AM`).
+  final String timeSlot;
+
+  /// All prescriptions scheduled for [timeSlot].
+  final List<Prescription> scheduledPrescriptions;
+
+  /// Prescriptions scheduled for [timeSlot] that have not yet been marked taken.
+  final List<Prescription> remainingPrescriptions;
+
+  /// Number of untaken medications sharing this exact scheduled time slot.
+  final int remainingDosesCount;
+
+  /// Names of the untaken medications in this time slot, in schedule order.
+  final List<String> medicationNames;
+
+  /// Name of the profile associated with the medications in this batch, or `null`
+  /// if profiles are omitted or medications belong to multiple different profiles.
+  final String? profileName;
+
+  /// Convenience alias matching native channel parameter naming.
+  int get remainingCount => remainingDosesCount;
+}
+
+/// Returns `true` when [timeA] and [timeB] represent the exact same time slot.
+/// Compares parsed [TimeOfDay] hour and minute first so minor formatting
+/// differences (`8:00 AM` vs `08:00 am`) still batch together, falling back to
+/// case-insensitive trimmed string equality for non-standard labels.
+bool isSameTimeSlot(String timeA, String timeB) {
+  final parsedA = parseTimeOfDayLabel(timeA);
+  final parsedB = parseTimeOfDayLabel(timeB);
+  if (parsedA != null && parsedB != null) {
+    return parsedA.hour == parsedB.hour && parsedA.minute == parsedB.minute;
+  }
+  return timeA.trim().toUpperCase() == timeB.trim().toUpperCase();
+}
+
+/// Produces a deterministic batch identifier for a scheduled [timeSlot].
+/// Normalized to 24-hour `batch_HH_MM` when parseable so the same wall-clock
+/// slot always maps to the same native activity/notification batch ID.
+String batchIdForTimeSlot(String timeSlot) {
+  final parsed = parseTimeOfDayLabel(timeSlot);
+  if (parsed != null) {
+    final hh = parsed.hour.toString().padLeft(2, '0');
+    final mm = parsed.minute.toString().padLeft(2, '0');
+    return 'batch_${hh}_$mm';
+  }
+  final sanitized = timeSlot
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  return 'batch_${sanitized.isEmpty ? 'slot' : sanitized}';
+}
+
+/// Calculates the [DoseBatch] for all medications in [prescriptions] sharing
+/// the exact scheduled [timeSlot].
+///
+/// When [profiles] is provided, medications suppressed by their assigned
+/// profile's bedtime cutoff (via [shouldScheduleReminder]) are excluded from
+/// the triggered batch so unscheduled reminders are never counted.
+DoseBatch calculateDoseBatch(
+  List<Prescription> prescriptions,
+  String timeSlot, {
+  List<Profile>? profiles,
+}) {
+  final parsedSlot = parseTimeOfDayLabel(timeSlot);
+  final canonicalSlot =
+      parsedSlot != null ? formatTimeOfDayLabel(parsedSlot) : timeSlot.trim();
+  final profileMap = profiles != null
+      ? {for (final profile in profiles) profile.id: profile}
+      : null;
+
+  final scheduled = <Prescription>[];
+  final remaining = <Prescription>[];
+
+  for (final prescription in prescriptions) {
+    String? matchingReminderTime;
+    for (final candidate in prescription.reminderTimes) {
+      if (isSameTimeSlot(candidate, timeSlot)) {
+        matchingReminderTime = candidate;
+        break;
+      }
+    }
+    if (matchingReminderTime == null) continue;
+
+    if (profileMap != null) {
+      final profile = profileMap[prescription.profileId];
+      final allowed = shouldScheduleReminder(
+        time: matchingReminderTime,
+        bedtime: profile?.bedtime,
+        allowAfterBedtime: prescription.allowAfterBedtime,
+      );
+      if (!allowed) continue;
+    }
+
+    scheduled.add(prescription);
+
+    final isTakenForSlot = prescription.takenTimes.any(
+      (takenTime) => isSameTimeSlot(takenTime, matchingReminderTime!),
+    );
+    if (!isTakenForSlot) {
+      remaining.add(prescription);
+    }
+  }
+
+  String? batchProfileName;
+  if (profileMap != null) {
+    final targetList = remaining.isNotEmpty ? remaining : scheduled;
+    final profileIds = targetList.map((p) => p.profileId).toSet();
+    if (profileIds.length == 1) {
+      batchProfileName = profileMap[profileIds.first]?.name;
+    }
+  }
+
+  return DoseBatch(
+    batchId: batchIdForTimeSlot(canonicalSlot),
+    timeSlot: canonicalSlot,
+    scheduledPrescriptions: List.unmodifiable(scheduled),
+    remainingPrescriptions: List.unmodifiable(remaining),
+    remainingDosesCount: remaining.length,
+    medicationNames:
+        List.unmodifiable(remaining.map((p) => p.name).toList()),
+    profileName: batchProfileName,
+  );
+}
+
+/// Calculates `remainingDosesCount` for all medications sharing the exact
+/// scheduled [timeSlot] that have not yet been marked taken.
+int calculateRemainingDosesCount(
+  List<Prescription> prescriptions,
+  String timeSlot, {
+  List<Profile>? profiles,
+}) {
+  return calculateDoseBatch(
+    prescriptions,
+    timeSlot,
+    profiles: profiles,
+  ).remainingDosesCount;
+}
+
+/// Resolves the wall-clock [DateTime] representing [bedtime] for the current
+/// night relative to [now].
+///
+/// If bedtime is set to an early morning hour (e.g. `12:30 AM`) and [now] is in
+/// late evening (e.g. `10:00 PM`), returns early tomorrow morning. Returns `null`
+/// when [bedtime] is missing or unparseable.
+DateTime? calculateBedtimeDateTime({
+  required DateTime now,
+  required String? bedtime,
+}) {
+  if (bedtime == null) return null;
+  final tod = parseTimeOfDayLabel(bedtime);
+  if (tod == null) return null;
+
+  var target = DateTime(now.year, now.month, now.day, tod.hour, tod.minute);
+  if (target.isBefore(now) && tod.hour < 12 && now.hour >= 18) {
+    target = target.add(const Duration(days: 1));
+  }
+  return target;
+}
+
+/// Calculates the clamped snooze duration in minutes so that the snooze countdown
+/// does not extend past the profile's configured [bedtime].
+///
+/// If [bedtime] is null or unparseable, returns [requestedMinutes].
+/// If [now] + [requestedMinutes] extends beyond [bedtime], clamps the duration so
+/// that snooze ends at [bedtime].
+/// If [now] is already on or after [bedtime], returns 0.
+int clampSnoozeDurationToBedtime({
+  required DateTime now,
+  required int requestedMinutes,
+  required String? bedtime,
+}) {
+  if (requestedMinutes <= 0) return 0;
+  final targetBedtime = calculateBedtimeDateTime(now: now, bedtime: bedtime);
+  if (targetBedtime == null) return requestedMinutes;
+
+  if (!targetBedtime.isAfter(now)) {
+    return 0;
+  }
+
+  final diffSeconds = targetBedtime.difference(now).inSeconds;
+  final remainingMinutes = (diffSeconds / 60.0).ceil();
+  if (remainingMinutes <= 0) return 0;
+
+  if (requestedMinutes > remainingMinutes) {
+    return remainingMinutes;
+  }
+  return requestedMinutes;
+}
+
+/// Returns `true` if [dateTime] falls within the profile's bedtime blackout window
+/// (at or after the resolved [bedtime]).
+bool isAtOrPastBedtime({
+  required DateTime dateTime,
+  required String? bedtime,
+}) {
+  final target = calculateBedtimeDateTime(now: dateTime, bedtime: bedtime);
+  if (target == null) return false;
+  return !dateTime.isBefore(target);
+}
+
+/// Calculates the number of untaken doses for [profile] that are scheduled
+/// before their configured [bedtime].
+int calculatePendingDosesBeforeBedtime({
+  required Profile profile,
+  required List<Prescription> prescriptions,
+}) {
+  var count = 0;
+  for (final prescription in prescriptions) {
+    if (prescription.profileId != profile.id) continue;
+    for (final time in prescription.reminderTimes) {
+      final isBeforeBedtime = shouldScheduleReminder(
+        time: time,
+        bedtime: profile.bedtime,
+        allowAfterBedtime: prescription.allowAfterBedtime,
+      );
+      if (!isBeforeBedtime) continue;
+
+      final isTaken = prescription.takenTimes.any(
+        (t) => isSameTimeSlot(t, time),
+      );
+      if (!isTaken) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/// Calculates the [TimeOfDay] for scheduling the Pre-Bedtime Final Call notification,
+/// defaulting to [leadTimeMinutes] (10 minutes) before [bedtime].
+TimeOfDay? calculatePreBedtimeNotificationTime({
+  required String? bedtime,
+  int leadTimeMinutes = 10,
+}) {
+  if (bedtime == null) return null;
+  final tod = parseTimeOfDayLabel(bedtime);
+  if (tod == null) return null;
+
+  var totalMinutes = (tod.hour * 60 + tod.minute) - leadTimeMinutes;
+  if (totalMinutes < 0) {
+    totalMinutes += 24 * 60;
+  }
+  return TimeOfDay(hour: totalMinutes ~/ 60, minute: totalMinutes % 60);
+}
+
+/// Formats the professional message for the Pre-Bedtime Final Call notification:
+/// "Bedtime Reminder: You have [X] pending doses scheduled before your [Time] bedtime. Please log or review your medications before going to sleep."
+String formatPreBedtimeFinalCallMessage({
+  required int pendingDosesCount,
+  required String bedtime,
+}) {
+  final doseWord =
+      pendingDosesCount == 1 ? '1 pending dose' : '$pendingDosesCount pending doses';
+  return 'Bedtime Reminder: You have $doseWord scheduled before your $bedtime bedtime. Please log or review your medications before going to sleep.';
+}
+
+/// Deterministic, non-colliding notification ID for a profile's Pre-Bedtime Final Call.
+int notificationIdForPreBedtime(String profileId) {
+  return notificationIdFor(profileId, 'pre_bedtime_final_call');
 }

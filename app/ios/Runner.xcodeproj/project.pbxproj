@@ -18,6 +18,15 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		AA1100012F10000100000001 /* MedicationLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100102F10000100000001 /* MedicationLiveActivityAttributes.swift */; };
+		AA1100022F10000100000001 /* MedicationLiveActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100112F10000100000001 /* MedicationLiveActivityIntents.swift */; };
+		AA1100032F10000100000001 /* MedicationLiveActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100102F10000100000001 /* MedicationLiveActivityAttributes.swift */; };
+		AA1100042F10000100000001 /* MedicationLiveActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100112F10000100000001 /* MedicationLiveActivityIntents.swift */; };
+		AA1100052F10000100000001 /* PillPalLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100122F10000100000001 /* PillPalLiveActivityWidget.swift */; };
+		AA1100062F10000100000001 /* PillPalWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100132F10000100000001 /* PillPalWidgetBundle.swift */; };
+		AA1100072F10000100000001 /* PillPalWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA1100152F10000100000001 /* PillPalWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA1100082F10000100000001 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1100162F10000100000001 /* WidgetKit.framework */; };
+		AA1100092F10000100000001 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AA1100172F10000100000001 /* SwiftUI.framework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,6 +36,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 97C146ED1CF9000F007C117D;
 			remoteInfo = Runner;
+		};
+		AA1100202F10000100000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 97C146E61CF9000F007C117D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA1100302F10000100000001;
+			remoteInfo = PillPalWidgetExtension;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -39,6 +55,17 @@
 			files = (
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA1100252F10000100000001 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AA1100072F10000100000001 /* PillPalWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -69,6 +96,14 @@
 		D1F23CB45ECC42BB5683DFE8 /* Pods-RunnerTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.release.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.release.xcconfig"; sourceTree = "<group>"; };
 		E28BCC4644B84B30238323DC /* Pods_RunnerTests.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_RunnerTests.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		E63CD45FE018BA5C66E9230A /* Pods-Runner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.release.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.release.xcconfig"; sourceTree = "<group>"; };
+		AA1100102F10000100000001 /* MedicationLiveActivityAttributes.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MedicationLiveActivityAttributes.swift; sourceTree = "<group>"; };
+		AA1100112F10000100000001 /* MedicationLiveActivityIntents.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MedicationLiveActivityIntents.swift; sourceTree = "<group>"; };
+		AA1100122F10000100000001 /* PillPalLiveActivityWidget.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PillPalLiveActivityWidget.swift; sourceTree = "<group>"; };
+		AA1100132F10000100000001 /* PillPalWidgetBundle.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = PillPalWidgetBundle.swift; sourceTree = "<group>"; };
+		AA1100142F10000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA1100152F10000100000001 /* PillPalWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PillPalWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA1100162F10000100000001 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		AA1100172F10000100000001 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -78,6 +113,15 @@
 			files = (
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
 				386D430A18C96C1A9C472479 /* Pods_Runner.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA1100262F10000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA1100082F10000100000001 /* WidgetKit.framework in Frameworks */,
+				AA1100092F10000100000001 /* SwiftUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -130,6 +174,7 @@
 			children = (
 				9740EEB11CF90186004384FC /* Flutter */,
 				97C146F01CF9000F007C117D /* Runner */,
+				AA1100282F10000100000001 /* PillPalWidgetExtension */,
 				97C146EF1CF9000F007C117D /* Products */,
 				331C8082294A63A400263BE5 /* RunnerTests */,
 				65F851B975F605CD4C663668 /* Pods */,
@@ -142,8 +187,21 @@
 			children = (
 				97C146EE1CF9000F007C117D /* Runner.app */,
 				331C8081294A63A400263BE5 /* RunnerTests.xctest */,
+				AA1100152F10000100000001 /* PillPalWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AA1100282F10000100000001 /* PillPalWidgetExtension */ = {
+			isa = PBXGroup;
+			children = (
+				AA1100102F10000100000001 /* MedicationLiveActivityAttributes.swift */,
+				AA1100112F10000100000001 /* MedicationLiveActivityIntents.swift */,
+				AA1100122F10000100000001 /* PillPalLiveActivityWidget.swift */,
+				AA1100132F10000100000001 /* PillPalWidgetBundle.swift */,
+				AA1100142F10000100000001 /* Info.plist */,
+			);
+			path = PillPalWidgetExtension;
 			sourceTree = "<group>";
 		};
 		97C146F01CF9000F007C117D /* Runner */ = {
@@ -167,6 +225,8 @@
 			children = (
 				289E39D9437DFC08E91F71AB /* Pods_Runner.framework */,
 				E28BCC4644B84B30238323DC /* Pods_RunnerTests.framework */,
+				AA1100162F10000100000001 /* WidgetKit.framework */,
+				AA1100172F10000100000001 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -204,6 +264,7 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
+				AA1100252F10000100000001 /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				1C3C29F746C1389CA8A5FFBE /* [CP] Embed Pods Frameworks */,
 				620CD0FE349D6903245BCDD0 /* [CP] Copy Pods Resources */,
@@ -211,6 +272,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				AA1100212F10000100000001 /* PBXTargetDependency */,
 			);
 			name = Runner;
 			packageProductDependencies = (
@@ -219,6 +281,23 @@
 			productName = Runner;
 			productReference = 97C146EE1CF9000F007C117D /* Runner.app */;
 			productType = "com.apple.product-type.application";
+		};
+		AA1100302F10000100000001 /* PillPalWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA1100402F10000100000001 /* Build configuration list for PBXNativeTarget "PillPalWidgetExtension" */;
+			buildPhases = (
+				AA1100312F10000100000001 /* Sources */,
+				AA1100262F10000100000001 /* Frameworks */,
+				AA1100322F10000100000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PillPalWidgetExtension;
+			productName = PillPalWidgetExtension;
+			productReference = AA1100152F10000100000001 /* PillPalWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -237,6 +316,9 @@
 					97C146ED1CF9000F007C117D = {
 						CreatedOnToolsVersion = 7.3.1;
 						LastSwiftMigration = 1100;
+					};
+					AA1100302F10000100000001 = {
+						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
@@ -258,12 +340,20 @@
 			targets = (
 				97C146ED1CF9000F007C117D /* Runner */,
 				331C8080294A63A400263BE5 /* RunnerTests */,
+				AA1100302F10000100000001 /* PillPalWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		331C807F294A63A400263BE5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA1100322F10000100000001 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -431,6 +521,19 @@
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
+				AA1100012F10000100000001 /* MedicationLiveActivityAttributes.swift in Sources */,
+				AA1100022F10000100000001 /* MedicationLiveActivityIntents.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA1100312F10000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA1100032F10000100000001 /* MedicationLiveActivityAttributes.swift in Sources */,
+				AA1100042F10000100000001 /* MedicationLiveActivityIntents.swift in Sources */,
+				AA1100052F10000100000001 /* PillPalLiveActivityWidget.swift in Sources */,
+				AA1100062F10000100000001 /* PillPalWidgetBundle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -441,6 +544,11 @@
 			isa = PBXTargetDependency;
 			target = 97C146ED1CF9000F007C117D /* Runner */;
 			targetProxy = 331C8085294A63A400263BE5 /* PBXContainerItemProxy */;
+		};
+		AA1100212F10000100000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA1100302F10000100000001 /* PillPalWidgetExtension */;
+			targetProxy = AA1100202F10000100000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -507,7 +615,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -527,7 +635,7 @@
 				DEVELOPMENT_TEAM = KQT6X5G76L;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -639,7 +747,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
@@ -692,7 +800,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -714,7 +822,7 @@
 				DEVELOPMENT_TEAM = KQT6X5G76L;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -738,7 +846,7 @@
 				DEVELOPMENT_TEAM = KQT6X5G76L;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -751,9 +859,99 @@
 			};
 			name = Release;
 		};
+		AA1100412F10000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 9740EEB21CF90195004384FC /* Debug.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = KQT6X5G76L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PillPalWidgetExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cadesholar.pillpal.PillPalWidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA1100422F10000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = KQT6X5G76L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PillPalWidgetExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cadesholar.pillpal.PillPalWidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA1100432F10000100000001 /* Profile */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7AFA3C8E1D35360C0083082E /* Release.xcconfig */;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
+				DEVELOPMENT_TEAM = KQT6X5G76L;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PillPalWidgetExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cadesholar.pillpal.PillPalWidgetExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Profile;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		AA1100402F10000100000001 /* Build configuration list for PBXNativeTarget "PillPalWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA1100412F10000100000001 /* Debug */,
+				AA1100422F10000100000001 /* Release */,
+				AA1100432F10000100000001 /* Profile */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		331C8087294A63A400263BE5 /* Build configuration list for PBXNativeTarget "RunnerTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

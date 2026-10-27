@@ -8,6 +8,8 @@ import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/data_retention_service.dart';
 import '../../presentation/widgets/profile_chip.dart';
+import '../../services/walkthrough_service.dart';
+import '../../ui/widgets/walkthrough_overlay.dart';
 import 'dose_history_screen.dart';
 import 'widgets/adherence_graph_card.dart';
 import 'widgets/saved_medication_card.dart';
@@ -23,6 +25,7 @@ class ProfilesScreen extends StatefulWidget {
   final ValueChanged<Prescription> onEditMedication;
   final DataRetentionService? retentionService;
   final AppDatabase? database;
+  final WalkthroughService? walkthroughService;
 
   const ProfilesScreen({
     super.key,
@@ -32,6 +35,7 @@ class ProfilesScreen extends StatefulWidget {
     required this.onEditMedication,
     this.retentionService,
     this.database,
+    this.walkthroughService,
   });
 
   @override
@@ -199,6 +203,26 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             _buildPurgeBanner(context, expiredEvents),
             const SizedBox(height: 14),
           ],
+
+          // Contextual inline micro-hint for first-time History/Logs & Meds visitors
+          if (widget.walkthroughService != null)
+            ListenableBuilder(
+              listenable: widget.walkthroughService!,
+              builder: (context, _) {
+                if (widget.walkthroughService!.hasSeenHistoryHint) {
+                  return const SizedBox.shrink();
+                }
+                return ContextualHintCard(
+                  key: const Key('meds_history_contextual_hint'),
+                  title: 'Adherence & Dose Logs',
+                  message:
+                      'Track 7-day consistency above, open your day-by-day Dose History Log, or tap any saved medication below to edit schedules.',
+                  icon: CupertinoIcons.chart_bar_alt_fill,
+                  onDismiss: () =>
+                      widget.walkthroughService!.markHistoryHintSeen(),
+                );
+              },
+            ),
 
           // 1. Logging Consistency & Adherence Graph Card
           AdherenceGraphCard(

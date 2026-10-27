@@ -9,6 +9,7 @@ import '../../presentation/widgets/scan_bottle_button.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
+import '../../ui/widgets/walkthrough_overlay.dart';
 import 'widgets/medication_card.dart';
 
 /// One reminder-time instance of a prescription -- a prescription with
@@ -29,6 +30,10 @@ class ScheduleScreen extends StatelessWidget {
       onToggleAllCompleted;
   final VoidCallback onOpenScan;
   final bool isScanning;
+  final GlobalKey? firstMedCardKey;
+  final GlobalKey? profileSwitcherKey;
+  final List<GlobalKey>? profileChipKeys;
+  final GlobalKey? scanButtonKey;
 
   const ScheduleScreen({
     super.key,
@@ -43,6 +48,10 @@ class ScheduleScreen extends StatelessWidget {
     required this.onToggleAllCompleted,
     required this.onOpenScan,
     required this.isScanning,
+    this.firstMedCardKey,
+    this.profileSwitcherKey,
+    this.profileChipKeys,
+    this.scanButtonKey,
   });
 
   @override
@@ -115,6 +124,7 @@ class ScheduleScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Column(
+                  key: profiles.length <= 1 ? profileSwitcherKey : null,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -155,6 +165,7 @@ class ScheduleScreen extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: ScanBottleButton(
+                    key: scanButtonKey,
                     onTap: onOpenScan,
                     isLoading: isScanning,
                   ),
@@ -183,15 +194,27 @@ class ScheduleScreen extends StatelessWidget {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
+                      key: profileSwitcherKey,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
                         _ProfileChip(
+                          contentKey: profileChipKeys != null &&
+                                  profileChipKeys!.isNotEmpty
+                              ? profileChipKeys![0]
+                              : null,
                           label: 'All',
                           isSelected: selectedProfileId == 'all',
                           onTap: () => onSelectProfile('all'),
                         ),
-                        ...profiles.map((p) {
+                        ...profiles.asMap().entries.map((entry) {
+                          final idx = entry.key + 1;
+                          final p = entry.value;
                           final isSelected = selectedProfileId == p.id;
                           return _ProfileChip(
+                            contentKey: profileChipKeys != null &&
+                                    idx < profileChipKeys!.length
+                                ? profileChipKeys![idx]
+                                : null,
                             label: '${p.name}${p.isPrimary ? ' (Me)' : ''}',
                             isSelected: isSelected,
                             selectedColor: p.color,
@@ -257,7 +280,7 @@ class ScheduleScreen extends StatelessWidget {
         IOSListRowReveal(
           key: const ValueKey('ios_empty_schedule'),
           visible: !hasAnyVisible,
-          child: const _EmptySchedule(),
+          child: _EmptySchedule(onOpenScan: onOpenScan),
         ),
         const SizedBox(height: 120),
       ],
@@ -269,6 +292,9 @@ class ScheduleScreen extends StatelessWidget {
     ({String title, List<ScheduleSlot> slots}) section, {
     required bool isFirst,
   }) {
+    final visibleSlots = section.slots.where(_isSlotVisible).toList();
+    final firstVisibleSlot = visibleSlots.isNotEmpty ? visibleSlots.first : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -281,7 +307,13 @@ class ScheduleScreen extends StatelessWidget {
                 IOSListRowReveal(
                   key: ValueKey('ios_slot_${slot.prescription.id}_${slot.time}'),
                   visible: _isSlotVisible(slot),
-                  child: _slotCard(slot),
+                  child: _slotCard(
+                    slot,
+                    isTargetCard: isFirst &&
+                        firstVisibleSlot != null &&
+                        slot.prescription.id == firstVisibleSlot.prescription.id &&
+                        slot.time == firstVisibleSlot.time,
+                  ),
                 ),
             ],
           ),
@@ -308,10 +340,10 @@ class ScheduleScreen extends StatelessWidget {
         _AndroidAnimatedCollapseItem(
           key: const ValueKey('anim_empty_schedule_android'),
           isVisible: !hasAnyVisible,
-          child: const Column(
+          child: Column(
             children: [
-              _EmptySchedule(),
-              SizedBox(height: 120),
+              _EmptySchedule(onOpenScan: onOpenScan),
+              const SizedBox(height: 120),
             ],
           ),
         ),
@@ -325,9 +357,13 @@ class ScheduleScreen extends StatelessWidget {
     ({String title, List<ScheduleSlot> slots}) section, {
     required bool isFirst,
   }) {
-    final isSectionVisible = section.slots.any((s) =>
-        selectedProfileId == 'all' ||
-        s.prescription.profileId == selectedProfileId);
+    final visibleSlots = section.slots
+        .where((s) =>
+            selectedProfileId == 'all' ||
+            s.prescription.profileId == selectedProfileId)
+        .toList();
+    final isSectionVisible = visibleSlots.isNotEmpty;
+    final firstVisibleSlot = visibleSlots.isNotEmpty ? visibleSlots.first : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -346,7 +382,13 @@ class ScheduleScreen extends StatelessWidget {
                   key: ValueKey('anim_slot_${slot.prescription.id}_${slot.time}'),
                   isVisible: selectedProfileId == 'all' ||
                       slot.prescription.profileId == selectedProfileId,
-                  child: _slotCard(slot),
+                  child: _slotCard(
+                    slot,
+                    isTargetCard: isFirst &&
+                        firstVisibleSlot != null &&
+                        slot.prescription.id == firstVisibleSlot.prescription.id &&
+                        slot.time == firstVisibleSlot.time,
+                  ),
                 ),
             ],
           ),
@@ -463,9 +505,10 @@ class ScheduleScreen extends StatelessWidget {
     );
   }
 
-  Widget _slotCard(ScheduleSlot slot) {
+  Widget _slotCard(ScheduleSlot slot, {bool isTargetCard = false}) {
     return MedicationCard(
       key: ValueKey('med_${slot.prescription.id}_${slot.time}'),
+      targetKey: isTargetCard ? firstMedCardKey : null,
       item: slot.prescription,
       time: slot.time,
       isTaken: slot.prescription.takenTimes.contains(slot.time),
@@ -649,34 +692,17 @@ class _AndroidAnimatedCollapseItem extends StatelessWidget {
 typedef _ProfileChip = ProfileChip;
 
 class _EmptySchedule extends StatelessWidget {
-  const _EmptySchedule();
+  final VoidCallback onOpenScan;
+
+  const _EmptySchedule({required this.onOpenScan});
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 48, 24, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(CupertinoIcons.checkmark_seal,
-                color: c.inkMuted.withValues(alpha: 0.4), size: 40),
-            const SizedBox(height: 12),
-            Text(
-              'Nothing due right now',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w700, color: c.ink),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Scan a bottle to add a medication.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: c.inkMuted),
-            ),
-          ],
-        ),
-      ),
+    return AnimatedEmptyFeedState(
+      title: 'Nothing due right now',
+      subtitle: 'Scan a bottle to add a medication.',
+      ctaLabel: 'Scan a Bottle',
+      onCtaTap: onOpenScan,
     );
   }
 }

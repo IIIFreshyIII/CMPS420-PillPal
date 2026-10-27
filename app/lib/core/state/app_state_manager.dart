@@ -6,6 +6,7 @@ import '../theme/liquid_glass_mode.dart';
 import '../theme/theme_controller.dart';
 import '../../data/services/app_lock_service.dart';
 import '../../data/services/data_retention_service.dart';
+import '../../services/walkthrough_service.dart';
 
 /// Central observable state manager for persistent settings, onboarding lifecycle,
 /// interactive tab coach-mark walkthrough flags, and developer debug presets.
@@ -16,6 +17,7 @@ class AppStateManager extends ChangeNotifier {
     LiquidGlassController? liquidGlassController,
     DataRetentionService? retentionService,
     AppLockService? appLockService,
+    WalkthroughService? walkthroughService,
   })  : _storage = storage ??
             const FlutterSecureStorage(
               iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
@@ -30,13 +32,24 @@ class AppStateManager extends ChangeNotifier {
                     iOptions: IOSOptions(
                         accessibility: KeychainAccessibility.first_unlock),
                   ),
-            );
+            ),
+        _walkthroughService = walkthroughService ??
+            WalkthroughService(
+              storage: storage ??
+                  const FlutterSecureStorage(
+                    iOptions: IOSOptions(
+                        accessibility: KeychainAccessibility.first_unlock),
+                  ),
+            ) {
+    _walkthroughService.addListener(notifyListeners);
+  }
 
   final FlutterSecureStorage _storage;
   final ThemeController? _themeController;
   final LiquidGlassController? _liquidGlassController;
   final DataRetentionService? _retentionService;
   final AppLockService? _appLockService;
+  final WalkthroughService _walkthroughService;
 
   // Storage Keys
   static const _keyOnboardingCompleted = 'has_completed_onboarding';
@@ -58,11 +71,19 @@ class AppStateManager extends ChangeNotifier {
 
   // Getters
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
-  bool get hasSeenScheduleTour => _hasSeenScheduleTour;
-  bool get hasSeenMedsTour => _hasSeenMedsTour;
-  bool get hasSeenAccountTour => _hasSeenAccountTour;
+  bool get hasSeenScheduleTour =>
+      _hasSeenScheduleTour || _walkthroughService.hasSeenMainFeedTour;
+  bool get hasSeenMedsTour =>
+      _hasSeenMedsTour || _walkthroughService.hasSeenHistoryHint;
+  bool get hasSeenAccountTour =>
+      _hasSeenAccountTour || _walkthroughService.hasSeenCaregiverHint;
+  bool get hasSeenMainFeedTour => _walkthroughService.hasSeenMainFeedTour;
+  bool get hasSeenScannerTip => _walkthroughService.hasSeenScannerTip;
+  bool get hasSeenProfileSwitchHint =>
+      _walkthroughService.hasSeenProfileSwitchHint;
   String get userName => _userName;
   bool get isSeededTestingMode => _isSeededTestingMode;
+  WalkthroughService get walkthroughService => _walkthroughService;
 
   ThemeMode get appearanceMode => _themeController?.value ?? _appearanceMode;
   bool get liquidGlassEnabled =>
@@ -78,14 +99,18 @@ class AppStateManager extends ChangeNotifier {
       if (_appLockService != null) {
         await _appLockService.load();
       }
+      await _walkthroughService.load();
       _hasCompletedOnboarding =
           (await _storage.read(key: _keyOnboardingCompleted)) == 'true';
       _hasSeenScheduleTour =
-          (await _storage.read(key: _keyTourSchedule)) == 'true';
+          (await _storage.read(key: _keyTourSchedule)) == 'true' ||
+              _walkthroughService.hasSeenMainFeedTour;
       _hasSeenMedsTour =
-          (await _storage.read(key: _keyTourMeds)) == 'true';
+          (await _storage.read(key: _keyTourMeds)) == 'true' ||
+              _walkthroughService.hasSeenHistoryHint;
       _hasSeenAccountTour =
-          (await _storage.read(key: _keyTourAccount)) == 'true';
+          (await _storage.read(key: _keyTourAccount)) == 'true' ||
+              _walkthroughService.hasSeenCaregiverHint;
       _userName = await _storage.read(key: _keyUserName) ?? '';
 
       final retRaw = await _storage.read(key: 'dose_log_retention_days');
@@ -142,14 +167,23 @@ class AppStateManager extends ChangeNotifier {
     if (schedule != null) {
       _hasSeenScheduleTour = schedule;
       await _writeBool(_keyTourSchedule, schedule);
+      if (schedule) {
+        await _walkthroughService.markMainFeedTourSeen();
+      }
     }
     if (meds != null) {
       _hasSeenMedsTour = meds;
       await _writeBool(_keyTourMeds, meds);
+      if (meds) {
+        await _walkthroughService.markHistoryHintSeen();
+      }
     }
     if (account != null) {
       _hasSeenAccountTour = account;
       await _writeBool(_keyTourAccount, account);
+      if (account) {
+        await _walkthroughService.markCaregiverHintSeen();
+      }
     }
     notifyListeners();
   }
@@ -227,6 +261,7 @@ class AppStateManager extends ChangeNotifier {
     await _writeBool(_keyTourMeds, false);
     await _writeBool(_keyTourAccount, false);
     await _writeBool(_keySeededTestingMode, false);
+    await _walkthroughService.resetAllFlags(armTrigger: false);
     try {
       await _storage.delete(key: _keyUserName);
       await _storage.delete(key: 'appearance');
@@ -263,6 +298,7 @@ class AppStateManager extends ChangeNotifier {
     await _writeBool(_keyTourMeds, true);
     await _writeBool(_keyTourAccount, true);
     await _writeBool(_keySeededTestingMode, true);
+    await _walkthroughService.markAllSeen();
 
     notifyListeners();
   }
@@ -278,6 +314,7 @@ class AppStateManager extends ChangeNotifier {
     await _writeBool(_keyTourSchedule, false);
     await _writeBool(_keyTourMeds, false);
     await _writeBool(_keyTourAccount, false);
+    await _walkthroughService.resetAllFlags(armTrigger: true);
 
     notifyListeners();
   }

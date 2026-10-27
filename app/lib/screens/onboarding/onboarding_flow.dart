@@ -111,7 +111,11 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     // medication is shown on the Schedule screen (per specification)
     await widget.appStateManager.setSeededTestingMode(false);
 
-    // 4. Mark onboarding as complete and hand off to main app
+    // 4. Arm the first-run interactive walkthrough to trigger strictly once
+    // upon arriving on the unified daily feed following this initial save
+    widget.appStateManager.walkthroughService.armPostOnboardingTour();
+
+    // 5. Mark onboarding as complete and hand off to main app
     await widget.appStateManager.setHasCompletedOnboarding(true);
     widget.onComplete();
   }

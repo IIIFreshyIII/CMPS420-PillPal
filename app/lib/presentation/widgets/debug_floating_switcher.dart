@@ -8,6 +8,7 @@ import '../../core/theme/pillpal_colors.dart';
 import '../../data/local/app_database.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
+import '../../services/live_reminder_service.dart';
 import 'pressable.dart';
 
 /// Small floating developer pill button accessible anywhere in debug builds (kDebugMode).
@@ -162,119 +163,284 @@ class _DebugFloatingSwitcherState extends State<DebugFloatingSwitcher> {
           ),
           child: SafeArea(
             top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Grabber
-                Center(
-                  child: Container(
-                    width: 36,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: c.grabber,
-                      borderRadius: BorderRadius.circular(2),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Grabber
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: c.grabber,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
-                // Title Row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        const Text('🛠️', style: TextStyle(fontSize: 20)),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Developer Presets',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: c.ink,
-                            letterSpacing: -0.4,
+                  // Title Row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Text('🛠️', style: TextStyle(fontSize: 20)),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Developer Presets',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: c.ink,
+                              letterSpacing: -0.4,
+                            ),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(CupertinoIcons.xmark_circle_fill),
+                        color: c.inkMuted,
+                        iconSize: 22,
+                        onPressed: () => Navigator.pop(sheetContext),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Switch instant simulator and testing states with one tap.',
+                    style: TextStyle(fontSize: 13, color: c.inkMuted),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Preset 1: Fresh A-to-Z Onboarding
+                  _buildPresetTile(
+                    targetContext,
+                    badge: 'PRESET 1',
+                    title: 'Fresh A-to-Z Onboarding',
+                    subtitle:
+                        'Resets onboarding to Step 1, clears all 3 tab tour flags, and hides seeded test data.',
+                    icon: CupertinoIcons.arrow_counterclockwise_circle_fill,
+                    accentColor: c.alert,
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await widget.database?.clearAllData();
+                      await state.resetToFreshOnboarding();
+                      await state.appLockService?.setEnabled(false);
+                      navKey.currentState?.popUntil((r) => r.isFirst);
+                      if (targetContext.mounted) {
+                        _showFeedback(
+                            targetContext, 'Reset to Fresh A-to-Z Onboarding');
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Preset 2: Seeded UI Testing
+                  _buildPresetTile(
+                    targetContext,
+                    badge: 'PRESET 2',
+                    title: 'Seeded UI Testing',
+                    subtitle:
+                        'Sets onboarding complete, marks all tours complete, and loads all seeded medications on Home Screen.',
+                    icon: CupertinoIcons.checkmark_seal_fill,
+                    accentColor: c.teal,
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await state.setSeededUiTesting();
+                      await widget.database
+                          ?.seedIfEmpty(_seedProfiles, _seedPrescriptions);
+                      navKey.currentState?.popUntil((r) => r.isFirst);
+                      if (targetContext.mounted) {
+                        _showFeedback(
+                            targetContext, 'Switched to Seeded UI Testing Mode');
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Preset 3: Replay Tab Tutorials
+                  _buildPresetTile(
+                    targetContext,
+                    badge: 'PRESET 3',
+                    title: 'Replay Tab Tutorials',
+                    subtitle:
+                        'Keeps current onboarded state, but resets Schedule, Meds, and Account walkthrough flags to false.',
+                    icon: CupertinoIcons.play_circle_fill,
+                    accentColor: const Color(0xFF8B5CF6),
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await state.replayTabTutorials();
+                      navKey.currentState?.popUntil((r) => r.isFirst);
+                      if (targetContext.mounted) {
+                        _showFeedback(
+                            targetContext, 'Reset All 3 Tab Walkthrough Tours');
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Preset 4: Simulate Overdue Dose Snooze (Live Activity / Ongoing Notification)
+                  _buildPresetTile(
+                    targetContext,
+                    key: const Key('debug_trigger_snooze_live_activity'),
+                    badge: 'LIVE REMINDER',
+                    title: 'Simulate Overdue Dose (Trigger Snooze)',
+                    subtitle:
+                        'Batches untaken 8:00 AM doses and launches the Dynamic Island / Lock Screen Live Activity countdown.',
+                    icon: CupertinoIcons.timer_fill,
+                    accentColor: c.teal,
+                    onTap: () async {
+                      Navigator.pop(sheetContext);
+                      await _triggerSimulatedSnooze(targetContext);
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const Key('debug_decrement_live_activity_button'),
+                          onPressed: () async {
+                            Navigator.pop(sheetContext);
+                            await _simulateLogOneDoseInActiveSlot(targetContext);
+                          },
+                          icon: const Icon(
+                            CupertinoIcons.checkmark_circle,
+                            size: 15,
+                          ),
+                          label: const Text(
+                            'Log 1 Dose (-1)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: c.tealDeep,
+                            side: BorderSide(color: c.borderChip),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
-                      ],
-                    ),
-                    IconButton(
-                      icon: const Icon(CupertinoIcons.xmark_circle_fill),
-                      color: c.inkMuted,
-                      iconSize: 22,
-                      onPressed: () => Navigator.pop(sheetContext),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Switch instant simulator and testing states with one tap.',
-                  style: TextStyle(fontSize: 13, color: c.inkMuted),
-                ),
-                const SizedBox(height: 16),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          key: const Key('debug_dismiss_live_activity_button'),
+                          onPressed: () async {
+                            Navigator.pop(sheetContext);
+                            await LiveReminderService.instance
+                                .dismissActivity(batchId: 'batch_08_00');
+                            if (targetContext.mounted) {
+                              _showFeedback(
+                                targetContext,
+                                'Dismissed Snooze Live Activity',
+                              );
+                            }
+                          },
+                          icon: const Icon(
+                            CupertinoIcons.xmark_circle,
+                            size: 15,
+                          ),
+                          label: const Text(
+                            'Dismiss Live',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: c.alert,
+                            side: BorderSide(color: c.borderChip),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
 
-                // Preset 1: Fresh A-to-Z Onboarding
-                _buildPresetTile(
-                  targetContext,
-                  badge: 'PRESET 1',
-                  title: 'Fresh A-to-Z Onboarding',
-                  subtitle:
-                      'Resets onboarding to Step 1, clears all 3 tab tour flags, and hides seeded test data.',
-                  icon: CupertinoIcons.arrow_counterclockwise_circle_fill,
-                  accentColor: c.alert,
-                  onTap: () async {
-                    Navigator.pop(sheetContext);
-                    await widget.database?.clearAllData();
-                    await state.resetToFreshOnboarding();
-                    await state.appLockService?.setEnabled(false);
-                    navKey.currentState?.popUntil((r) => r.isFirst);
-                    if (targetContext.mounted) {
-                      _showFeedback(targetContext, 'Reset to Fresh A-to-Z Onboarding');
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-
-                // Preset 2: Seeded UI Testing
-                _buildPresetTile(
-                  targetContext,
-                  badge: 'PRESET 2',
-                  title: 'Seeded UI Testing',
-                  subtitle:
-                      'Sets onboarding complete, marks all tours complete, and loads all seeded medications on Home Screen.',
-                  icon: CupertinoIcons.checkmark_seal_fill,
-                  accentColor: c.teal,
-                  onTap: () async {
-                    Navigator.pop(sheetContext);
-                    await state.setSeededUiTesting();
-                    await widget.database?.seedIfEmpty(_seedProfiles, _seedPrescriptions);
-                    navKey.currentState?.popUntil((r) => r.isFirst);
-                    if (targetContext.mounted) {
-                      _showFeedback(targetContext, 'Switched to Seeded UI Testing Mode');
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-
-                // Preset 3: Replay Tab Tutorials
-                _buildPresetTile(
-                  targetContext,
-                  badge: 'PRESET 3',
-                  title: 'Replay Tab Tutorials',
-                  subtitle:
-                      'Keeps current onboarded state, but resets Schedule, Meds, and Account walkthrough flags to false.',
-                  icon: CupertinoIcons.play_circle_fill,
-                  accentColor: const Color(0xFF8B5CF6),
-                  onTap: () async {
-                    Navigator.pop(sheetContext);
-                    await state.replayTabTutorials();
-                    navKey.currentState?.popUntil((r) => r.isFirst);
-                    if (targetContext.mounted) {
-                      _showFeedback(targetContext, 'Reset All 3 Tab Walkthrough Tours');
-                    }
-                  },
-                ),
-              ],
+                  // Silent Debug Reset Toggle for Walkthrough Flags
+                  ListenableBuilder(
+                    listenable: state.walkthroughService,
+                    builder: (ctx, _) {
+                      final ws = state.walkthroughService;
+                      final anySeen = ws.hasSeenMainFeedTour ||
+                          ws.hasSeenScannerTip ||
+                          ws.hasSeenProfileSwitchHint ||
+                          ws.hasSeenHistoryHint ||
+                          ws.hasSeenCaregiverHint;
+                      return Container(
+                        key: const Key('debug_silent_walkthrough_reset_tile'),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: c.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: c.borderChip),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              CupertinoIcons.sparkles,
+                              size: 18,
+                              color: c.teal,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Clear Walkthrough Flags (Silent)',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700,
+                                      color: c.ink,
+                                    ),
+                                  ),
+                                  Text(
+                                    anySeen
+                                        ? 'Discovery flags active — toggle to clear'
+                                        : 'All discovery flags cleared',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: c.inkMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            CupertinoSwitch(
+                              key: const Key('debug_silent_walkthrough_switch'),
+                              value: !anySeen,
+                              activeTrackColor: c.teal,
+                              onChanged: (clearFlags) async {
+                                if (clearFlags) {
+                                  await state.walkthroughService
+                                      .resetAllFlags(armTrigger: false);
+                                } else {
+                                  await state.walkthroughService.markAllSeen();
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -282,8 +448,141 @@ class _DebugFloatingSwitcherState extends State<DebugFloatingSwitcher> {
     );
   }
 
+  Future<void> _triggerSimulatedSnooze(BuildContext context) async {
+    final settings = SnoozeSettingsService();
+    await settings.load();
+    final snoozeMinutes = settings.snoozeDurationMinutes;
+
+    var prescriptions = _seedPrescriptions;
+    var profiles = _seedProfiles;
+
+    if (widget.database != null) {
+      final dbPrescriptions = await widget.database!.watchPrescriptions().first;
+      final dbProfiles = await widget.database!.watchProfiles().first;
+      if (dbPrescriptions.isNotEmpty) {
+        prescriptions = dbPrescriptions;
+      }
+      if (dbProfiles.isNotEmpty) {
+        profiles = dbProfiles;
+      }
+    }
+
+    String targetSlot = '8:00 AM';
+    var batch = calculateDoseBatch(prescriptions, targetSlot, profiles: profiles);
+    if (batch.remainingDosesCount == 0) {
+      for (final p in prescriptions) {
+        for (final t in p.reminderTimes) {
+          final candidate =
+              calculateDoseBatch(prescriptions, t, profiles: profiles);
+          if (candidate.remainingDosesCount > 0) {
+            targetSlot = t;
+            batch = candidate;
+            break;
+          }
+        }
+        if (batch.remainingDosesCount > 0) break;
+      }
+    }
+
+    // If all scheduled medications were marked taken, reset the 8:00 AM slot
+    // so the developer can immediately test the snooze countdown.
+    if (batch.remainingDosesCount == 0) {
+      final resetList = <Prescription>[];
+      for (final p in prescriptions) {
+        if (p.reminderTimes.any((t) => isSameTimeSlot(t, '8:00 AM'))) {
+          final updated = p.copyWith(
+            takenTimes:
+                p.takenTimes.where((t) => !isSameTimeSlot(t, '8:00 AM')).toSet(),
+          );
+          resetList.add(updated);
+          await widget.database?.upsertPrescription(updated);
+        } else {
+          resetList.add(p);
+        }
+      }
+      prescriptions = resetList;
+      targetSlot = '8:00 AM';
+      batch = calculateDoseBatch(prescriptions, targetSlot, profiles: profiles);
+    }
+
+    await LiveReminderService.instance.startSnoozeActivity(
+      batchId: batch.batchId,
+      snoozeDurationMinutes: snoozeMinutes,
+      remainingCount: batch.remainingDosesCount,
+      medicationNames: batch.medicationNames,
+      profileName: batch.profileName,
+    );
+
+    if (context.mounted) {
+      _showFeedback(
+        context,
+        'Snooze Active: ${batch.remainingDosesCount} due • ${snoozeMinutes}m',
+      );
+    }
+  }
+
+  Future<void> _simulateLogOneDoseInActiveSlot(BuildContext context) async {
+    var prescriptions = _seedPrescriptions;
+    var profiles = _seedProfiles;
+
+    if (widget.database != null) {
+      final dbPrescriptions = await widget.database!.watchPrescriptions().first;
+      final dbProfiles = await widget.database!.watchProfiles().first;
+      if (dbPrescriptions.isNotEmpty) {
+        prescriptions = dbPrescriptions;
+      }
+      if (dbProfiles.isNotEmpty) {
+        profiles = dbProfiles;
+      }
+    }
+
+    const targetSlot = '8:00 AM';
+    final currentBatch =
+        calculateDoseBatch(prescriptions, targetSlot, profiles: profiles);
+    if (currentBatch.remainingPrescriptions.isEmpty) {
+      await LiveReminderService.instance
+          .dismissActivity(batchId: currentBatch.batchId);
+      if (context.mounted) {
+        _showFeedback(context, 'All doses in 8:00 AM slot already taken — dismissed');
+      }
+      return;
+    }
+
+    final toTake = currentBatch.remainingPrescriptions.first;
+    final updatedMed = toTake.copyWith(
+      takenTimes: {...toTake.takenTimes, targetSlot},
+      remaining: (toTake.remaining - 1).clamp(0, 9999),
+      daysSupply: (toTake.daysSupply - 1).clamp(0, 9999),
+    );
+    await widget.database?.upsertPrescription(updatedMed);
+
+    final updatedList = [
+      for (final p in prescriptions) p.id == updatedMed.id ? updatedMed : p,
+    ];
+    final updatedBatch = await LiveReminderService.instance.syncTimeSlotDoses(
+      timeSlot: targetSlot,
+      prescriptions: updatedList,
+      profiles: profiles,
+    );
+
+    if (context.mounted) {
+      if (updatedBatch.remainingDosesCount == 0) {
+        _showFeedback(
+          context,
+          'Logged ${toTake.name} — 0 remaining, Live Activity dismissed!',
+        );
+      } else {
+        _showFeedback(
+          context,
+          'Logged ${toTake.name} — ${updatedBatch.remainingDosesCount} dose(s) left',
+        );
+      }
+    }
+  }
+
   Widget _buildPresetTile(
     BuildContext context, {
+    Key? key,
     required String badge,
     required String title,
     required String subtitle,
@@ -294,6 +593,7 @@ class _DebugFloatingSwitcherState extends State<DebugFloatingSwitcher> {
     final c = context.colors;
 
     return Pressable(
+      key: key,
       onTap: onTap,
       scale: 0.98,
       child: Container(

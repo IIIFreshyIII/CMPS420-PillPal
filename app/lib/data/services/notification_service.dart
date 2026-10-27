@@ -5,6 +5,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../core/scheduling/reminder_scheduler.dart';
 import '../../core/utils/date_formatter.dart';
+import '../../services/live_reminder_service.dart';
 import '../models/prescription.dart';
 import '../models/profile.dart';
 
@@ -17,14 +18,26 @@ import '../models/profile.dart';
 /// plain, unit-testable functions -- this class is just the thin, untestable
 /// (without a real device) layer that acts on them.
 class NotificationService {
-  NotificationService() : _plugin = FlutterLocalNotificationsPlugin();
+  NotificationService({LiveReminderService? liveReminderService})
+      : _plugin = FlutterLocalNotificationsPlugin(),
+        _liveReminderService =
+            liveReminderService ?? LiveReminderService.instance;
 
   final FlutterLocalNotificationsPlugin _plugin;
+  final LiveReminderService _liveReminderService;
   bool _initialized = false;
+  List<Prescription> _currentPrescriptions = const [];
+  List<Profile> _currentProfiles = const [];
 
   static const _channelId = 'dose_reminders';
   static const _channelName = 'Dose Reminders';
   static const _channelDescription = 'Reminders to take a scheduled medication dose.';
+  static const snoozeActionId = 'snooze_dose_reminder';
+
+  static const _finalCallChannelId = 'bedtime_final_call';
+  static const _finalCallChannelName = 'Pre-Bedtime Final Call';
+  static const _finalCallChannelDescription =
+      'High-priority reminder for pending doses before bedtime.';
 
   Future<void> init() async {
     if (_initialized) return;
@@ -34,12 +47,55 @@ class NotificationService {
     tz.setLocalLocation(tz.getLocation(localTimezone.identifier));
 
     await _plugin.initialize(
-      const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: DarwinInitializationSettings(),
+      InitializationSettings(
+        android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(
+          notificationCategories: <DarwinNotificationCategory>[
+            DarwinNotificationCategory(
+              _channelId,
+              actions: <DarwinNotificationAction>[
+                DarwinNotificationAction.plain(
+                  snoozeActionId,
+                  'Snooze',
+                  options: <DarwinNotificationActionOption>{
+                    DarwinNotificationActionOption.foreground,
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
+      onDidReceiveNotificationResponse: _onNotificationResponse,
     );
     _initialized = true;
+  }
+
+  Future<void> _onNotificationResponse(NotificationResponse response) async {
+    final payload = response.payload;
+    if (payload == null || payload.trim().isEmpty) return;
+    if (response.actionId == snoozeActionId ||
+        response.notificationResponseType ==
+            NotificationResponseType.selectedNotificationAction) {
+      await handleReminderSnooze(payload);
+    }
+  }
+
+  /// When a reminder triggers for [timeSlot], calculates `remainingDosesCount`
+  /// across all medications sharing that exact scheduled time slot and transitions
+  /// the batch into a native snooze countdown via [LiveReminderService].
+  Future<DoseBatch> handleReminderSnooze(
+    String timeSlot, {
+    List<Prescription>? prescriptions,
+    List<Profile>? profiles,
+    int? snoozeDurationMinutes,
+  }) {
+    return _liveReminderService.startSnoozeForTimeSlot(
+      timeSlot: timeSlot,
+      prescriptions: prescriptions ?? _currentPrescriptions,
+      profiles: profiles ?? _currentProfiles,
+      snoozeDurationMinutes: snoozeDurationMinutes,
+    );
   }
 
   /// Requests every permission this app's notifications need on Android:
@@ -96,6 +152,8 @@ class NotificationService {
   /// Android's own scheduled alarms gets them back regardless of whether
   /// the plugin's own boot receiver fired.
   Future<void> syncAll(List<Prescription> prescriptions, List<Profile> profiles) async {
+    _currentPrescriptions = List.unmodifiable(prescriptions);
+    _currentProfiles = List.unmodifiable(profiles);
     await init();
     await _plugin.cancelAll();
 
@@ -122,8 +180,17 @@ class NotificationService {
               _channelId,
               _channelName,
               channelDescription: _channelDescription,
+              actions: <AndroidNotificationAction>[
+                AndroidNotificationAction(
+                  snoozeActionId,
+                  'Snooze',
+                  showsUserInterface: true,
+                ),
+              ],
             ),
-            iOS: DarwinNotificationDetails(),
+            iOS: DarwinNotificationDetails(
+              categoryIdentifier: _channelId,
+            ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
           uiLocalNotificationDateInterpretation:
@@ -131,8 +198,57 @@ class NotificationService {
           // Daily repeat at this time-of-day -- the plugin/OS re-fires it
           // every day on its own; syncAll doesn't need to run on a timer.
           matchDateTimeComponents: DateTimeComponents.time,
+          payload: time,
         );
       }
+    }
+
+    // Schedule Pre-Bedtime Final Call for each profile with a configured bedtime
+    for (final profile in profiles) {
+      final bedtime = profile.bedtime;
+      if (bedtime == null) continue;
+
+      final pendingCount = calculatePendingDosesBeforeBedtime(
+        profile: profile,
+        prescriptions: prescriptions,
+      );
+      if (pendingCount <= 0) continue;
+
+      final triggerTod = calculatePreBedtimeNotificationTime(bedtime: bedtime);
+      if (triggerTod == null) continue;
+
+      final triggerDate = _nextInstanceOf(formatTimeOfDayLabel(triggerTod));
+      if (triggerDate == null) continue;
+
+      final message = formatPreBedtimeFinalCallMessage(
+        pendingDosesCount: pendingCount,
+        bedtime: bedtime,
+      );
+
+      await _plugin.zonedSchedule(
+        notificationIdForPreBedtime(profile.id),
+        'Bedtime Reminder',
+        message,
+        triggerDate,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _finalCallChannelId,
+            _finalCallChannelName,
+            channelDescription: _finalCallChannelDescription,
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(
+            categoryIdentifier: _channelId,
+            interruptionLevel: InterruptionLevel.timeSensitive,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: formatTimeOfDayLabel(triggerTod),
+      );
     }
   }
 

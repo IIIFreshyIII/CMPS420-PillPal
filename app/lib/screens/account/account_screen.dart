@@ -13,9 +13,13 @@ import '../../data/services/data_retention_service.dart';
 import '../../data/services/notification_service.dart';
 import '../../core/theme/liquid_glass_controller.dart';
 import '../../core/utils/ios_design_era.dart';
+import '../../services/snooze_settings_service.dart';
+import '../../services/walkthrough_service.dart';
+import '../../ui/widgets/walkthrough_overlay.dart';
 import 'add_profile_sheet.dart';
 import 'app_lock_setting.dart';
 import 'appearance_setting.dart';
+import 'default_snooze_setting.dart';
 import 'dose_log_retention_sheet.dart';
 import 'dose_reminders_sheet.dart';
 import 'edit_profile_sheet.dart';
@@ -34,7 +38,9 @@ class AccountScreen extends StatelessWidget {
     this.appLock,
     this.doseEvents = const [],
     this.retentionService,
+    this.snoozeSettingsService,
     this.database,
+    this.walkthroughService,
   });
 
   final List<Profile> profiles;
@@ -44,7 +50,9 @@ class AccountScreen extends StatelessWidget {
   final ValueChanged<String> onDeleteProfile;
   final NotificationService notificationService;
   final DataRetentionService? retentionService;
+  final SnoozeSettingsService? snoozeSettingsService;
   final AppDatabase? database;
+  final WalkthroughService? walkthroughService;
 
   /// Null in widget tests that build this screen without the app root; the
   /// Appearance tile is simply omitted then.
@@ -93,6 +101,23 @@ class AccountScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
+          if (walkthroughService != null)
+            ListenableBuilder(
+              listenable: walkthroughService!,
+              builder: (context, _) {
+                if (walkthroughService!.hasSeenCaregiverHint) {
+                  return const SizedBox.shrink();
+                }
+                return ContextualHintCard(
+                  key: const Key('account_caregiver_contextual_hint'),
+                  title: 'Caregiver & Family Profiles',
+                  message:
+                      'Add family members or care recipients below to manage their routines, color-code badges, and set custom bedtimes.',
+                  icon: CupertinoIcons.person_2_fill,
+                  onDismiss: () => walkthroughService!.markCaregiverHintSeen(),
+                );
+              },
+            ),
           for (final profile in profiles) ...[
             _ProfileTile(
               profile: profile,
@@ -159,6 +184,8 @@ class AccountScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
+          DefaultSnoozeSetting(service: snoozeSettingsService),
+          const SizedBox(height: 10),
           if (themeController != null) ...[
             AppearanceSetting(controller: themeController!),
             const SizedBox(height: 10),

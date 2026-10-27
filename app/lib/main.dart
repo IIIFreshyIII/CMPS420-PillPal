@@ -73,6 +73,11 @@ Future<void> main() async {
       await storage.delete(key: 'tour_schedule_seen');
       await storage.delete(key: 'tour_meds_seen');
       await storage.delete(key: 'tour_account_seen');
+      await storage.delete(key: 'has_seen_main_feed_tour');
+      await storage.delete(key: 'has_seen_scanner_tip');
+      await storage.delete(key: 'has_seen_profile_switch_hint');
+      await storage.delete(key: 'has_seen_history_hint');
+      await storage.delete(key: 'has_seen_caregiver_hint');
       await storage.delete(key: 'seeded_testing_mode');
     }
   } catch (_) {}

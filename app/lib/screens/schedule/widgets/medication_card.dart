@@ -22,6 +22,7 @@ class MedicationCard extends StatefulWidget {
   final VoidCallback onViewDetails;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
+  final GlobalKey? targetKey;
 
   const MedicationCard({
     super.key,
@@ -33,6 +34,7 @@ class MedicationCard extends StatefulWidget {
     required this.onViewDetails,
     this.onEdit,
     this.onDelete,
+    this.targetKey,
   });
 
   @override
@@ -93,7 +95,7 @@ class _MedicationCardState extends State<MedicationCard>
     final instant = MediaQuery.of(context).disableAnimations;
     final radius = BorderRadius.circular(18);
 
-    return AnimatedOpacity(
+    final content = AnimatedOpacity(
       opacity: widget.isTaken ? 0.45 : 1.0,
       duration: instant ? Duration.zero : const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
@@ -236,6 +238,14 @@ class _MedicationCardState extends State<MedicationCard>
         ),
       ),
     );
+
+    if (widget.targetKey != null) {
+      return KeyedSubtree(
+        key: widget.targetKey,
+        child: content,
+      );
+    }
+    return content;
   }
 
   @override
