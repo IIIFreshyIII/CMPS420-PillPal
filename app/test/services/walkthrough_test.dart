@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pillpal/core/state/app_state_manager.dart';
 import 'package:pillpal/core/theme/app_theme.dart';
+import 'package:pillpal/core/theme/theme_controller.dart';
 import 'package:pillpal/data/local/app_database.dart';
 import 'package:pillpal/data/models/prescription.dart';
 import 'package:pillpal/data/models/profile.dart';
@@ -313,31 +314,49 @@ void main() {
 
       expect(walkthroughService.hasSeenHistoryHint, isTrue);
 
-      // Now verify AccountScreen caregiver hint card
+      // Now verify AccountScreen spotlight walkthrough
+      final themeController = ThemeController();
       await tester.pumpWidget(
         MaterialApp(
           theme: AppTheme.lightTheme,
-          home: AccountScreen(
-            profiles: const [me],
-            prescriptions: const [],
-            onUpdateProfile: (_) {},
-            onDeleteProfile: (_) {},
-            notificationService: NotificationService(),
-            walkthroughService: walkthroughService,
+          home: Scaffold(
+            body: AccountScreen(
+              profiles: const [me],
+              prescriptions: const [],
+              onUpdateProfile: (_) {},
+              onDeleteProfile: (_) {},
+              notificationService: NotificationService(),
+              walkthroughService: walkthroughService,
+              themeController: themeController,
+            ),
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
-      expect(
-          find.byKey(const Key('account_caregiver_contextual_hint')), findsOneWidget);
+      // Account Walkthrough Step 1: Caregiver & Family Profiles
       expect(find.text('Caregiver & Family Profiles'), findsOneWidget);
 
-      await tester.tap(find.byKey(const Key('contextual_hint_dismiss_button')));
-      await tester.pumpAndSettle();
+      // Step 2: Custom Snooze Intervals
+      await tester.tap(find.byKey(const Key('walkthrough_next_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
-      expect(
-          find.byKey(const Key('account_caregiver_contextual_hint')), findsNothing);
+      expect(find.text('Custom Snooze Intervals'), findsOneWidget);
+
+      // Step 3: Appearance & Dark Mode
+      await tester.tap(find.byKey(const Key('walkthrough_next_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Appearance & Dark Mode'), findsOneWidget);
+
+      // Complete tour
+      await tester.tap(find.byKey(const Key('walkthrough_next_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 450));
+
       expect(walkthroughService.hasSeenCaregiverHint, isTrue);
     });
 

@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 /// The person's System / Light / Dark choice, saved on the device. Loaded
 /// before `runApp` so a Dark user never sees a white flash on launch.
 class ThemeController extends ValueNotifier<ThemeMode> {
+  ThemeController([super.value = ThemeMode.system]);
   ThemeController._(super.value);
 
   static const _key = 'appearance';

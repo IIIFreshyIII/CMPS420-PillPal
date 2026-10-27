@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
@@ -25,7 +26,7 @@ import 'dose_reminders_sheet.dart';
 import 'edit_profile_sheet.dart';
 import 'liquid_glass_setting.dart';
 
-class AccountScreen extends StatelessWidget {
+class AccountScreen extends StatefulWidget {
   const AccountScreen({
     super.key,
     required this.profiles,
@@ -60,6 +61,123 @@ class AccountScreen extends StatelessWidget {
   final LiquidGlassController? liquidGlassController;
   final AppLockService? appLock;
 
+  @override
+  State<AccountScreen> createState() => _AccountScreenState();
+}
+
+class _AccountScreenState extends State<AccountScreen> {
+  final GlobalKey _profilesKey =
+      GlobalKey(debugLabel: 'walkthrough_account_profiles');
+  final GlobalKey _snoozeKey =
+      GlobalKey(debugLabel: 'walkthrough_account_snooze');
+  final GlobalKey _appearanceKey =
+      GlobalKey(debugLabel: 'walkthrough_account_appearance');
+  final GlobalKey _appLockKey =
+      GlobalKey(debugLabel: 'walkthrough_account_app_lock');
+
+  bool _isShowingWalkthrough = false;
+  OverlayEntry? _walkthroughOverlayEntry;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.walkthroughService?.addListener(_onWalkthroughServiceChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeLaunchAccountWalkthrough();
+    });
+  }
+
+  @override
+  void didUpdateWidget(AccountScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.walkthroughService != oldWidget.walkthroughService) {
+      oldWidget.walkthroughService
+          ?.removeListener(_onWalkthroughServiceChanged);
+      widget.walkthroughService?.addListener(_onWalkthroughServiceChanged);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeLaunchAccountWalkthrough();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.walkthroughService?.removeListener(_onWalkthroughServiceChanged);
+    if (_walkthroughOverlayEntry?.mounted ?? false) {
+      _walkthroughOverlayEntry?.remove();
+    }
+    _walkthroughOverlayEntry = null;
+    super.dispose();
+  }
+
+  void _onWalkthroughServiceChanged() {
+    if (!mounted) return;
+    _maybeLaunchAccountWalkthrough();
+  }
+
+  void _maybeLaunchAccountWalkthrough() {
+    if (!mounted || _isShowingWalkthrough) return;
+    final service = widget.walkthroughService;
+    if (service == null) return;
+    if (service.hasSeenCaregiverHint) return;
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    _isShowingWalkthrough = true;
+
+    final steps = <WalkthroughStep>[
+      WalkthroughStep(
+        targetKey: _profilesKey,
+        title: 'Caregiver & Family Profiles',
+        description:
+            'Add family members or care recipients to manage their schedules, color-code badges, and set custom bedtimes.',
+        icon: CupertinoIcons.person_2_fill,
+        borderRadius: 20.0,
+      ),
+      WalkthroughStep(
+        targetKey: _snoozeKey,
+        title: 'Custom Snooze Intervals',
+        description:
+            'Choose your preferred reminder snooze interval (5m, 9m, 15m, 30m) or enter a custom duration that suits your routine.',
+        icon: CupertinoIcons.timer,
+        borderRadius: 16.0,
+      ),
+      if (widget.themeController != null)
+        WalkthroughStep(
+          targetKey: _appearanceKey,
+          title: 'Appearance & Dark Mode',
+          description:
+              'Seamlessly switch between Light, Dark, or System mode to match your lighting preferences day or night.',
+          icon: CupertinoIcons.circle_lefthalf_fill,
+          borderRadius: 16.0,
+        ),
+      if (widget.appLock != null)
+        WalkthroughStep(
+          targetKey: _appLockKey,
+          title: 'Biometric Privacy & App Lock',
+          description:
+              'Secure your sensitive health data and prescription logs with Face ID, Touch ID, or device passcode authentication.',
+          icon: CupertinoIcons.lock_shield_fill,
+          borderRadius: 16.0,
+        ),
+    ];
+
+    _walkthroughOverlayEntry = WalkthroughOverlay.show(
+      context: context,
+      steps: steps,
+      onComplete: () {
+        _isShowingWalkthrough = false;
+        _walkthroughOverlayEntry = null;
+        unawaited(service.markCaregiverHintSeen());
+      },
+      onSkip: () {
+        _isShowingWalkthrough = false;
+        _walkthroughOverlayEntry = null;
+        unawaited(service.markCaregiverHintSeen());
+      },
+    );
+  }
 
   Future<void> _exportData(BuildContext context) async {
     final file = await databaseFile();
@@ -101,40 +219,30 @@ class AccountScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          if (walkthroughService != null)
-            ListenableBuilder(
-              listenable: walkthroughService!,
-              builder: (context, _) {
-                if (walkthroughService!.hasSeenCaregiverHint) {
-                  return const SizedBox.shrink();
-                }
-                return ContextualHintCard(
-                  key: const Key('account_caregiver_contextual_hint'),
-                  title: 'Caregiver & Family Profiles',
-                  message:
-                      'Add family members or care recipients below to manage their routines, color-code badges, and set custom bedtimes.',
-                  icon: CupertinoIcons.person_2_fill,
-                  onDismiss: () => walkthroughService!.markCaregiverHintSeen(),
-                );
-              },
-            ),
-          for (final profile in profiles) ...[
-            _ProfileTile(
-              profile: profile,
-              onTap: () => EditProfileSheet.show(
-                context,
-                profile: profile,
-                onUpdate: onUpdateProfile,
-                onDelete: () => onDeleteProfile(profile.id),
-                hasPrescriptions:
-                    prescriptions.any((p) => p.profileId == profile.id),
+          for (int i = 0; i < widget.profiles.length; i++) ...[
+            KeyedSubtree(
+              key: i == 0 ? _profilesKey : null,
+              child: _ProfileTile(
+                profile: widget.profiles[i],
+                onTap: () => EditProfileSheet.show(
+                  context,
+                  profile: widget.profiles[i],
+                  onUpdate: widget.onUpdateProfile,
+                  onDelete: () => widget.onDeleteProfile(widget.profiles[i].id),
+                  hasPrescriptions: widget.prescriptions
+                      .any((p) => p.profileId == widget.profiles[i].id),
+                ),
               ),
             ),
             const SizedBox(height: 10),
           ],
-          _AddProfileTile(
+          KeyedSubtree(
+            key: widget.profiles.isEmpty ? _profilesKey : null,
+            child: _AddProfileTile(
               onTap: () =>
-                  AddProfileSheet.show(context, onAdd: onUpdateProfile)),
+                  AddProfileSheet.show(context, onAdd: widget.onUpdateProfile),
+            ),
+          ),
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(16),
@@ -184,15 +292,21 @@ class AccountScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          DefaultSnoozeSetting(service: snoozeSettingsService),
+          KeyedSubtree(
+            key: _snoozeKey,
+            child: DefaultSnoozeSetting(service: widget.snoozeSettingsService),
+          ),
           const SizedBox(height: 10),
-          if (themeController != null) ...[
-            AppearanceSetting(controller: themeController!),
+          if (widget.themeController != null) ...[
+            KeyedSubtree(
+              key: _appearanceKey,
+              child: AppearanceSetting(controller: widget.themeController!),
+            ),
             const SizedBox(height: 10),
           ],
-          if (liquidGlassController != null &&
+          if (widget.liquidGlassController != null &&
               isLiquidGlassSupported(context)) ...[
-            LiquidGlassSetting(controller: liquidGlassController!),
+            LiquidGlassSetting(controller: widget.liquidGlassController!),
             const SizedBox(height: 10),
           ],
           _SettingTile(
@@ -206,23 +320,26 @@ class AccountScreen extends StatelessWidget {
             title: 'Dose Log Retention',
             onTap: () => DoseLogRetentionSheet.show(
               context,
-              retentionService: retentionService ?? DataRetentionService(),
-              doseEvents: doseEvents,
-              prescriptions: prescriptions,
-              profiles: profiles,
-              database: database,
+              retentionService: widget.retentionService ?? DataRetentionService(),
+              doseEvents: widget.doseEvents,
+              prescriptions: widget.prescriptions,
+              profiles: widget.profiles,
+              database: widget.database,
             ),
           ),
           const SizedBox(height: 10),
-          if (appLock != null) ...[
-            AppLockSetting(service: appLock!),
+          if (widget.appLock != null) ...[
+            KeyedSubtree(
+              key: _appLockKey,
+              child: AppLockSetting(service: widget.appLock!),
+            ),
             const SizedBox(height: 10),
           ],
           _SettingTile(
             icon: CupertinoIcons.bell,
             title: 'Dose Reminders',
             onTap: () => DoseRemindersSheet.show(context,
-                notificationService: notificationService),
+                notificationService: widget.notificationService),
           ),
         ],
       ),
