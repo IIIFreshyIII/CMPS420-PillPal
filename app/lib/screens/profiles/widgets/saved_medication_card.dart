@@ -10,6 +10,7 @@ class SavedMedicationCard extends StatelessWidget {
   final Profile? profile;
   final bool showProfileBadge;
   final VoidCallback onTap;
+  final GlobalKey? targetKey;
 
   const SavedMedicationCard({
     super.key,
@@ -17,6 +18,7 @@ class SavedMedicationCard extends StatelessWidget {
     required this.profile,
     this.showProfileBadge = true,
     required this.onTap,
+    this.targetKey,
   });
 
   @override
@@ -27,12 +29,14 @@ class SavedMedicationCard extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Pressable(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        rippleColor: c.tealRipple,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
+      child: KeyedSubtree(
+        key: targetKey,
+        child: Pressable(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          rippleColor: c.tealRipple,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
           color: c.surface,
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: c.borderLight),
@@ -181,6 +185,7 @@ class SavedMedicationCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

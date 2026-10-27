@@ -10,12 +10,14 @@ class AdherenceGraphCard extends StatefulWidget {
   final List<DoseEvent> doseEvents;
   final String? selectedProfileId;
   final DateTime? now;
+  final GlobalKey? targetKey;
 
   const AdherenceGraphCard({
     super.key,
     required this.doseEvents,
     this.selectedProfileId,
     this.now,
+    this.targetKey,
   });
 
   @override
@@ -42,22 +44,25 @@ class _AdherenceGraphCardState extends State<AdherenceGraphCard> {
         ? summary.buckets[_selectedBucketIndex!]
         : null;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: c.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: c.borderLight),
-        boxShadow: [
-          BoxShadow(
-            color: c.cardShadow,
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: KeyedSubtree(
+        key: widget.targetKey,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: c.borderLight),
+            boxShadow: [
+              BoxShadow(
+                color: c.cardShadow,
+                blurRadius: 14,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Column(
+          child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header: Section label + Range segmented buttons
@@ -208,6 +213,8 @@ class _AdherenceGraphCardState extends State<AdherenceGraphCard> {
             secondChild: const SizedBox.shrink(),
           ),
         ],
+      ),
+        ),
       ),
     );
   }

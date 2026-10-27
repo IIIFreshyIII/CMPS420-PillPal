@@ -252,13 +252,22 @@ void main() {
 
   group('Contextual Micro-Hints & HomeScaffold Integration Tests', () {
     testWidgets(
-        'ProfilesScreen and AccountScreen show inline dismissible ContextualHintCard on first visit',
+        'ProfilesScreen shows 3-step spotlight walkthrough and AccountScreen shows contextual hint on first visit',
         (tester) async {
       final storage = FakeSecureStorage();
       final walkthroughService = WalkthroughService(storage: storage);
       await walkthroughService.load();
 
       const me = Profile(id: '1', name: 'Me', color: Colors.teal, isPrimary: true);
+      const testRx = Prescription(
+        id: 'rx_test',
+        name: 'Metformin HCl',
+        dosage: '500 mg',
+        reminderTimes: ['8:00 AM'],
+        daysSupply: 30,
+        remaining: 30,
+        profileId: '1',
+      );
 
       await tester.pumpWidget(
         MaterialApp(
@@ -266,7 +275,7 @@ void main() {
           home: Scaffold(
             body: ProfilesScreen(
               profiles: const [me],
-              prescriptions: const [],
+              prescriptions: const [testRx],
               doseEvents: const [],
               onEditMedication: (_) {},
               walkthroughService: walkthroughService,
@@ -274,16 +283,34 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
 
-      expect(find.byKey(const Key('meds_history_contextual_hint')), findsOneWidget);
-      expect(find.text('Adherence & Dose Logs'), findsOneWidget);
+      // Meds walkthrough Step 1: Adherence Graph
+      expect(find.text('Adherence & Consistency'), findsOneWidget);
+      expect(find.text('1 of 3'), findsOneWidget);
 
-      // Dismiss the hint card
-      await tester.tap(find.byKey(const Key('contextual_hint_dismiss_button')));
-      await tester.pumpAndSettle();
+      // Step 2: Saved Medications List
+      await tester.tap(find.byKey(const Key('walkthrough_next_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
-      expect(find.byKey(const Key('meds_history_contextual_hint')), findsNothing);
+      expect(find.text('Saved Medications'), findsOneWidget);
+      expect(find.text('2 of 3'), findsOneWidget);
+
+      // Step 3: Tap to Edit Schedules
+      await tester.tap(find.byKey(const Key('walkthrough_next_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Tap to Edit Schedules'), findsOneWidget);
+      expect(find.text('3 of 3'), findsOneWidget);
+
+      // Complete tour
+      await tester.tap(find.byKey(const Key('walkthrough_next_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 450));
+
       expect(walkthroughService.hasSeenHistoryHint, isTrue);
 
       // Now verify AccountScreen caregiver hint card

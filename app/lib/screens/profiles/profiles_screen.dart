@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
@@ -45,6 +46,107 @@ class ProfilesScreen extends StatefulWidget {
 class _ProfilesScreenState extends State<ProfilesScreen> {
   String _selectedProfileId = 'all';
   bool _dismissedPurgeBanner = false;
+
+  final GlobalKey _adherenceGraphKey =
+      GlobalKey(debugLabel: 'walkthrough_meds_graph');
+  final GlobalKey _medsListKey = GlobalKey(debugLabel: 'walkthrough_meds_list');
+  final GlobalKey _firstMedCardKey =
+      GlobalKey(debugLabel: 'walkthrough_meds_first_card');
+
+  bool _isShowingWalkthrough = false;
+  OverlayEntry? _walkthroughOverlayEntry;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.walkthroughService?.addListener(_onWalkthroughServiceChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeLaunchMedsWalkthrough();
+    });
+  }
+
+  @override
+  void didUpdateWidget(ProfilesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.walkthroughService != oldWidget.walkthroughService) {
+      oldWidget.walkthroughService
+          ?.removeListener(_onWalkthroughServiceChanged);
+      widget.walkthroughService?.addListener(_onWalkthroughServiceChanged);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeLaunchMedsWalkthrough();
+    });
+  }
+
+  @override
+  void dispose() {
+    widget.walkthroughService?.removeListener(_onWalkthroughServiceChanged);
+    if (_walkthroughOverlayEntry?.mounted ?? false) {
+      _walkthroughOverlayEntry?.remove();
+    }
+    _walkthroughOverlayEntry = null;
+    super.dispose();
+  }
+
+  void _onWalkthroughServiceChanged() {
+    if (!mounted) return;
+    _maybeLaunchMedsWalkthrough();
+  }
+
+  void _maybeLaunchMedsWalkthrough() {
+    if (!mounted || _isShowingWalkthrough) return;
+    final service = widget.walkthroughService;
+    if (service == null) return;
+    if (service.hasSeenHistoryHint) return;
+
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+
+    _isShowingWalkthrough = true;
+
+    final steps = <WalkthroughStep>[
+      WalkthroughStep(
+        targetKey: _adherenceGraphKey,
+        title: 'Adherence & Consistency',
+        description:
+            'Track your 7-day on-time, late, and skipped logging consistency across all active medications.',
+        icon: CupertinoIcons.chart_bar_alt_fill,
+        borderRadius: 24.0,
+      ),
+      WalkthroughStep(
+        targetKey: _medsListKey,
+        title: 'Saved Medications',
+        description:
+            'Review your active prescriptions, dosage amounts, and schedules grouped by care recipient.',
+        icon: CupertinoIcons.capsule_fill,
+        borderRadius: 20.0,
+      ),
+      WalkthroughStep(
+        targetKey:
+            widget.prescriptions.isNotEmpty ? _firstMedCardKey : _medsListKey,
+        title: 'Tap to Edit Schedules',
+        description:
+            'Tap any medication card anytime to adjust reminder times, supply counts, or refill thresholds.',
+        icon: CupertinoIcons.pencil_ellipsis_rectangle,
+        borderRadius: 18.0,
+      ),
+    ];
+
+    _walkthroughOverlayEntry = WalkthroughOverlay.show(
+      context: context,
+      steps: steps,
+      onComplete: () {
+        _isShowingWalkthrough = false;
+        _walkthroughOverlayEntry = null;
+        unawaited(service.markHistoryHintSeen());
+      },
+      onSkip: () {
+        _isShowingWalkthrough = false;
+        _walkthroughOverlayEntry = null;
+        unawaited(service.markHistoryHintSeen());
+      },
+    );
+  }
 
   Profile _profileFor(String id) {
     return widget.profiles.firstWhere(
@@ -204,28 +306,9 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             const SizedBox(height: 14),
           ],
 
-          // Contextual inline micro-hint for first-time History/Logs & Meds visitors
-          if (widget.walkthroughService != null)
-            ListenableBuilder(
-              listenable: widget.walkthroughService!,
-              builder: (context, _) {
-                if (widget.walkthroughService!.hasSeenHistoryHint) {
-                  return const SizedBox.shrink();
-                }
-                return ContextualHintCard(
-                  key: const Key('meds_history_contextual_hint'),
-                  title: 'Adherence & Dose Logs',
-                  message:
-                      'Track 7-day consistency above, open your day-by-day Dose History Log, or tap any saved medication below to edit schedules.',
-                  icon: CupertinoIcons.chart_bar_alt_fill,
-                  onDismiss: () =>
-                      widget.walkthroughService!.markHistoryHintSeen(),
-                );
-              },
-            ),
-
           // 1. Logging Consistency & Adherence Graph Card
           AdherenceGraphCard(
+            targetKey: _adherenceGraphKey,
             doseEvents: widget.doseEvents,
             selectedProfileId: _selectedProfileId,
           ),
@@ -318,42 +401,50 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             ),
           ),
 
-          // 3. Saved Medications Section Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'SAVED MEDICATIONS',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.6,
-                  color: c.inkMuted,
+          // 3. Saved Medications Section Header + List
+          KeyedSubtree(
+            key: _medsListKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'SAVED MEDICATIONS',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.6,
+                        color: c.inkMuted,
+                      ),
+                    ),
+                    Text(
+                      '${visiblePrescriptions.length} Meds',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: c.inkMuted,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              Text(
-                '${visiblePrescriptions.length} Meds',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: c.inkMuted,
-                ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                if (visiblePrescriptions.isEmpty)
+                  _buildEmptyMeds(c)
+                else
+                  for (int i = 0; i < visiblePrescriptions.length; i++)
+                    SavedMedicationCard(
+                      targetKey: i == 0 ? _firstMedCardKey : null,
+                      prescription: visiblePrescriptions[i],
+                      profile: _profileFor(visiblePrescriptions[i].profileId),
+                      showProfileBadge: widget.profiles.length > 1,
+                      onTap: () =>
+                          widget.onEditMedication(visiblePrescriptions[i]),
+                    ),
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-
-          // Saved Medications List
-          if (visiblePrescriptions.isEmpty)
-            _buildEmptyMeds(c)
-          else
-            for (final prescription in visiblePrescriptions)
-              SavedMedicationCard(
-                prescription: prescription,
-                profile: _profileFor(prescription.profileId),
-                showProfileBadge: widget.profiles.length > 1,
-                onTap: () => widget.onEditMedication(prescription),
-              ),
         ],
       ),
     );
