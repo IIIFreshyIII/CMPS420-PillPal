@@ -416,5 +416,100 @@ void main() {
       await tester.pump(Duration.zero);
       await db.close();
     });
+
+    testWidgets(
+        'Replaying tab tutorials arms only the active tab walkthrough and never stacks across tabs',
+        (tester) async {
+      final storage = FakeSecureStorage();
+      final appState = AppStateManager(storage: storage);
+      await appState.load();
+      await appState.setUserName('Cade');
+      await appState.setSeededTestingMode(false);
+      await appState.setHasCompletedOnboarding(true);
+
+      final db = AppDatabase(NativeDatabase.memory());
+      await db.upsertProfile(
+        const Profile(id: '1', name: 'Cade', color: Color(0xFF168B87), isPrimary: true),
+      );
+      await db.upsertPrescription(
+        const Prescription(
+          id: 'rx_initial',
+          name: 'Metformin HCl',
+          dosage: '500 mg',
+          reminderTimes: ['8:00 AM'],
+          daysSupply: 30,
+          remaining: 30,
+          profileId: '1',
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: HomeScaffold(
+            database: db,
+            appStateManager: appState,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Reset all flags via debug helper replayTabTutorials
+      await appState.replayTabTutorials();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // 1. Only Schedule walkthrough is active
+      expect(find.text('Your Daily Timeline'), findsOneWidget);
+      expect(find.text('Adherence & Consistency'), findsNothing);
+      expect(find.text('Caregiver & Family Profiles'), findsNothing);
+
+      // Skip Schedule tour
+      await tester.tap(find.byKey(const Key('walkthrough_skip_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Your Daily Timeline'), findsNothing);
+
+      // 2. Switch to Meds tab
+      await tester.tap(find.text('Meds'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Only Meds walkthrough is active
+      expect(find.text('Adherence & Consistency'), findsOneWidget);
+      expect(find.text('Your Daily Timeline'), findsNothing);
+      expect(find.text('Caregiver & Family Profiles'), findsNothing);
+
+      // Skip Meds tour
+      await tester.tap(find.byKey(const Key('walkthrough_skip_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Adherence & Consistency'), findsNothing);
+
+      // 3. Switch to Profile tab
+      await tester.tap(find.text('Profile'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Only Profile walkthrough is active
+      expect(find.text('Caregiver & Family Profiles'), findsOneWidget);
+      expect(find.text('Your Daily Timeline'), findsNothing);
+      expect(find.text('Adherence & Consistency'), findsNothing);
+
+      // Skip Profile tour
+      await tester.tap(find.byKey(const Key('walkthrough_skip_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Caregiver & Family Profiles'), findsNothing);
+
+      // Unmount cleanly
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(Duration.zero);
+      await db.close();
+    });
   });
 }

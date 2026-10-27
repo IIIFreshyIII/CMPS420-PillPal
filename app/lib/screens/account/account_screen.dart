@@ -42,6 +42,7 @@ class AccountScreen extends StatefulWidget {
     this.snoozeSettingsService,
     this.database,
     this.walkthroughService,
+    this.isActive = true,
   });
 
   final List<Profile> profiles;
@@ -54,6 +55,7 @@ class AccountScreen extends StatefulWidget {
   final SnoozeSettingsService? snoozeSettingsService;
   final AppDatabase? database;
   final WalkthroughService? walkthroughService;
+  final bool isActive;
 
   /// Null in widget tests that build this screen without the app root; the
   /// Appearance tile is simply omitted then.
@@ -95,28 +97,37 @@ class _AccountScreenState extends State<AccountScreen> {
           ?.removeListener(_onWalkthroughServiceChanged);
       widget.walkthroughService?.addListener(_onWalkthroughServiceChanged);
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeLaunchAccountWalkthrough();
-    });
+    if (!widget.isActive && _isShowingWalkthrough) {
+      _closeWalkthrough();
+    } else if (widget.isActive && !oldWidget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeLaunchAccountWalkthrough();
+      });
+    }
   }
 
   @override
   void dispose() {
     widget.walkthroughService?.removeListener(_onWalkthroughServiceChanged);
+    _closeWalkthrough();
+    super.dispose();
+  }
+
+  void _closeWalkthrough() {
     if (_walkthroughOverlayEntry?.mounted ?? false) {
       _walkthroughOverlayEntry?.remove();
     }
     _walkthroughOverlayEntry = null;
-    super.dispose();
+    _isShowingWalkthrough = false;
   }
 
   void _onWalkthroughServiceChanged() {
-    if (!mounted) return;
+    if (!mounted || !widget.isActive) return;
     _maybeLaunchAccountWalkthrough();
   }
 
   void _maybeLaunchAccountWalkthrough() {
-    if (!mounted || _isShowingWalkthrough) return;
+    if (!mounted || !widget.isActive || _isShowingWalkthrough) return;
     final service = widget.walkthroughService;
     if (service == null) return;
     if (service.hasSeenCaregiverHint) return;

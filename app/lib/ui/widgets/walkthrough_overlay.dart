@@ -459,30 +459,42 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
     final left = (screenSize.width - availableWidth) / 2;
 
     // Decide whether the tooltip sits below or above the highlighted target
+    const estimatedCardHeight = 220.0;
     bool placeBelow = true;
-    double topOffset = safeTop + 60;
-    double? bottomOffset;
+    double topOffset;
 
     if (targetRect != null) {
       final spaceBelow = screenSize.height - safeBottom - targetRect.bottom;
       final spaceAbove = targetRect.top - safeTop;
 
-      if (spaceBelow >= 200 || spaceBelow >= spaceAbove) {
+      if (spaceBelow >= 180 || spaceBelow >= spaceAbove) {
         placeBelow = true;
         topOffset = math.max(
           safeTop + 12,
-          math.min(targetRect.bottom + 16, screenSize.height - safeBottom - 200),
+          math.min(
+            targetRect.bottom + 16,
+            screenSize.height - safeBottom - estimatedCardHeight,
+          ),
         );
       } else {
         placeBelow = false;
-        bottomOffset = math.max(
-          safeBottom,
-          screenSize.height - targetRect.top + 16,
+        topOffset = math.max(
+          safeTop + 12,
+          math.min(
+            targetRect.top - 16 - estimatedCardHeight,
+            screenSize.height - safeBottom - estimatedCardHeight,
+          ),
         );
       }
     } else {
-      topOffset = (screenSize.height - 200) / 2;
+      topOffset = math.max(
+        safeTop + 12,
+        (screenSize.height - estimatedCardHeight) / 2,
+      );
     }
+
+    final maxCardHeight =
+        math.max(160.0, screenSize.height - safeTop - safeBottom - 16);
 
     final opacityVal =
         disableAnimations ? 1.0 : cardOpacity.clamp(0.0, 1.0);
@@ -496,11 +508,10 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
     return Positioned(
       left: left,
       width: availableWidth,
-      top: bottomOffset == null ? topOffset : null,
-      bottom: bottomOffset,
+      top: topOffset,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxHeight: math.max(160.0, screenSize.height - safeTop - 32),
+          maxHeight: maxCardHeight,
         ),
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),

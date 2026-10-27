@@ -767,6 +767,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     (context) => KeyedSubtree(
       key: const ValueKey('screen_meds'),
       child: ProfilesScreen(
+        isActive: _activeTab == AppTab.meds,
         profiles: _profiles,
         prescriptions: _prescriptions,
         doseEvents: _doseEvents,
@@ -779,6 +780,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     (context) => KeyedSubtree(
       key: const ValueKey('screen_profile'),
       child: AccountScreen(
+        isActive: _activeTab == AppTab.profile,
         profiles: _profiles,
         prescriptions: _prescriptions,
         onUpdateProfile: _handleUpdateProfile,
@@ -824,20 +826,30 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     }
   }
 
-  void _onAndroidNavDestinationSelected(int index) {
-    setState(() {
-      switch (index) {
-        case 0:
-          _activeTab = AppTab.schedule;
-          break;
-        case 1:
-          _activeTab = AppTab.meds;
-          break;
-        case 2:
-          _activeTab = AppTab.profile;
-          break;
+  void _handleTabPress(AppTab tab) {
+    if (_activeTab == tab) return;
+    if (_isShowingWalkthrough && _walkthroughOverlayEntry != null) {
+      if (_walkthroughOverlayEntry?.mounted ?? false) {
+        _walkthroughOverlayEntry?.remove();
       }
-    });
+      _walkthroughOverlayEntry = null;
+      _isShowingWalkthrough = false;
+    }
+    setState(() => _activeTab = tab);
+  }
+
+  void _onAndroidNavDestinationSelected(int index) {
+    switch (index) {
+      case 0:
+        _handleTabPress(AppTab.schedule);
+        break;
+      case 1:
+        _handleTabPress(AppTab.meds);
+        break;
+      case 2:
+        _handleTabPress(AppTab.profile);
+        break;
+    }
   }
 
   @override
@@ -897,7 +909,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         ),
         bottomNavigationBar: ClassicIOSTabBar(
           activeTab: _activeTab,
-          onTabPress: (tab) => setState(() => _activeTab = tab),
+          onTabPress: _handleTabPress,
         ),
       );
     }
@@ -912,7 +924,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           ),
           FloatingTabBar(
             activeTab: _activeTab,
-            onTabPress: (tab) => setState(() => _activeTab = tab),
+            onTabPress: _handleTabPress,
             controller: _liquidGlassController,
           ),
 

@@ -27,6 +27,7 @@ class ProfilesScreen extends StatefulWidget {
   final DataRetentionService? retentionService;
   final AppDatabase? database;
   final WalkthroughService? walkthroughService;
+  final bool isActive;
 
   const ProfilesScreen({
     super.key,
@@ -37,6 +38,7 @@ class ProfilesScreen extends StatefulWidget {
     this.retentionService,
     this.database,
     this.walkthroughService,
+    this.isActive = true,
   });
 
   @override
@@ -73,28 +75,37 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
           ?.removeListener(_onWalkthroughServiceChanged);
       widget.walkthroughService?.addListener(_onWalkthroughServiceChanged);
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _maybeLaunchMedsWalkthrough();
-    });
+    if (!widget.isActive && _isShowingWalkthrough) {
+      _closeWalkthrough();
+    } else if (widget.isActive && !oldWidget.isActive) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _maybeLaunchMedsWalkthrough();
+      });
+    }
   }
 
   @override
   void dispose() {
     widget.walkthroughService?.removeListener(_onWalkthroughServiceChanged);
+    _closeWalkthrough();
+    super.dispose();
+  }
+
+  void _closeWalkthrough() {
     if (_walkthroughOverlayEntry?.mounted ?? false) {
       _walkthroughOverlayEntry?.remove();
     }
     _walkthroughOverlayEntry = null;
-    super.dispose();
+    _isShowingWalkthrough = false;
   }
 
   void _onWalkthroughServiceChanged() {
-    if (!mounted) return;
+    if (!mounted || !widget.isActive) return;
     _maybeLaunchMedsWalkthrough();
   }
 
   void _maybeLaunchMedsWalkthrough() {
-    if (!mounted || _isShowingWalkthrough) return;
+    if (!mounted || !widget.isActive || _isShowingWalkthrough) return;
     final service = widget.walkthroughService;
     if (service == null) return;
     if (service.hasSeenHistoryHint) return;
