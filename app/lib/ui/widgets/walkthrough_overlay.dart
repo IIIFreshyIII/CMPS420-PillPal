@@ -103,6 +103,8 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
   Rect? _currentRect;
   double _currentRadius = 18.0;
 
+  ScrollPosition? _trackedScrollPosition;
+
   @override
   void initState() {
     super.initState();
@@ -126,6 +128,8 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _recalculateTargetRect();
+      _updateScrollTracking();
+      _ensureActiveTargetVisible();
       final disableAnimations =
           MediaQuery.maybeOf(context)?.disableAnimations ?? false;
       if (disableAnimations) {
@@ -144,13 +148,95 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _recalculateTargetRect();
+      _updateScrollTracking();
     });
   }
 
   @override
   void dispose() {
+    _trackedScrollPosition?.removeListener(_onScrollChanged);
+    _trackedScrollPosition = null;
     _transitionController.dispose();
     super.dispose();
+  }
+
+  void _updateScrollTracking() {
+    if (!mounted || _isClosing || widget.steps.isEmpty) return;
+    final step = _activeStep;
+    final key = step.targetKey ??
+        (step.targetKeys != null && step.targetKeys!.isNotEmpty
+            ? step.targetKeys!.first
+            : null);
+    final ctx = key?.currentContext;
+    ScrollPosition? newPosition;
+    if (ctx != null && ctx.mounted) {
+      final scrollable = Scrollable.maybeOf(ctx);
+      newPosition = scrollable?.position;
+    }
+    if (_trackedScrollPosition != newPosition) {
+      _trackedScrollPosition?.removeListener(_onScrollChanged);
+      _trackedScrollPosition = newPosition;
+      _trackedScrollPosition?.addListener(_onScrollChanged);
+    }
+  }
+
+  void _onScrollChanged() {
+    if (!mounted || _isClosing) return;
+    setState(() {
+      _recalculateTargetRect();
+    });
+  }
+
+  void _ensureActiveTargetVisible() {
+    if (!mounted || _isClosing || widget.steps.isEmpty) return;
+    final step = _activeStep;
+    final key = step.targetKey ??
+        (step.targetKeys != null && step.targetKeys!.isNotEmpty
+            ? step.targetKeys!.first
+            : null);
+    if (key == null) return;
+    final ctx = key.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+
+    final scrollable = Scrollable.maybeOf(ctx);
+    if (scrollable == null) return;
+
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    Scrollable.ensureVisible(
+      ctx,
+      duration: disableAnimations
+          ? Duration.zero
+          : const Duration(milliseconds: 280),
+      curve: Curves.easeInOutCubic,
+      alignment: 0.32,
+    );
+  }
+
+  void _scrollBackToTop() {
+    if (widget.steps.isEmpty) return;
+    final key = _activeStep.targetKey ??
+        (_activeStep.targetKeys != null && _activeStep.targetKeys!.isNotEmpty
+            ? _activeStep.targetKeys!.first
+            : null);
+    final ctx = key?.currentContext;
+    if (ctx != null && ctx.mounted) {
+      final scrollable = Scrollable.maybeOf(ctx);
+      if (scrollable != null && scrollable.position.hasPixels) {
+        final disableAnimations =
+            MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+        if (disableAnimations) {
+          scrollable.position.jumpTo(0.0);
+        } else {
+          scrollable.position.animateTo(
+            0.0,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeInOutCubic,
+          );
+        }
+      }
+    }
   }
 
   WalkthroughStep get _activeStep => widget.steps[_currentIndex];
@@ -268,6 +354,8 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
 
       _transitionController.duration = const Duration(milliseconds: 350);
       _transitionController.forward(from: 0.0);
+      _updateScrollTracking();
+      _ensureActiveTargetVisible();
       widget.onStepChanged?.call(nextIndex);
     } else {
       _close(skipped: false);
@@ -283,6 +371,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
   Future<void> _close({required bool skipped}) async {
     if (!mounted || _isClosing) return;
     setState(() => _isClosing = true);
+    _scrollBackToTop();
     final disableAnimations =
         mounted ? (MediaQuery.maybeOf(context)?.disableAnimations ?? false) : true;
     if (!disableAnimations && mounted) {
@@ -292,6 +381,8 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
         curve: Curves.easeInCubic,
       );
     }
+    _trackedScrollPosition?.removeListener(_onScrollChanged);
+    _trackedScrollPosition = null;
     if (!mounted) return;
     if (skipped) {
       (widget.onSkip ?? widget.onComplete)();
@@ -408,6 +499,8 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
                           outgoingRadius: _outgoingRadius,
                           outgoingBrightness: outgoingBrightness,
                           backdropColor: Colors.black.withValues(alpha: 0.52),
+                          maxBottomBoundary: screenSize.height - safeBottom,
+                          minTopBoundary: safeTop,
                         ),
                       ),
                     ),
@@ -559,6 +652,8 @@ class SpotlightCutoutPainter extends CustomPainter {
     required this.backdropColor,
     this.accentColor,
     this.pulseProgress,
+    this.maxBottomBoundary,
+    this.minTopBoundary,
   });
 
   final Rect? targetRect;
@@ -573,6 +668,9 @@ class SpotlightCutoutPainter extends CustomPainter {
   final Color backdropColor;
   final Color? accentColor;
   final double? pulseProgress;
+
+  final double? maxBottomBoundary;
+  final double? minTopBoundary;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -595,6 +693,19 @@ class SpotlightCutoutPainter extends CustomPainter {
       return;
     }
 
+    Rect? clampRect(Rect r) {
+      double top = r.top;
+      double bottom = r.bottom;
+      if (minTopBoundary != null && top < minTopBoundary!) {
+        top = minTopBoundary!;
+      }
+      if (maxBottomBoundary != null && bottom > maxBottomBoundary!) {
+        bottom = maxBottomBoundary!;
+      }
+      if (bottom <= top) return null;
+      return Rect.fromLTRB(r.left, top, r.right, bottom);
+    }
+
     // Use PathOperation.difference for a crisp rounded-rect spotlight cutout
     // with zero clipping artifacts.
     final fullPath = Path()..addRect(fullRect);
@@ -602,19 +713,25 @@ class SpotlightCutoutPainter extends CustomPainter {
 
     if (hasActive) {
       for (final r in activeRects) {
-        cutoutPath.addRRect(RRect.fromRectAndRadius(
-          r,
-          Radius.circular(borderRadius),
-        ));
+        final clamped = clampRect(r);
+        if (clamped != null) {
+          cutoutPath.addRRect(RRect.fromRectAndRadius(
+            clamped,
+            Radius.circular(borderRadius),
+          ));
+        }
       }
     }
 
     if (hasOutgoing) {
       for (final r in outgoingRects) {
-        cutoutPath.addRRect(RRect.fromRectAndRadius(
-          r,
-          Radius.circular(outgoingRadius),
-        ));
+        final clamped = clampRect(r);
+        if (clamped != null) {
+          cutoutPath.addRRect(RRect.fromRectAndRadius(
+            clamped,
+            Radius.circular(outgoingRadius),
+          ));
+        }
       }
     }
 
@@ -635,10 +752,13 @@ class SpotlightCutoutPainter extends CustomPainter {
           ..style = PaintingStyle.fill
           ..isAntiAlias = true;
         for (final r in activeRects) {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(r, Radius.circular(borderRadius)),
-            dimPaint,
-          );
+          final clamped = clampRect(r);
+          if (clamped != null) {
+            canvas.drawRRect(
+              RRect.fromRectAndRadius(clamped, Radius.circular(borderRadius)),
+              dimPaint,
+            );
+          }
         }
       }
     }
@@ -652,10 +772,13 @@ class SpotlightCutoutPainter extends CustomPainter {
           ..style = PaintingStyle.fill
           ..isAntiAlias = true;
         for (final r in outgoingRects) {
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(r, Radius.circular(outgoingRadius)),
-            dimPaint,
-          );
+          final clamped = clampRect(r);
+          if (clamped != null) {
+            canvas.drawRRect(
+              RRect.fromRectAndRadius(clamped, Radius.circular(outgoingRadius)),
+              dimPaint,
+            );
+          }
         }
       }
     }
@@ -672,7 +795,9 @@ class SpotlightCutoutPainter extends CustomPainter {
         oldDelegate.outgoingRects != outgoingRects ||
         oldDelegate.outgoingRadius != outgoingRadius ||
         oldDelegate.outgoingBrightness != outgoingBrightness ||
-        oldDelegate.backdropColor != backdropColor;
+        oldDelegate.backdropColor != backdropColor ||
+        oldDelegate.maxBottomBoundary != maxBottomBoundary ||
+        oldDelegate.minTopBoundary != minTopBoundary;
   }
 }
 
