@@ -34,6 +34,7 @@ class ScheduleScreen extends StatelessWidget {
   final GlobalKey? profileSwitcherKey;
   final List<GlobalKey>? profileChipKeys;
   final GlobalKey? scanButtonKey;
+  final GlobalKey? emptyScheduleKey;
 
   const ScheduleScreen({
     super.key,
@@ -52,6 +53,7 @@ class ScheduleScreen extends StatelessWidget {
     this.profileSwitcherKey,
     this.profileChipKeys,
     this.scanButtonKey,
+    this.emptyScheduleKey,
   });
 
   @override
@@ -280,7 +282,10 @@ class ScheduleScreen extends StatelessWidget {
         IOSListRowReveal(
           key: const ValueKey('ios_empty_schedule'),
           visible: !hasAnyVisible,
-          child: _EmptySchedule(onOpenScan: onOpenScan),
+          child: KeyedSubtree(
+            key: emptyScheduleKey,
+            child: _EmptySchedule(onOpenScan: onOpenScan),
+          ),
         ),
         const SizedBox(height: 120),
       ],
@@ -342,7 +347,10 @@ class ScheduleScreen extends StatelessWidget {
           isVisible: !hasAnyVisible,
           child: Column(
             children: [
-              _EmptySchedule(onOpenScan: onOpenScan),
+              KeyedSubtree(
+                key: emptyScheduleKey,
+                child: _EmptySchedule(onOpenScan: onOpenScan),
+              ),
               const SizedBox(height: 120),
             ],
           ),

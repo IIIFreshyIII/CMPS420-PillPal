@@ -511,5 +511,101 @@ void main() {
       await tester.pump(Duration.zero);
       await db.close();
     });
+
+    testWidgets(
+        'HomeScaffold triggers empty-schedule walkthrough when armed and prescriptions list is empty',
+        (tester) async {
+      final storage = FakeSecureStorage();
+      final appState = AppStateManager(storage: storage);
+      await appState.load();
+      await appState.setUserName('Cade');
+      await appState.setSeededTestingMode(false);
+      await appState.setHasCompletedOnboarding(true);
+      appState.walkthroughService.armPostOnboardingTour();
+
+      final db = AppDatabase(NativeDatabase.memory());
+      await db.upsertProfile(
+        const Profile(id: '1', name: 'Cade', color: Color(0xFF168B87), isPrimary: true),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme,
+          home: HomeScaffold(
+            database: db,
+            appStateManager: appState,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // In empty-schedule state, the first step is Add Your First Medication
+      expect(find.text('Add Your First Medication'), findsOneWidget);
+      expect(find.text('1 of 3'), findsOneWidget);
+
+      // Skip tour
+      await tester.tap(find.byKey(const Key('walkthrough_skip_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(appState.hasSeenMainFeedTour, isTrue);
+      expect(find.text('Add Your First Medication'), findsNothing);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(Duration.zero);
+      await db.close();
+    });
+
+    testWidgets('WalkthroughOverlay adapts styling cleanly in dark mode',
+        (tester) async {
+      final key1 = GlobalKey();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.darkTheme,
+          home: Scaffold(
+            body: Stack(
+              children: [
+                Positioned(
+                  top: 100,
+                  left: 50,
+                  child: Container(
+                    key: key1,
+                    width: 100,
+                    height: 50,
+                    color: Colors.blue,
+                  ),
+                ),
+                WalkthroughOverlay(
+                  steps: [
+                    WalkthroughStep(
+                      targetKey: key1,
+                      title: 'Dark Mode Step',
+                      description: 'Testing dark glass styling',
+                      icon: Icons.star,
+                    ),
+                  ],
+                  onComplete: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Dark Mode Step'), findsOneWidget);
+      expect(find.text('Testing dark glass styling'), findsOneWidget);
+      expect(find.byKey(const Key('walkthrough_step_card_0')), findsOneWidget);
+
+      final container = tester.widget<Container>(
+        find.byKey(const Key('walkthrough_step_card_0')),
+      );
+      final decoration = container.decoration as BoxDecoration;
+      // In dark mode, color should be the dark glass tone rather than white
+      expect(decoration.color, isNot(Colors.white.withValues(alpha: 0.90)));
+    });
   });
 }

@@ -261,7 +261,7 @@ class AppStateManager extends ChangeNotifier {
     await _writeBool(_keyTourMeds, false);
     await _writeBool(_keyTourAccount, false);
     await _writeBool(_keySeededTestingMode, false);
-    await _walkthroughService.resetAllFlags(armTrigger: false);
+    await _walkthroughService.resetAllFlags(armTrigger: true);
     try {
       await _storage.delete(key: _keyUserName);
       await _storage.delete(key: 'appearance');

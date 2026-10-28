@@ -88,6 +88,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   Future<void> _finishOnboarding({bool launchScan = false}) async {
+    widget.appStateManager.walkthroughService.armPostOnboardingTour();
     await widget.appStateManager.setHasCompletedOnboarding(true);
     widget.onComplete();
     if (launchScan && widget.onStartFirstScan != null) {

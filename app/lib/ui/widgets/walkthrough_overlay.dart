@@ -823,6 +823,7 @@ class _FrostedTooltipCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final isLast = stepIndex == totalSteps - 1;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
@@ -832,18 +833,30 @@ class _FrostedTooltipCard extends StatelessWidget {
           key: Key('walkthrough_step_card_$stepIndex'),
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.90),
+            color: isDark
+                ? const Color(0xFF162524).withValues(alpha: 0.94)
+                : Colors.white.withValues(alpha: 0.90),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.70),
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : Colors.white.withValues(alpha: 0.70),
               width: 1.0,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.12),
-                blurRadius: 20,
+                color: isDark
+                    ? Colors.black.withValues(alpha: 0.45)
+                    : Colors.black.withValues(alpha: 0.12),
+                blurRadius: isDark ? 24 : 20,
                 offset: const Offset(0, 6),
               ),
+              if (isDark)
+                BoxShadow(
+                  color: c.teal.withValues(alpha: 0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 2),
+                ),
             ],
           ),
           child: Column(
@@ -861,6 +874,12 @@ class _FrostedTooltipCard extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: c.tint,
                       borderRadius: BorderRadius.circular(8),
+                      border: isDark
+                          ? Border.all(
+                              color: c.teal.withValues(alpha: 0.25),
+                              width: 0.8,
+                            )
+                          : null,
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -1025,14 +1044,19 @@ class ContextualHintCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: c.tint,
+        color: isDark ? const Color(0xFF162524) : c.tint,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: c.teal.withValues(alpha: 0.3)),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.12)
+              : c.teal.withValues(alpha: 0.3),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1041,7 +1065,7 @@ class ContextualHintCard extends StatelessWidget {
             width: 34,
             height: 34,
             decoration: BoxDecoration(
-              color: c.surface,
+              color: isDark ? c.tint : c.surface,
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(icon, size: 18, color: c.tealDeep),

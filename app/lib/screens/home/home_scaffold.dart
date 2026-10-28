@@ -84,6 +84,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   );
   final GlobalKey _scanButtonKey =
       GlobalKey(debugLabel: 'walkthrough_scan_button');
+  final GlobalKey _emptyScheduleKey =
+      GlobalKey(debugLabel: 'walkthrough_empty_schedule');
 
   late final AppDatabase _db;
   late final NotificationService _notifications;
@@ -93,6 +95,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   late final SnoozeSettingsService _snoozeSettingsService;
   late final LiveReminderService _liveReminderService;
   bool _notificationPermissionsRequested = false;
+  bool _hasReceivedPrescriptionStream = false;
   StreamSubscription<List<Profile>>? _profilesSub;
   StreamSubscription<List<Prescription>>? _prescriptionsSub;
   StreamSubscription<List<DoseEvent>>? _doseEventsSub;
@@ -246,6 +249,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     });
     _prescriptionsSub = _db.watchPrescriptions().listen((rows) {
       if (mounted) {
+        _hasReceivedPrescriptionStream = true;
         setState(() => _prescriptions = _applySeedFilterPrescriptions(rows));
         _maybeLaunchPostOnboardingWalkthrough();
       }
@@ -673,7 +677,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     if (_activeTab != AppTab.schedule) return;
     if (_walkthroughService.hasSeenMainFeedTour) return;
     if (!_walkthroughService.shouldTriggerPostOnboardingTour) return;
-    if (_prescriptions.isEmpty) return;
+    if (!_hasReceivedPrescriptionStream && _prescriptions.isEmpty) return;
 
     _isShowingWalkthrough = true;
     _walkthroughService.consumePostOnboardingTrigger();
@@ -689,33 +693,64 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         return;
       }
 
-      final steps = <WalkthroughStep>[
-        WalkthroughStep(
-          targetKey: _firstMedCardKey,
-          title: 'Your Daily Timeline',
-          description:
-              'Tap any medication card to expand dose details, or use the check ring and swipe actions to log or edit routines.',
-          icon: CupertinoIcons.calendar_today,
-          borderRadius: 18.0,
-        ),
-        WalkthroughStep(
-          targetKey: _profileSwitcherKey,
-          targetKeys: _profileChipKeys,
-          title: 'CareRecipient Switcher',
-          description:
-              'Switch views or filter daily schedules between yourself and family care recipients in one tap.',
-          icon: CupertinoIcons.person_2_fill,
-          borderRadius: 20.0,
-        ),
-        WalkthroughStep(
-          targetKey: _scanButtonKey,
-          title: 'Quick-Scan More Bottles',
-          description:
-              'Tap + Scan Bottle anytime to scan additional prescription labels with live on-device OCR.',
-          icon: CupertinoIcons.camera_fill,
-          borderRadius: 20.0,
-        ),
-      ];
+      final List<WalkthroughStep> steps;
+      if (_prescriptions.isNotEmpty) {
+        steps = <WalkthroughStep>[
+          WalkthroughStep(
+            targetKey: _firstMedCardKey,
+            title: 'Your Daily Timeline',
+            description:
+                'Tap any medication card to expand dose details, or use the check ring and swipe actions to log or edit routines.',
+            icon: CupertinoIcons.calendar_today,
+            borderRadius: 18.0,
+          ),
+          WalkthroughStep(
+            targetKey: _profileSwitcherKey,
+            targetKeys: _profileChipKeys,
+            title: 'CareRecipient Switcher',
+            description:
+                'Switch views or filter daily schedules between yourself and family care recipients in one tap.',
+            icon: CupertinoIcons.person_2_fill,
+            borderRadius: 20.0,
+          ),
+          WalkthroughStep(
+            targetKey: _scanButtonKey,
+            title: 'Quick-Scan More Bottles',
+            description:
+                'Tap + Scan Bottle anytime to scan additional prescription labels with live on-device OCR.',
+            icon: CupertinoIcons.camera_fill,
+            borderRadius: 20.0,
+          ),
+        ];
+      } else {
+        steps = <WalkthroughStep>[
+          WalkthroughStep(
+            targetKey: _scanButtonKey,
+            title: 'Add Your First Medication',
+            description:
+                'Tap + Scan Bottle anytime to scan your prescription label with instant on-device OCR.',
+            icon: CupertinoIcons.camera_fill,
+            borderRadius: 20.0,
+          ),
+          WalkthroughStep(
+            targetKey: _profileSwitcherKey,
+            targetKeys: _profileChipKeys,
+            title: 'CareRecipient Switcher',
+            description:
+                'Switch views or filter daily schedules between yourself and family care recipients in one tap.',
+            icon: CupertinoIcons.person_2_fill,
+            borderRadius: 20.0,
+          ),
+          WalkthroughStep(
+            targetKey: _emptyScheduleKey,
+            title: 'Your Daily Timeline',
+            description:
+                'Once you add medications, your doses, scheduled times, and daily check-ins will appear right here.',
+            icon: CupertinoIcons.calendar_today,
+            borderRadius: 24.0,
+          ),
+        ];
+      }
 
       _walkthroughOverlayEntry = WalkthroughOverlay.show(
         context: context,
@@ -762,6 +797,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         profileSwitcherKey: _profileSwitcherKey,
         profileChipKeys: _profileChipKeys,
         scanButtonKey: _scanButtonKey,
+        emptyScheduleKey: _emptyScheduleKey,
       ),
     ),
     (context) => KeyedSubtree(
