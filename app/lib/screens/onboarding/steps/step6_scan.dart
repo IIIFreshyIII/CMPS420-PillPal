@@ -58,6 +58,7 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
 
   final Map<String, DateTime> _lineLastSeen = {};
   String? _lastExtractedText;
+  Extraction? _liveExtraction;
   int _consecutivePasses = 0;
   bool _ocrInFlight = false;
   DateTime _lastOcrAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -209,6 +210,10 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
           extraction.drug != null &&
           extraction.drug!.isNotEmpty;
 
+      setState(() {
+        _liveExtraction = extraction;
+      });
+
       if (ready) {
         _consecutivePasses++;
         if (_consecutivePasses >= _requiredPasses) {
@@ -238,6 +243,40 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
   void _completeWithExtraction(Extraction extraction) {
     _cameraController?.stopImageStream().catchError((_) {});
     widget.onScanExtracted(extraction);
+  }
+
+  String _getHintText() {
+    final e = _liveExtraction;
+    if (e == null || e.drug == null || e.drug!.trim().isEmpty) {
+      return 'Align the far-left edge of your label inside\nthe box and rotate slowly.';
+    }
+
+    final drugName = e.drug!.trim();
+    final strength = e.strength?.trim();
+    final missing = <String>[];
+
+    if (strength == null || strength.isEmpty) {
+      missing.add('strength');
+    }
+    if (e.dose == null || e.dose!.trim().isEmpty) {
+      missing.add('dosage');
+    }
+    if (e.frequency == null || e.frequency!.trim().isEmpty) {
+      missing.add('frequency');
+    }
+    if (e.daysSupply == null) {
+      missing.add('refills / days supply');
+    }
+
+    if (missing.isEmpty) {
+      return 'Hold steady • All fields detected!';
+    }
+
+    final drugLabel = (strength != null && strength.isNotEmpty)
+        ? '$drugName $strength'
+        : drugName;
+
+    return 'Found $drugLabel\nStill looking for: ${missing.take(2).join(', ')}';
   }
 
   void _triggerSimulatedScan() {
@@ -425,32 +464,36 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
             bottom: size.height - cutoutRect.top + 12,
             left: 24,
             right: 24,
-            child: const Column(
+            child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 // Looping 2-Phase Bottle & Box Guide Animation
-                PrescriptionScanGuideAnimation(
+                const PrescriptionScanGuideAnimation(
                   width: 190,
                   height: 96,
                 ),
-                SizedBox(height: 12),
+                const SizedBox(height: 12),
                 // Instructional Text
-                Text(
-                  'Align the far-left edge of your label inside\nthe box and rotate slowly.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: -0.2,
-                    height: 1.35,
-                    shadows: [
-                      Shadow(
-                        color: Colors.black87,
-                        blurRadius: 10,
-                        offset: Offset(0, 2),
-                      ),
-                    ],
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 260),
+                  child: Text(
+                    _getHintText(),
+                    key: ValueKey<String>(_getHintText()),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: -0.2,
+                      height: 1.35,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black87,
+                          blurRadius: 10,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],

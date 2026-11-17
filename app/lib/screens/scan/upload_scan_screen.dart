@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/pillpal_colors.dart';
@@ -10,11 +11,9 @@ import '../../data/services/zero_disk_photo_picker.dart';
 /// pick an existing photo, OCR it once, extract once, done. Same
 /// process-and-discard privacy guarantee as the live scan -- the picked
 /// image's bytes are read straight into memory by a custom platform channel
-/// (see `zero_disk_photo_picker.dart`) and never written to disk, matching
-/// what "no photo is ever taken or saved" means for the live-scan path.
+/// (see `zero_disk_photo_picker.dart`) and never written to disk.
 ///
-/// Pops with the confirmed [Extraction] on success, or `null` if the user
-/// cancels or nothing could be read.
+/// Pops with the confirmed [Extraction] on success, or `null` if the user cancels.
 class UploadScanScreen extends StatefulWidget {
   const UploadScanScreen({super.key});
 
@@ -38,7 +37,7 @@ class _UploadScanScreenState extends State<UploadScanScreen> {
     final bytes = await ZeroDiskPhotoPicker.pickImage();
     if (!mounted) return;
     if (bytes == null) {
-      Navigator.of(context).pop(); // user cancelled the picker
+      Navigator.of(context).pop(); // user cancelled picker
       return;
     }
 
@@ -48,11 +47,40 @@ class _UploadScanScreenState extends State<UploadScanScreen> {
     try {
       final text = await ocr.recognizeBytes(bytes);
       if (text.trim().isEmpty) {
-        setState(() {
-          _status = _UploadStatus.error;
-          _errorMessage = "Couldn't read anything on that photo.";
-        });
-        return;
+        if (!mounted) return;
+        final shouldRetry = await showCupertinoDialog<bool>(
+          context: context,
+          builder: (ctx) => CupertinoAlertDialog(
+            title: const Text("Couldn't Read Label"),
+            content: const Text(
+              "We couldn't detect prescription text on this photo. Please make sure the label is clear and well-lit.",
+            ),
+            actions: [
+              CupertinoDialogAction(
+                child: const Text('Enter Manually'),
+                onPressed: () => Navigator.pop(ctx, false),
+              ),
+              CupertinoDialogAction(
+                isDefaultAction: true,
+                child: const Text('Try Another Photo'),
+                onPressed: () => Navigator.pop(ctx, true),
+              ),
+            ],
+          ),
+        );
+
+        if (!mounted) return;
+        if (shouldRetry == true) {
+          _run();
+          return;
+        } else if (shouldRetry == false) {
+          // Empty extraction signals manual entry mode
+          Navigator.of(context).pop(Extraction(rawText: ''));
+          return;
+        } else {
+          Navigator.of(context).pop();
+          return;
+        }
       }
 
       final extractor = await OnnxExtractor.load();

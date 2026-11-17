@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,7 +35,7 @@ import '../../services/live_reminder_service.dart';
 import '../../services/walkthrough_service.dart';
 import '../../ui/widgets/walkthrough_overlay.dart';
 
-enum _ScanMode { live, upload }
+enum _AddMedsMode { live, upload, manual }
 
 class HomeScaffold extends StatefulWidget {
   const HomeScaffold({
@@ -595,34 +596,26 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   Future<void> _openScan() async {
-    final mode = await showModalBottomSheet<_ScanMode>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt_outlined),
-              title: const Text('Scan Live'),
-              subtitle: const Text('Pan the camera over the label'),
-              onTap: () => Navigator.pop(ctx, _ScanMode.live),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_outlined),
-              title: const Text('Enter from a Photo'),
-              subtitle: const Text("If you don't have the bottle in hand"),
-              onTap: () => Navigator.pop(ctx, _ScanMode.upload),
-            ),
-          ],
-        ),
-      ),
-    );
+    final mode = await _showAddMedsPopover();
     if (mode == null || !mounted) return;
+
+    if (mode == _AddMedsMode.manual) {
+      final prescription = await ConfirmScreen.show(
+        context,
+        extraction: null,
+        profiles: _profiles,
+        isManual: true,
+      );
+      if (prescription != null && mounted) {
+        await _db.upsertPrescription(prescription);
+      }
+      return;
+    }
 
     setState(() => _isScanning = true);
     final extraction = await Navigator.of(context).push<Extraction>(
       MaterialPageRoute(
-        builder: (_) => mode == _ScanMode.live
+        builder: (_) => mode == _AddMedsMode.live
             ? const LiveScanScreen()
             : const UploadScanScreen(),
       ),
@@ -634,14 +627,178 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       return;
     }
 
-    final prescription = await ConfirmScreen.show(context,
-        extraction: extraction, profiles: _profiles);
+    final isManual = extraction.rawText.isEmpty && extraction.drug == null;
+    final prescription = await ConfirmScreen.show(
+      context,
+      extraction: isManual ? null : extraction,
+      profiles: _profiles,
+      isManual: isManual,
+    );
     if (!mounted) return;
     setState(() => _isScanning = false);
 
     if (prescription != null) {
-      _db.upsertPrescription(prescription);
+      await _db.upsertPrescription(prescription);
     }
+  }
+
+  Future<_AddMedsMode?> _showAddMedsPopover() async {
+    final RenderBox? buttonBox =
+        _scanButtonKey.currentContext?.findRenderObject() as RenderBox?;
+    final buttonOffset = buttonBox?.localToGlobal(Offset.zero);
+    final buttonSize = buttonBox?.size;
+
+    return showGeneralDialog<_AddMedsMode>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss Add Meds',
+      barrierColor: Colors.black.withValues(alpha: 0.12),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        final c = context.colors;
+        final screenSize = MediaQuery.of(dialogContext).size;
+
+        final double top = buttonOffset != null
+            ? (buttonOffset.dy + (buttonSize?.height ?? 34) + 8)
+            : 110.0;
+        final double right = buttonOffset != null
+            ? (screenSize.width - (buttonOffset.dx + (buttonSize?.width ?? 110)))
+            : 20.0;
+
+        return Stack(
+          children: [
+            Positioned(
+              top: top,
+              right: right.clamp(16.0, screenSize.width - 240.0),
+              child: Material(
+                color: Colors.transparent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      width: 240,
+                      decoration: BoxDecoration(
+                        color: c.surface.withValues(alpha: 0.85),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: c.borderLight.withValues(alpha: 0.5),
+                          width: 0.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.14),
+                            blurRadius: 28,
+                            spreadRadius: -2,
+                            offset: const Offset(0, 10),
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.04),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildPopoverItem(
+                            context: dialogContext,
+                            icon: CupertinoIcons.camera,
+                            label: 'Scan Bottle',
+                            onTap: () => Navigator.pop(dialogContext, _AddMedsMode.live),
+                          ),
+                          Divider(
+                            height: 0.5,
+                            thickness: 0.5,
+                            color: c.borderLight.withValues(alpha: 0.6),
+                          ),
+                          _buildPopoverItem(
+                            context: dialogContext,
+                            icon: CupertinoIcons.photo_on_rectangle,
+                            label: 'Import from Photos',
+                            onTap: () => Navigator.pop(dialogContext, _AddMedsMode.upload),
+                          ),
+                          Divider(
+                            height: 0.5,
+                            thickness: 0.5,
+                            color: c.borderLight.withValues(alpha: 0.6),
+                          ),
+                          _buildPopoverItem(
+                            context: dialogContext,
+                            icon: CupertinoIcons.square_pencil,
+                            label: 'Enter Manually',
+                            onTap: () => Navigator.pop(dialogContext, _AddMedsMode.manual),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: CurvedAnimation(
+            parent: animation,
+            curve: const Interval(0.0, 0.85, curve: Curves.easeOut),
+          ),
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.95, end: 1.0).animate(curved),
+            alignment: Alignment.topRight,
+            child: child,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPopoverItem({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final c = context.colors;
+    return InkWell(
+      onTap: onTap,
+      splashColor: Colors.transparent,
+      highlightColor: c.ink.withValues(alpha: 0.06),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w400,
+                    color: c.ink,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Icon(
+                icon,
+                size: 20,
+                color: c.ink.withValues(alpha: 0.85),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   void _handleEditMedication(Prescription prescription) {

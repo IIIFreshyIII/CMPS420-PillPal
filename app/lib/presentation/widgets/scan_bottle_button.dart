@@ -4,13 +4,13 @@ import 'package:flutter/material.dart';
 import '../../core/theme/pillpal_colors.dart';
 import 'pressable.dart';
 
-/// Reusable "Add New Prescription" / "+ Scan Bottle" button component matching
+/// Reusable "+ Add Meds" action button component matching
 /// the exact design token hierarchy and haptic interactions from the Schedule header.
 class ScanBottleButton extends StatelessWidget {
   const ScanBottleButton({
     super.key,
     required this.onTap,
-    this.label = '+ Scan Bottle',
+    this.label = 'Add Meds',
     this.isLoading = false,
   });
 
@@ -24,39 +24,51 @@ class ScanBottleButton extends StatelessWidget {
 
     return Pressable(
       onTap: isLoading ? null : onTap,
-      scale: 0.94,
+      scale: 0.95,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 15),
+        height: 34,
+        padding: const EdgeInsets.symmetric(horizontal: 13),
         decoration: BoxDecoration(
           color: c.surface,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(17),
+          border: Border.all(
+            color: c.borderLight.withValues(alpha: 0.5),
+            width: 0.8,
+          ),
           boxShadow: [
             BoxShadow(
-              color: c.liftShadow,
-              blurRadius: 8,
+              color: c.liftShadow.withValues(alpha: 0.08),
+              blurRadius: 6,
               offset: const Offset(0, 2),
             ),
           ],
         ),
         child: isLoading
             ? SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: c.teal,
+                width: 15,
+                height: 15,
+                child: Center(
+                  child: SizedBox(
+                    width: 13,
+                    height: 13,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: c.teal,
+                    ),
+                  ),
                 ),
               )
             : Row(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(CupertinoIcons.camera, size: 16, color: c.tealDeep),
-                  const SizedBox(width: 6),
+                  Icon(CupertinoIcons.plus, size: 13, color: c.tealDeep),
+                  const SizedBox(width: 5),
                   Text(
                     label,
                     style: TextStyle(
                       color: c.tealDeep,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w600,
                       fontSize: 13,
                       letterSpacing: -0.2,
                     ),

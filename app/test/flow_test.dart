@@ -34,7 +34,7 @@ void main() {
     expect(computeRefillDate(fillDate: DateTime(2026)), isNull);
   });
 
-  testWidgets('+ Scan Bottle opens the real scan-mode choice, not a fake insert',
+  testWidgets('Add Meds opens the anchored popover menu with 3 modes',
       (tester) async {
     // tall surface so the schedule screen fits without scrolling
     tester.view.physicalSize = const Size(1200, 3000);
@@ -54,13 +54,14 @@ void main() {
     // HomeScaffold seeds three demo prescriptions on the Schedule tab.
     expect(find.text('Allegra'), findsOneWidget);
 
-    await tester.tap(find.text('+ Scan Bottle'));
+    await tester.tap(find.text('Add Meds'));
     await tester.pumpAndSettle();
 
-    // The real entry point: a choice between live scan and the upload
-    // fallback, not the old fake-delay-then-insert-Amoxicillin behavior.
-    expect(find.text('Scan Live'), findsOneWidget);
-    expect(find.text('Enter from a Photo'), findsOneWidget);
+    // The real entry point: an anchored popover with live scan, photo import,
+    // and manual entry.
+    expect(find.text('Scan Bottle'), findsOneWidget);
+    expect(find.text('Import from Photos'), findsOneWidget);
+    expect(find.text('Enter Manually'), findsOneWidget);
 
     // Dispose HomeScaffold here (rather than leaving it to the implicit
     // end-of-test teardown): closing its DoseEvent/Prescription/Profile
@@ -113,31 +114,12 @@ void main() {
     // (which live-updates from the drug-name field) and the field itself.
     expect(find.text('Metformin HCl'), findsWidgets);
 
-    // Step 1 (Confirm Details): name + profile are both already filled in
-    // (pre-selected first profile), so continuing doesn't need a reminder
-    // time here anymore -- that's step 2.
-    final continueButton = tester.widget<GestureDetector>(find.byKey(const Key('confirm_save_button')));
-    expect(continueButton.onTap, isNotNull);
-
-    await tester.tap(find.byKey(const Key('confirm_save_button')));
-    await tester.pumpAndSettle();
-
-    // Step 2 (Reminder Schedule): save is disabled until a start time is
-    // picked -- nothing is saved before the user confirms every field.
-    var saveButton = tester.widget<GestureDetector>(find.byKey(const Key('reminder_schedule_save_button')));
-    expect(saveButton.onTap, isNull);
-
-    // Opens the rotary wheel picker sheet, not free text -- open it and
-    // confirm whatever it defaults to (TimeOfDay.now()).
-    await tester.tap(find.byKey(const Key('field_start_time')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('rotary_time_done')));
-    await tester.pumpAndSettle();
-
-    saveButton = tester.widget<GestureDetector>(find.byKey(const Key('reminder_schedule_save_button')));
+    // All-in-one verification sheet: name, dosage, schedule and profile are
+    // all pre-filled and editable in a single view.
+    final saveButton = tester.widget<GestureDetector>(find.byKey(const Key('confirm_save_button')));
     expect(saveButton.onTap, isNotNull);
 
-    await tester.tap(find.byKey(const Key('reminder_schedule_save_button')));
+    await tester.tap(find.byKey(const Key('confirm_save_button')));
     await tester.pumpAndSettle();
 
     expect(result, isNotNull);

@@ -414,6 +414,9 @@ class _Step7VerificationState extends State<Step7Verification> {
                           label: 'Medication Name',
                           hint: 'e.g. Metformin, Lisinopril',
                           c: c,
+                          isFlagged: !widget.extraction.isRecognized('drug') ||
+                              _nameController.text.trim().isEmpty,
+                          flagMessage: 'Verify OCR',
                         ),
                         const SizedBox(height: 14),
                         _buildInputField(
@@ -422,6 +425,9 @@ class _Step7VerificationState extends State<Step7Verification> {
                           label: 'Dosage Amount',
                           hint: 'e.g. 500 mg, 1 tablet',
                           c: c,
+                          isFlagged: !widget.extraction.isRecognized('strength') &&
+                              !widget.extraction.isRecognized('dose'),
+                          flagMessage: 'Verify Dosage',
                         ),
                       ],
                     ),
@@ -1113,17 +1119,54 @@ class _Step7VerificationState extends State<Step7Verification> {
     required String label,
     required String hint,
     required PillPalColors c,
+    bool isFlagged = false,
+    String? flagMessage,
   }) {
+    const amberWarning = Color(0xFFF59E0B);
+    const amberText = Color(0xFFB45309);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: c.inkMuted,
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: isFlagged ? amberText : c.inkMuted,
+              ),
+            ),
+            if (isFlagged && flagMessage != null)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: amberWarning.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      CupertinoIcons.exclamationmark_triangle_fill,
+                      size: 10,
+                      color: amberWarning,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      flagMessage,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: amberText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 4),
         TextField(
@@ -1138,11 +1181,23 @@ class _Step7VerificationState extends State<Step7Verification> {
             isDense: true,
             hintText: hint,
             hintStyle: TextStyle(color: c.inkMuted.withValues(alpha: 0.5)),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(
+                color: isFlagged ? amberWarning : c.borderLight,
+                width: isFlagged ? 1.5 : 1.0,
+              ),
+            ),
             border: UnderlineInputBorder(
-              borderSide: BorderSide(color: c.borderLight),
+              borderSide: BorderSide(
+                color: isFlagged ? amberWarning : c.borderLight,
+                width: isFlagged ? 1.5 : 1.0,
+              ),
             ),
             focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: c.teal, width: 2),
+              borderSide: BorderSide(
+                color: isFlagged ? amberWarning : c.teal,
+                width: 2,
+              ),
             ),
           ),
         ),

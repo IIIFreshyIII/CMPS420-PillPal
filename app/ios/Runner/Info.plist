@@ -28,6 +28,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>PillPal needs camera access to scan prescription bottle labels.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PillPal needs access to your photos to import and scan prescription bottle labels.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>PillPal uses Face ID to securely authenticate and protect your medication records.</string>
 	<key>NSSupportsLiveActivities</key>

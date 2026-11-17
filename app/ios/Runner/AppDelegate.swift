@@ -3,12 +3,15 @@ import ActivityKit
 #endif
 import AVFoundation
 import Flutter
+import PhotosUI
 import UIKit
+import UniformTypeIdentifiers
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private var liveRemindersChannel: FlutterMethodChannel?
   private var intentObserver: NSObjectProtocol?
+  private var activePhotoPickerDelegate: Any?
 
   override func application(
     _ application: UIApplication,
@@ -31,6 +34,7 @@ import UIKit
     setupAccessibilityChannel(messenger: messenger)
     setupPermissionsChannel(messenger: messenger)
     setupLiveRemindersChannel(messenger: messenger)
+    setupPhotoPickerChannel(messenger: messenger)
   }
 
   private func observeLiveActivityIntents() {
@@ -326,6 +330,130 @@ import UIKit
         }
       default:
         result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func setupPhotoPickerChannel(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "pillpal/zero_disk_photo_picker",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      guard let self = self else {
+        result(nil)
+        return
+      }
+      switch call.method {
+      case "pickImage":
+        self.handlePickImage(result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func handlePickImage(result: @escaping FlutterResult) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else {
+        result(nil)
+        return
+      }
+      guard self.activePhotoPickerDelegate == nil else {
+        result(FlutterError(code: "BUSY", message: "A pick is already in progress", details: nil))
+        return
+      }
+
+      var configuration = PHPickerConfiguration()
+      configuration.filter = .images
+      configuration.selectionLimit = 1
+
+      let picker = PHPickerViewController(configuration: configuration)
+      let coordinator = ZeroDiskPhotoPickerCoordinator { [weak self] (data: Data?) in
+        self?.activePhotoPickerDelegate = nil
+        if let data = data {
+          result(FlutterStandardTypedData(bytes: data))
+        } else {
+          result(nil)
+        }
+      }
+
+      self.activePhotoPickerDelegate = coordinator
+      picker.delegate = coordinator
+
+      var rootVC = self.window?.rootViewController
+      if rootVC == nil {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        for scene in scenes {
+          if let keyWindow = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first {
+            rootVC = keyWindow.rootViewController
+            if rootVC != nil { break }
+          }
+        }
+      }
+
+      if let rootVC = rootVC {
+        var presenter: UIViewController = rootVC
+        while let next = presenter.presentedViewController, !next.isBeingDismissed {
+          presenter = next
+        }
+        presenter.present(picker, animated: true)
+      } else {
+        self.activePhotoPickerDelegate = nil
+        result(nil)
+      }
+    }
+  }
+}
+
+private class ZeroDiskPhotoPickerCoordinator: NSObject, PHPickerViewControllerDelegate {
+  private let completion: (Data?) -> Void
+
+  init(completion: @escaping (Data?) -> Void) {
+    self.completion = completion
+  }
+
+  func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+    picker.dismiss(animated: true)
+
+    guard let provider = results.first?.itemProvider else {
+      completion(nil)
+      return
+    }
+
+    // Attempt direct in-memory load of raw image bytes (never written to disk)
+    if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+      provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { [weak self] data, error in
+        if let data = data {
+          DispatchQueue.main.async {
+            self?.completion(data)
+          }
+          return
+        }
+
+        // Fallback: decode UIImage in memory and serialize to JPEG data
+        self?.loadAsUIImage(provider: provider)
+      }
+    } else {
+      loadAsUIImage(provider: provider)
+    }
+  }
+
+  private func loadAsUIImage(provider: NSItemProvider) {
+    if provider.canLoadObject(ofClass: UIImage.self) {
+      provider.loadObject(ofClass: UIImage.self) { [weak self] (image, error) in
+        DispatchQueue.main.async {
+          if let uiImage = image as? UIImage,
+             let jpegData = uiImage.jpegData(compressionQuality: 0.95) {
+            self?.completion(jpegData)
+          } else {
+            self?.completion(nil)
+          }
+        }
+      }
+    } else {
+      DispatchQueue.main.async {
+        self.completion(nil)
       }
     }
   }

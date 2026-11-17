@@ -40,44 +40,66 @@ class OcrService {
 
   /// Live-scan entry point: one frame straight from `CameraController`'s
   /// `startImageStream`, never `takePicture()` -- the frame exists only in
-  /// memory for the duration of this call. Android-only (YUV_420_888,
-  /// matching this project's Android-first target); [rotation] is the
+  /// memory for the duration of this call. Handles both iOS (BGRA8888,
+  /// single plane) and Android (YUV_420_888, converted to NV21 with hardware
+  /// padding stripped) without ever touching disk. [rotation] is the
   /// caller's job to compute from the camera's sensor orientation and the
   /// device's current orientation, since that's screen/controller state,
   /// not something an OCR wrapper should own.
   Future<String> recognizeFrame(CameraImage image, InputImageRotation rotation) async {
-    final yPlane = image.planes[0];
-    final uPlane = image.planes[1];
-    final vPlane = image.planes[2];
+    // 1. iOS: BGRA8888 (single plane directly compatible with ML Kit)
+    if (image.format.group == ImageFormatGroup.bgra8888 || image.planes.length == 1) {
+      final plane = image.planes.first;
+      final inputImage = InputImage.fromBytes(
+        bytes: plane.bytes,
+        metadata: InputImageMetadata(
+          size: ui.Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: rotation,
+          format: InputImageFormat.bgra8888,
+          bytesPerRow: plane.bytesPerRow,
+        ),
+      );
+      final result = await _recognizer.processImage(inputImage);
+      return result.text;
+    }
 
-    final data = _YuvConversionData(
-      width: image.width,
-      height: image.height,
-      yPlaneBytes: yPlane.bytes,
-      yBytesPerRow: yPlane.bytesPerRow,
-      uPlaneBytes: uPlane.bytes,
-      uBytesPerRow: uPlane.bytesPerRow,
-      uBytesPerPixel: uPlane.bytesPerPixel ?? 2,
-      vPlaneBytes: vPlane.bytes,
-      vBytesPerRow: vPlane.bytesPerRow,
-      vBytesPerPixel: vPlane.bytesPerPixel ?? 2,
-    );
+    // 2. Android: YUV_420_888 (3 planes: Y, U, V repacked into NV21)
+    if (image.planes.length >= 3) {
+      final yPlane = image.planes[0];
+      final uPlane = image.planes[1];
+      final vPlane = image.planes[2];
 
-    // Offload heavy byte-packing to a background thread to prevent UI jank.
-    final bytes = await compute(_yuv420ToNv21Isolate, data);
+      final data = _YuvConversionData(
+        width: image.width,
+        height: image.height,
+        yPlaneBytes: yPlane.bytes,
+        yBytesPerRow: yPlane.bytesPerRow,
+        uPlaneBytes: uPlane.bytes,
+        uBytesPerRow: uPlane.bytesPerRow,
+        uBytesPerPixel: uPlane.bytesPerPixel ?? 2,
+        vPlaneBytes: vPlane.bytes,
+        vBytesPerRow: vPlane.bytesPerRow,
+        vBytesPerPixel: vPlane.bytesPerPixel ?? 2,
+      );
 
-    final inputImage = InputImage.fromBytes(
-      bytes: bytes,
-      metadata: InputImageMetadata(
-        size: ui.Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: rotation,
-        format: InputImageFormat.nv21,
-        bytesPerRow: image.width, // tightly packed after the conversion below
-      ),
-    );
+      // Offload heavy byte-packing to a background thread to prevent UI jank.
+      final bytes = await compute(_yuv420ToNv21Isolate, data);
 
-    final result = await _recognizer.processImage(inputImage);
-    return result.text;
+      final inputImage = InputImage.fromBytes(
+        bytes: bytes,
+        metadata: InputImageMetadata(
+          size: ui.Size(image.width.toDouble(), image.height.toDouble()),
+          rotation: rotation,
+          format: InputImageFormat.nv21,
+          bytesPerRow: image.width, // tightly packed after the conversion below
+        ),
+      );
+
+      final result = await _recognizer.processImage(inputImage);
+      return result.text;
+    }
+
+    return '';
   }
 
   /// Real Android hardware (confirmed on a Galaxy S25 Ultra) pads each row
