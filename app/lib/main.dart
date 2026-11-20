@@ -188,20 +188,23 @@ class _PillPalAppState extends State<PillPalApp> {
           color: Theme.of(context).scaffoldBackgroundColor,
           child: Stack(
             children: [
-              AppLockGate(
-                service: widget.appLock,
-                enabled: _appStateManager.hasCompletedOnboarding,
-                child: Platform.isAndroid
-                    ? MediaQuery.removeViewPadding(
-                        context: context,
-                        removeBottom: true,
-                        child: MediaQuery.removePadding(
+              ListenableBuilder(
+                listenable: _appStateManager,
+                builder: (context, _) => AppLockGate(
+                  service: widget.appLock,
+                  enabled: _appStateManager.hasCompletedOnboarding,
+                  child: Platform.isAndroid
+                      ? MediaQuery.removeViewPadding(
                           context: context,
                           removeBottom: true,
-                          child: child!,
-                        ),
-                      )
-                    : child!,
+                          child: MediaQuery.removePadding(
+                            context: context,
+                            removeBottom: true,
+                            child: child!,
+                          ),
+                        )
+                      : child!,
+                ),
               ),
               if (kDebugMode || kProfileMode)
                 DebugFloatingSwitcher(

@@ -7,6 +7,7 @@ import '../../data/models/dose_event.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/data_retention_service.dart';
+import '../../presentation/widgets/platform_controls.dart';
 
 class DoseLogRetentionSheet extends StatefulWidget {
   final DataRetentionService retentionService;
@@ -308,7 +309,11 @@ class _DoseLogRetentionSheetState extends State<DoseLogRetentionSheet> {
                   child: ElevatedButton.icon(
                     onPressed: _isPurging ? null : _handlePurgeExpired,
                     icon: _isPurging
-                        ? const CupertinoActivityIndicator()
+                        ? const PlatformLoadingIndicator(
+                            size: 16,
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          )
                         : const Icon(CupertinoIcons.trash, size: 16),
                     label: const Text('Purge Expired'),
                     style: ElevatedButton.styleFrom(

@@ -6,6 +6,7 @@ import Flutter
 import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -18,9 +19,6 @@ import UniformTypeIdentifiers
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
-    if let controller = window?.rootViewController as? FlutterViewController {
-      registerChannels(with: controller.binaryMessenger)
-    }
     observeLiveActivityIntents()
     return result
   }
@@ -35,6 +33,36 @@ import UniformTypeIdentifiers
     setupPermissionsChannel(messenger: messenger)
     setupLiveRemindersChannel(messenger: messenger)
     setupPhotoPickerChannel(messenger: messenger)
+    setupBadgeChannel(messenger: messenger)
+  }
+
+  private func setupBadgeChannel(messenger: FlutterBinaryMessenger) {
+    let channel = FlutterMethodChannel(
+      name: "com.pillpal.app/badge",
+      binaryMessenger: messenger
+    )
+    channel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      guard call.method == "setBadgeCount" else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      let args = call.arguments as? [String: Any]
+      let count = max(0, (args?["count"] as? NSNumber)?.intValue ?? 0)
+      DispatchQueue.main.async {
+        if #available(iOS 16.0, *) {
+          UNUserNotificationCenter.current().setBadgeCount(count) { error in
+            if let error = error {
+              result(FlutterError(code: "BADGE_ERROR", message: error.localizedDescription, details: nil))
+            } else {
+              result(nil)
+            }
+          }
+        } else {
+          UIApplication.shared.applicationIconBadgeNumber = count
+          result(nil)
+        }
+      }
+    }
   }
 
   private func observeLiveActivityIntents() {
@@ -151,12 +179,14 @@ import UniformTypeIdentifiers
 
     let profileName = (args["profileName"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
     let effectiveProfileName = (profileName?.isEmpty ?? true) ? nil : profileName
+    let snoozeNotificationId = (args["snoozeNotificationId"] as? NSNumber)?.intValue
 
     let state = MedicationLiveActivityAttributes.ContentState(
       snoozeEndTime: snoozeEndTime,
       totalDurationSeconds: totalDurationSeconds,
       remainingDoseCount: remainingDoseCount,
-      profileName: effectiveProfileName
+      profileName: effectiveProfileName,
+      snoozeNotificationId: snoozeNotificationId
     )
 
     Task {
@@ -178,7 +208,12 @@ import UniformTypeIdentifiers
       }
 
       if let existing = existingActivities.first {
-        await existing.update(using: state)
+        if #available(iOS 16.2, *) {
+          let content = ActivityContent(state: state, staleDate: snoozeEndTime)
+          await existing.update(content)
+        } else {
+          await existing.update(using: state)
+        }
         for duplicate in existingActivities.dropFirst() {
           await duplicate.end(dismissalPolicy: .immediate)
         }
@@ -190,11 +225,21 @@ import UniformTypeIdentifiers
 
       do {
         let attributes = MedicationLiveActivityAttributes(batchId: batchId)
-        let activity = try Activity<MedicationLiveActivityAttributes>.request(
-          attributes: attributes,
-          contentState: state,
-          pushType: nil
-        )
+        let activity: Activity<MedicationLiveActivityAttributes>
+        if #available(iOS 16.2, *) {
+          let content = ActivityContent(state: state, staleDate: snoozeEndTime)
+          activity = try Activity<MedicationLiveActivityAttributes>.request(
+            attributes: attributes,
+            content: content,
+            pushType: nil
+          )
+        } else {
+          activity = try Activity<MedicationLiveActivityAttributes>.request(
+            attributes: attributes,
+            contentState: state,
+            pushType: nil
+          )
+        }
         await MainActor.run {
           result(activity.id)
         }
@@ -247,9 +292,15 @@ import UniformTypeIdentifiers
             snoozeEndTime: current.snoozeEndTime,
             totalDurationSeconds: current.totalDurationSeconds,
             remainingDoseCount: remainingDoseCount,
-            profileName: effectiveProfile
+            profileName: effectiveProfile,
+            snoozeNotificationId: current.snoozeNotificationId
           )
-          await activity.update(using: updated)
+          if #available(iOS 16.2, *) {
+            let staleDate: Date? = current.snoozeEndTime > Date() ? current.snoozeEndTime : nil
+            await activity.update(ActivityContent(state: updated, staleDate: staleDate))
+          } else {
+            await activity.update(using: updated)
+          }
         }
       }
 
@@ -380,6 +431,7 @@ import UniformTypeIdentifiers
 
       self.activePhotoPickerDelegate = coordinator
       picker.delegate = coordinator
+      picker.presentationController?.delegate = coordinator
 
       var rootVC = self.window?.rootViewController
       if rootVC == nil {
@@ -406,11 +458,15 @@ import UniformTypeIdentifiers
   }
 }
 
-private class ZeroDiskPhotoPickerCoordinator: NSObject, PHPickerViewControllerDelegate {
+private class ZeroDiskPhotoPickerCoordinator: NSObject, PHPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
   private let completion: (Data?) -> Void
 
   init(completion: @escaping (Data?) -> Void) {
     self.completion = completion
+  }
+
+  func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+    completion(nil)
   }
 
   func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {

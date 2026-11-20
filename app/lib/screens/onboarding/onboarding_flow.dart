@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/permissions/camera_permission.dart';
@@ -8,26 +9,29 @@ import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/extractor.dart';
 import '../../data/services/notification_service.dart';
+import '../scan/upload_scan_screen.dart';
 import 'steps/step1_splash.dart';
 import 'steps/step2_legal.dart';
 import 'steps/step3_name_morph.dart';
 import 'steps/step4_permissions.dart';
+import 'steps/step5_bedtime.dart';
 import 'steps/step5_first_reminder.dart';
 import 'steps/step6_scan.dart';
 import 'steps/step7_verification.dart';
 import 'widgets/onboarding_progress_bar.dart';
 
-/// Master Onboarding Container orchestrating Steps 1 through 7 with forward
+/// Master Onboarding Container orchestrating Steps 1 through 8 with forward
 /// and backward sliding transitions.
 ///
 /// Flow:
 ///   1. Splash
 ///   2. Legal Disclaimer
 ///   3. Name Morph
-///   4. Permissions & Settings
-///   5. First Reminder Prompt
-///   6. Full-Screen Camera OCR/NER Scanner
-///   7. Verification Form & Celebratory Confirmation
+///   4. Privacy & Protection (Face ID / Passcode & Notifications)
+///   5. Sleep Schedule / Bedtime Setup
+///   6. First Medication Prompt (Scan, Photo, Manual Entry, or Skip)
+///   7. Full-Screen Camera OCR/NER Scanner
+///   8. Verification Form & Celebratory Confirmation
 class OnboardingFlow extends StatefulWidget {
   const OnboardingFlow({
     super.key,
@@ -55,7 +59,10 @@ class OnboardingFlow extends StatefulWidget {
 class _OnboardingFlowState extends State<OnboardingFlow> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+  bool _includeScannerStep = true;
+  bool _isProcessingPhoto = false;
   Extraction? _scannedExtraction;
+  String? _configuredBedtime;
 
   static const _transitionDuration = Duration(milliseconds: 340);
   static const _transitionCurve = Curves.easeOutCubic;
@@ -77,14 +84,81 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Future<void> _handleNameConfirmed(String name) async {
     await widget.appStateManager.setUserName(name);
 
-    // Automatically create or update the primary CareRecipient profile
+    final existing = await widget.database.getProfileById('1');
     final primaryProfile = Profile(
       id: '1',
       name: name,
       color: const Color(0xFF168B87), // PillPal teal
       isPrimary: true,
+      bedtime: existing?.bedtime ?? _configuredBedtime,
     );
     await widget.database.upsertProfile(primaryProfile);
+  }
+
+  Future<void> _handleBedtimeConfirmed(String? bedtime) async {
+    _configuredBedtime = bedtime;
+    final existing = await widget.database.getProfileById('1');
+    final name = widget.appStateManager.userName;
+    final primaryProfile = Profile(
+      id: '1',
+      name: existing?.name ?? (name.isEmpty ? 'You' : name),
+      color: const Color(0xFF168B87),
+      isPrimary: true,
+      bedtime: bedtime,
+    );
+    await widget.database.upsertProfile(primaryProfile);
+  }
+
+  void _openVerificationWithoutScanner(Extraction extraction) {
+    setState(() {
+      _scannedExtraction = extraction;
+      _includeScannerStep = false;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _pageController.animateToPage(
+          6,
+          duration: _transitionDuration,
+          curve: _transitionCurve,
+        );
+      }
+    });
+  }
+
+  Future<void> _handleUploadPhoto() async {
+    try {
+      final extraction = await pickAndExtractFromPhoto(
+        context,
+        onProcessingChanged: (processing) {
+          if (mounted) {
+            setState(() => _isProcessingPhoto = processing);
+          }
+        },
+      );
+      if (extraction != null && mounted) {
+        _openVerificationWithoutScanner(extraction);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      await showCupertinoDialog<void>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text('Photo Scan Failed'),
+          content: Text(e.toString()),
+          actions: [
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  void _handleManualEntry() {
+    _openVerificationWithoutScanner(Extraction(rawText: ''));
   }
 
   Future<void> _finishOnboarding({bool launchScan = false}) async {
@@ -156,48 +230,68 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
             physics: const NeverScrollableScrollPhysics(),
             onPageChanged: (page) => setState(() => _currentPage = page),
             children: [
-              // Step 1: Splash
+              // Step 1: Splash (Page 0)
               Step1Splash(onComplete: _nextPage),
 
-              // Step 2: Legal
+              // Step 2: Legal (Page 1)
               Step2Legal(onAgree: _nextPage),
 
-              // Step 3: Name Input & Greeting Morph
+              // Step 3: Name Input & Greeting Morph (Page 2)
               Step3NameMorph(
                 onNameConfirmed: _handleNameConfirmed,
                 onNext: _nextPage,
                 initialName: widget.appStateManager.userName,
               ),
 
-              // Step 4: Permissions & Settings
+              // Step 4: Privacy & Protection (Page 3)
               Step4Permissions(
                 appStateManager: widget.appStateManager,
                 notificationService: widget.notificationService,
                 onNext: _nextPage,
-                requestCamera: widget.requestCamera,
-                checkCamera: widget.checkCamera,
               ),
 
-              // Step 5: First Reminder Prompt
+              // Step 5: Sleep Schedule / Bedtime Setup (Page 4)
+              Step5Bedtime(
+                onBedtimeConfirmed: _handleBedtimeConfirmed,
+                onNext: _nextPage,
+                initialBedtime: _configuredBedtime,
+              ),
+
+              // Step 6: First Medication Setup Prompt (Page 5)
               Step5FirstReminder(
-                onStartScan: _nextPage,
+                onStartScan: () {
+                  if (_includeScannerStep) {
+                    _nextPage();
+                  } else {
+                    setState(() => _includeScannerStep = true);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _nextPage();
+                    });
+                  }
+                },
+                onUploadPhoto: _handleUploadPhoto,
+                onManualEntry: _handleManualEntry,
                 onSkipToSchedule: () => _finishOnboarding(launchScan: false),
               ),
 
-              // Step 6: Full-Screen Camera OCR/NER Scanner
-              Step6Scan(
-                isActive: _currentPage == 5,
-                onScanExtracted: (extraction) {
-                  setState(() => _scannedExtraction = extraction);
-                  _nextPage();
-                },
-                onBack: _previousPage,
-              ),
+              // Step 7: Full-Screen Camera OCR/NER Scanner (Page 6 when active)
+              if (_includeScannerStep)
+                Step6Scan(
+                  isActive: _currentPage == 6,
+                  onScanExtracted: (extraction) {
+                    setState(() {
+                      _scannedExtraction = extraction;
+                    });
+                    _nextPage();
+                  },
+                  onBack: _previousPage,
+                ),
 
-              // Step 7: Verification & Celebratory Confirmation
+              // Step 8: Verification & Celebratory Confirmation
               Step7Verification(
                 extraction: _scannedExtraction ?? _fallbackExtraction(),
                 primaryUserName: widget.appStateManager.userName,
+                showProgressBar: false,
                 onBack: _previousPage,
                 onConfirmAndSave: _handleConfirmAndSaveFirstMedication,
               ),
@@ -205,17 +299,20 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
           ),
 
           // Top Progress Indicator
-          // Visible on Steps 2, 3, 4, 5 (Steps 6 & 7 render their own progress bar inside their top area to prevent collision with navigation header)
-          if (_currentPage > 0 && _currentPage < 5)
+          // Stationary across onboarding steps; temporarily hidden on the
+          // full-screen camera scanner (Step6Scan) and reappears on verification.
+          if (_currentPage > 0 && !(_includeScannerStep && _currentPage == 6))
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
               left: 24,
               right: 24,
               child: OnboardingProgressBar(
-                currentStep: _currentPage - 1,
+                currentStep: (_currentPage - 1).clamp(0, 5),
                 totalSteps: 6,
               ),
             ),
+
+          if (_isProcessingPhoto) const ReadingLabelOverlay(),
         ],
       ),
     );

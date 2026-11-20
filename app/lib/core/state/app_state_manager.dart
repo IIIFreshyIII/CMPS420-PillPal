@@ -92,6 +92,7 @@ class AppStateManager extends ChangeNotifier {
       _retentionService?.retentionDays ?? _retentionDays;
   bool get biometricsEnabled => _appLockService?.isEnabled ?? false;
   AppLockService? get appLockService => _appLockService;
+  DataRetentionService? get retentionService => _retentionService;
 
   /// Loads all persistent flags from secure storage.
   Future<void> load() async {

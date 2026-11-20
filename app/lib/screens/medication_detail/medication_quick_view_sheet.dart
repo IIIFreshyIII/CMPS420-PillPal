@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/pillpal_colors.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
+import '../../presentation/widgets/pressable.dart';
 
 /// A small, read-only "quick look" at a medication -- tapping a med on the
 /// Schedule page opens this instead of jumping straight into the full
@@ -23,17 +24,32 @@ class MedicationQuickViewSheet extends StatelessWidget {
     required this.prescription,
     required this.profiles,
     required this.onEdit,
+    this.timeSlot,
+    this.isTaken = false,
+    this.isSkipped = false,
+    this.onSnooze,
+    this.onSkip,
   });
 
   final Prescription prescription;
   final List<Profile> profiles;
   final VoidCallback onEdit;
+  final String? timeSlot;
+  final bool isTaken;
+  final bool isSkipped;
+  final VoidCallback? onSnooze;
+  final VoidCallback? onSkip;
 
   static Future<void> show(
     BuildContext context, {
     required Prescription prescription,
     required List<Profile> profiles,
     required VoidCallback onEdit,
+    String? timeSlot,
+    bool isTaken = false,
+    bool isSkipped = false,
+    VoidCallback? onSnooze,
+    VoidCallback? onSkip,
   }) {
     return showModalBottomSheet(
       context: context,
@@ -44,6 +60,11 @@ class MedicationQuickViewSheet extends StatelessWidget {
         prescription: prescription,
         profiles: profiles,
         onEdit: onEdit,
+        timeSlot: timeSlot,
+        isTaken: isTaken,
+        isSkipped: isSkipped,
+        onSnooze: onSnooze,
+        onSkip: onSkip,
       ),
     );
   }
@@ -268,6 +289,99 @@ class MedicationQuickViewSheet extends StatelessWidget {
                 ),
               ),
             ),
+            if (!isTaken && (onSnooze != null || onSkip != null))
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                child: Row(
+                  children: [
+                    if (onSnooze != null)
+                      Expanded(
+                        child: Pressable(
+                          key: const Key('quick_view_snooze_button'),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            onSnooze!();
+                          },
+                          scale: 0.96,
+                          borderRadius: BorderRadius.circular(16),
+                          rippleColor:
+                              const Color(0xFFF59E0B).withValues(alpha: 0.16),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF59E0B)
+                                .withValues(alpha: 0.14),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFFF59E0B)
+                                  .withValues(alpha: 0.32),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                CupertinoIcons.clock_fill,
+                                size: 17,
+                                color: Color(0xFFD97706),
+                              ),
+                              SizedBox(width: 7),
+                              Text(
+                                'Snooze',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFD97706),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    if (onSnooze != null && onSkip != null)
+                      const SizedBox(width: 12),
+                    if (onSkip != null)
+                      Expanded(
+                        child: Pressable(
+                          key: const Key('quick_view_skip_button'),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            onSkip!();
+                          },
+                          scale: 0.96,
+                          borderRadius: BorderRadius.circular(16),
+                          rippleColor: c.ink.withValues(alpha: 0.08),
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          decoration: BoxDecoration(
+                            color: c.surface,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: c.borderLight),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                isSkipped
+                                    ? CupertinoIcons.arrow_counterclockwise
+                                    : CupertinoIcons.forward_fill,
+                                size: 17,
+                                color: c.ink,
+                              ),
+                              const SizedBox(width: 7),
+                              Text(
+                                isSkipped ? 'Undo Skip' : 'Skip Dose',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: c.ink,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),

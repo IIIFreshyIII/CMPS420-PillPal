@@ -64,4 +64,26 @@ void main() {
     expect(refined.first.recognized, isFalse);
     expect(refined.first.canonical, 'none'); // passthrough, never invented
   });
+
+  test('formatDrugName title-cases lowercase/uppercase names and suffixes', () {
+    expect(formatDrugName('lisinopril'), 'Lisinopril');
+    expect(formatDrugName('METFORMIN HCL'), 'Metformin HCl');
+    expect(formatDrugName('metoprolol er'), 'Metoprolol ER');
+  });
+
+  test('hasCompleteStrengthUnit rejects truncated 1M and accepts 1MG / 500 mg', () {
+    expect(hasCompleteStrengthUnit('1M'), isFalse);
+    expect(hasCompleteStrengthUnit('1MG'), isTrue);
+    expect(hasCompleteStrengthUnit('500 mg'), isTrue);
+    expect(hasCompleteStrengthUnit('0.5%'), isTrue);
+    expect(hasCompleteStrengthUnit(null), isFalse);
+  });
+
+  test('DrugMatcher strips stray leading barcode char on exact drug match', () {
+    final result = matcher.match('EFINASTERIDE');
+    expect(result.recognized, isTrue);
+    expect(result.corrected, isTrue);
+    expect(result.canonical, 'finasteride');
+    expect(formatDrugName(result.canonical), 'Finasteride');
+  });
 }

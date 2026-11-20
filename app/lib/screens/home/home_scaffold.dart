@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/pillpal_colors.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../data/services/app_lock_service.dart';
@@ -27,6 +28,7 @@ import '../../data/services/data_retention_service.dart';
 import '../../presentation/widgets/android_sliding_bottom_bar.dart';
 import '../../presentation/widgets/classic_ios_tab_bar.dart';
 import '../../presentation/widgets/keep_alive_tab_stack.dart';
+import '../../core/scheduling/reminder_scheduler.dart';
 import '../../core/services/ios_accessibility_service.dart';
 import '../../core/state/app_state_manager.dart';
 import '../../core/theme/liquid_glass_controller.dart';
@@ -36,6 +38,8 @@ import '../../services/walkthrough_service.dart';
 import '../../ui/widgets/walkthrough_overlay.dart';
 
 enum _AddMedsMode { live, upload, manual }
+
+enum _BedtimeSnoozeChoice { cancel, clampToBedtime, pauseUntilMorning }
 
 class HomeScaffold extends StatefulWidget {
   const HomeScaffold({
@@ -68,10 +72,12 @@ class HomeScaffold extends StatefulWidget {
   State<HomeScaffold> createState() => _HomeScaffoldState();
 }
 
-class _HomeScaffoldState extends State<HomeScaffold> {
+class _HomeScaffoldState extends State<HomeScaffold>
+    with WidgetsBindingObserver {
   late AppTab _activeTab;
   String _selectedProfileId = 'all';
   bool _isScanning = false;
+  bool _isProcessingPhoto = false;
   bool _isShowingWalkthrough = false;
   OverlayEntry? _walkthroughOverlayEntry;
 
@@ -104,6 +110,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   List<Profile> _profiles = const [];
   List<Prescription> _prescriptions = const [];
   List<DoseEvent> _doseEvents = const [];
+  final Set<String> _skippedSlotKeys = <String>{};
+  String _skippedDateKey = '';
 
 
   static const _seedProfiles = [
@@ -194,8 +202,8 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     super.initState();
     _activeTab = widget.initialTab;
     _db = widget.database ?? AppDatabase();
-    _notifications = NotificationService();
-    _retentionService = DataRetentionService();
+    _retentionService =
+        widget.appStateManager?.retentionService ?? DataRetentionService();
     _liquidGlassController =
         widget.liquidGlassController ?? LiquidGlassController();
     _walkthroughService = widget.walkthroughService ??
@@ -203,18 +211,25 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         WalkthroughService();
     _snoozeSettingsService =
         widget.snoozeSettingsService ?? SnoozeSettingsService();
+    _snoozeSettingsService.addListener(_onSnoozeSettingsChanged);
     _liveReminderService = widget.liveReminderService ??
         LiveReminderService(snoozeSettings: _snoozeSettingsService);
+    _notifications = NotificationService(
+      liveReminderService: _liveReminderService,
+    );
     _liveReminderService.onNativeAction = _handleNativeReminderAction;
     _liveReminderService.registerNativeCallbackHandler();
+    NotificationService.onLogAllTaken = _handleLogAllTakenForTimeSlot;
     if (!_walkthroughService.isLoaded) {
       unawaited(_walkthroughService.load());
     }
     if (!_snoozeSettingsService.isLoaded) {
       unawaited(_snoozeSettingsService.load());
     }
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_retentionService.load());
     unawaited(IOSAccessibilityService.instance.updateAccessibilitySettings());
+    unawaited(_loadSkippedSlotKeys());
 
     // Pre-populate _profiles with user's name to eliminate the 1-second
     // "Good afternoon, there" / blank schedule flash.
@@ -253,13 +268,19 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         _hasReceivedPrescriptionStream = true;
         setState(() => _prescriptions = _applySeedFilterPrescriptions(rows));
         _maybeLaunchPostOnboardingWalkthrough();
+        unawaited(_drainPendingNotificationActions());
       }
       _syncNotifications();
     }, onError: (e) {
       debugPrint('Error watching prescriptions: $e');
     });
     _doseEventsSub = _db.watchDoseEvents().listen((rows) {
-      if (mounted) setState(() => _doseEvents = _applySeedFilterDoseEvents(rows));
+      if (mounted) {
+        final filtered = _applySeedFilterDoseEvents(rows);
+        setState(() {
+          _doseEvents = filtered;
+        });
+      }
     }, onError: (e) {
       debugPrint('Error watching dose events: $e');
     });
@@ -337,7 +358,13 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         _notificationPermissionsRequested = true;
         await _notifications.requestPermissions();
       }
-      await _notifications.syncAll(_prescriptions, _profiles);
+      await _notifications.syncAll(
+        _prescriptions,
+        _profiles,
+        skippedSlotKeys: _skippedSlotKeys,
+        activeSnoozeEnds: _liveReminderService.activeSnoozeEnds,
+        bypassBedtime: _snoozeSettingsService.isBedtimeBypassed(),
+      );
     } catch (e) {
       debugPrint('Notification sync failed: $e');
     } finally {
@@ -346,6 +373,74 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         _notificationSyncQueued = false;
         unawaited(_syncNotifications());
       }
+    }
+  }
+
+  Future<void> _drainPendingNotificationActions() async {
+    final actions = await _notifications.drainPendingActions();
+    if (actions.isEmpty || !mounted) return;
+    for (final entry in actions) {
+      if (entry.actionId == NotificationService.logAllTakenActionId) {
+        await _handleLogAllTakenForTimeSlot(entry.timeSlot);
+      } else if (entry.actionId == NotificationService.snoozeActionId) {
+        await _notifications.handleReminderSnooze(
+          entry.timeSlot,
+          prescriptions: _prescriptions,
+          profiles: _profiles,
+          snoozeDurationMinutes: _snoozeSettingsService.snoozeDurationMinutes,
+          bypassBedtime: _snoozeSettingsService.isBedtimeBypassed(),
+        );
+        unawaited(_syncNotifications());
+      }
+    }
+  }
+
+  Future<void> _handleLogAllTakenForTimeSlot(String timeSlot) async {
+    if (!mounted) return;
+    final profileMap = {for (final p in _profiles) p.id: p};
+    for (final prescription in _prescriptions) {
+      final profile = profileMap[prescription.profileId];
+      for (final candidate in prescription.reminderTimes) {
+        if (!isSameTimeSlot(candidate, timeSlot)) continue;
+        final allowed = shouldScheduleReminder(
+          time: candidate,
+          bedtime: profile?.bedtime,
+          allowAfterBedtime: prescription.allowAfterBedtime,
+        );
+        if (!allowed) continue;
+        final isTaken = prescription.takenTimes.any(
+          (t) => isSameTimeSlot(t, candidate),
+        );
+        final isSkipped =
+            _skippedSlotKeys.contains('${prescription.id}_$candidate');
+        if (!isTaken && !isSkipped) {
+          _handleTakeDose(prescription.id, candidate);
+        }
+      }
+    }
+    await _liveReminderService.dismissActivity(
+      batchId: batchIdForTimeSlot(timeSlot),
+    );
+    await _notifications.cancelSnoozeNotification(timeSlot);
+  }
+
+  void _onSnoozeSettingsChanged() {
+    if (!mounted) return;
+    unawaited(_syncNotifications());
+  }
+
+  Future<void> _syncTimeSlotLiveReminder(
+    String timeSlot,
+    List<Prescription> prescriptions,
+  ) async {
+    final batch = await _liveReminderService.syncTimeSlotDoses(
+      timeSlot: timeSlot,
+      prescriptions: prescriptions,
+      profiles: _profiles,
+      skippedSlotKeys: _skippedSlotKeys,
+    );
+    if (batch.remainingDosesCount <= 0) {
+      await _notifications.cancelSnoozeNotification(timeSlot);
     }
   }
 
@@ -386,12 +481,28 @@ class _HomeScaffoldState extends State<HomeScaffold> {
           final alreadyTaken = prescription.takenTimes.any(
             (t) => isSameTimeSlot(t, time),
           );
-          if (!alreadyTaken && firstUntakenPrescription == null) {
+          final isSkipped =
+              _skippedSlotKeys.contains('${prescription.id}_$time');
+          if (!alreadyTaken && !isSkipped && firstUntakenPrescription == null) {
             firstUntakenPrescription = prescription;
             matchedTimeSlot = time;
           }
         }
       }
+    }
+
+    if (action == 'cancelSnooze') {
+      final targetBatchId = batchId.isNotEmpty
+          ? batchId
+          : (matchedTimeSlot != null ? batchIdForTimeSlot(matchedTimeSlot) : '');
+      if (targetBatchId.isNotEmpty) {
+        await _liveReminderService.dismissActivity(batchId: targetBatchId);
+      }
+      if (matchedTimeSlot != null) {
+        await _notifications.cancelSnoozeNotification(matchedTimeSlot);
+      }
+      unawaited(_syncNotifications());
+      return;
     }
 
     if (action == 'logTaken') {
@@ -406,12 +517,63 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         // let the existing countdown continue running undisturbed.
         return;
       }
-      await _liveReminderService.startSnoozeForTimeSlot(
-        timeSlot: matchedTimeSlot,
+      await _notifications.handleReminderSnooze(
+        matchedTimeSlot,
         prescriptions: _prescriptions,
         profiles: _profiles,
+        snoozeDurationMinutes: _snoozeSettingsService.snoozeDurationMinutes,
+        bypassBedtime: _snoozeSettingsService.isBedtimeBypassed(),
       );
+      unawaited(_syncNotifications());
     }
+  }
+
+  String _todaySkippedKey() {
+    final now = DateTime.now();
+    return 'pillpal_skipped_${now.year}_${now.month}_${now.day}';
+  }
+
+  void _rolloverSkippedIfNewDay() {
+    final todayKey = _todaySkippedKey();
+    if (_skippedDateKey.isNotEmpty && _skippedDateKey != todayKey) {
+      setState(() {
+        _skippedSlotKeys.clear();
+        _skippedDateKey = todayKey;
+      });
+      unawaited(_syncNotifications());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _rolloverSkippedIfNewDay();
+      unawaited(_snoozeSettingsService.clearExpiredBedtimeBypass());
+    }
+  }
+
+  Future<void> _loadSkippedSlotKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todayKey = _todaySkippedKey();
+      _skippedDateKey = todayKey;
+      final list = prefs.getStringList(todayKey) ?? [];
+      if (mounted && list.isNotEmpty) {
+        setState(() {
+          _skippedSlotKeys.addAll(list);
+        });
+        unawaited(_syncNotifications());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistSkippedSlotKeys() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final todayKey = _todaySkippedKey();
+      _skippedDateKey = todayKey;
+      await prefs.setStringList(todayKey, _skippedSlotKeys.toList());
+    } catch (_) {}
   }
 
   /// Writes a `DoseEvent` only when a dose actually gets marked taken --
@@ -420,6 +582,14 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   /// [time] is which of the prescription's (possibly several) reminder
   /// times was acted on.
   void _handleTakeDose(String id, String time) {
+    final slotKey = '${id}_$time';
+    if (_skippedSlotKeys.contains(slotKey)) {
+      setState(() {
+        _skippedSlotKeys.remove(slotKey);
+      });
+      unawaited(_persistSkippedSlotKeys());
+    }
+
     final item = _prescriptions.firstWhere((p) => p.id == id);
     final willBeTaken = !item.takenTimes.contains(time);
 
@@ -447,11 +617,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     final updatedList = [
       for (final p in _prescriptions) p.id == updated.id ? updated : p,
     ];
-    unawaited(_liveReminderService.syncTimeSlotDoses(
-      timeSlot: time,
-      prescriptions: updatedList,
-      profiles: _profiles,
-    ));
+    unawaited(_syncTimeSlotLiveReminder(time, updatedList));
     if (willBeTaken) {
       final now = DateTime.now();
       final scheduledTod = parseTimeOfDayLabel(time);
@@ -479,6 +645,272 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         ));
       }
     }
+  }
+
+  Future<void> _handleSkipDose(String id, String time) async {
+    HapticFeedback.lightImpact();
+    final item = _prescriptions.firstWhere((p) => p.id == id);
+    final slotKey = '${id}_$time';
+    final wasSkipped = _skippedSlotKeys.contains(slotKey);
+
+    if (wasSkipped) {
+      setState(() {
+        _skippedSlotKeys.remove(slotKey);
+      });
+      await _persistSkippedSlotKeys();
+      unawaited(_syncTimeSlotLiveReminder(time, _prescriptions));
+      unawaited(_syncNotifications());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Restored ${item.name} for $time'),
+          duration: const Duration(seconds: 2),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    _rolloverSkippedIfNewDay();
+    setState(() {
+      _skippedSlotKeys.add(slotKey);
+    });
+    await _persistSkippedSlotKeys();
+
+    final now = DateTime.now();
+    if (_retentionService.retentionDays > 0) {
+      await _db.insertDoseEvent(DoseEvent(
+        id: '${id}_${now.microsecondsSinceEpoch}',
+        prescriptionId: id,
+        profileId: item.profileId,
+        occurredAt: now,
+        action: DoseAction.skipped,
+      ));
+    }
+
+    if (item.takenTimes.contains(time)) {
+      final updated = item.copyWith(
+        takenTimes: item.takenTimes.difference({time}),
+        remaining: (item.remaining + 1).clamp(0, 9999),
+        daysSupply: (item.daysSupply + 1).clamp(0, 9999),
+      );
+      await _db.upsertPrescription(updated);
+    }
+
+    unawaited(_syncTimeSlotLiveReminder(time, _prescriptions));
+    unawaited(_syncNotifications());
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Skipped ${item.name} for $time'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<T?> _showPlatformActionDialog<T>({
+    Key? key,
+    required String title,
+    required String content,
+    required List<({String label, T value, bool isDefault})> actions,
+  }) {
+    final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
+    if (isIOS) {
+      return showCupertinoDialog<T>(
+        context: context,
+        builder: (ctx) => CupertinoAlertDialog(
+          key: key,
+          title: Text(title),
+          content: Text(content),
+          actions: [
+            for (final action in actions)
+              CupertinoDialogAction(
+                isDefaultAction: action.isDefault,
+                onPressed: () => Navigator.pop(ctx, action.value),
+                child: Text(action.label),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return showDialog<T>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        key: key,
+        title: Text(title),
+        content: Text(content),
+        actions: [
+          for (final action in actions)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, action.value),
+              child: Text(
+                action.label,
+                style: TextStyle(
+                  fontWeight:
+                      action.isDefault ? FontWeight.w700 : FontWeight.w500,
+                  color: action.isDefault ? context.colors.teal : null,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleSnoozeDose(String id, String time) async {
+    HapticFeedback.lightImpact();
+    final now = DateTime.now();
+    final mins = _snoozeSettingsService.snoozeDurationMinutes;
+
+    // 1. Guard premature snooze if the scheduled slot is still > 30 min away.
+    final leadTime = timeUntilScheduledSlot(now: now, timeSlot: time);
+    if (leadTime != null && leadTime > const Duration(minutes: 30)) {
+      final proceed = await _showPlatformActionDialog<bool>(
+        key: const Key('early_snooze_dialog'),
+        title: 'Not Due Yet',
+        content: 'Your $time dose isn\'t scheduled for another '
+            '${formatLeadTimeDuration(leadTime)}. Start a $mins-minute '
+            'reminder countdown now anyway?',
+        actions: [
+          (label: 'Cancel', value: false, isDefault: false),
+          (label: 'Start ${mins}m Countdown', value: true, isDefault: true),
+        ],
+      );
+      if (proceed != true || !mounted) return;
+    }
+
+    // 2. Contextual bedtime quiet-hours prompt when snoozing near or after bedtime.
+    var bypassForThisSnooze = _snoozeSettingsService.isBedtimeBypassed(now: now);
+    final previewBatch = calculateDoseBatch(
+      _prescriptions,
+      time,
+      profiles: _profiles,
+      skippedSlotKeys: _skippedSlotKeys,
+      bypassBedtime: true,
+    );
+    final profileBedtime = LiveReminderService.resolveBedtimeForBatch(
+      batch: previewBatch,
+      profiles: _profiles,
+    );
+
+    if (!bypassForThisSnooze && profileBedtime != null) {
+      final clamped = clampSnoozeDurationToBedtime(
+        now: now,
+        requestedMinutes: mins,
+        bedtime: profileBedtime,
+      );
+      if (clamped <= 0) {
+        final pauseTonight = await _showPlatformActionDialog<bool>(
+          key: const Key('bedtime_snooze_dialog'),
+          title: 'Past Bedtime Quiet Hours',
+          content: 'Your $profileBedtime bedtime has passed. Pause bedtime '
+              'quiet hours until 6:00 AM to start a $mins-minute snooze?',
+          actions: [
+            (label: 'Cancel', value: false, isDefault: false),
+            (label: 'Pause Until 6:00 AM', value: true, isDefault: true),
+          ],
+        );
+        if (pauseTonight != true || !mounted) return;
+        await _snoozeSettingsService.pauseBedtimeUntilMorning(now: now);
+        bypassForThisSnooze = true;
+      } else if (clamped < mins) {
+        final choice = await _showPlatformActionDialog<_BedtimeSnoozeChoice>(
+          key: const Key('bedtime_snooze_dialog'),
+          title: 'Reaches Bedtime ($profileBedtime)',
+          content: 'A $mins-minute snooze goes past your $profileBedtime '
+              'bedtime. You can end the timer at bedtime (when Final Call '
+              'takes over) or pause quiet hours until 6:00 AM.',
+          actions: [
+            (
+              label: 'Pause Until 6:00 AM',
+              value: _BedtimeSnoozeChoice.pauseUntilMorning,
+              isDefault: true,
+            ),
+            (
+              label: 'End at $profileBedtime (${clamped}m)',
+              value: _BedtimeSnoozeChoice.clampToBedtime,
+              isDefault: false,
+            ),
+            (
+              label: 'Cancel',
+              value: _BedtimeSnoozeChoice.cancel,
+              isDefault: false,
+            ),
+          ],
+        );
+        if (choice == null ||
+            choice == _BedtimeSnoozeChoice.cancel ||
+            !mounted) {
+          return;
+        }
+        if (choice == _BedtimeSnoozeChoice.pauseUntilMorning) {
+          await _snoozeSettingsService.pauseBedtimeUntilMorning(now: now);
+          bypassForThisSnooze = true;
+        }
+      }
+    }
+
+    // 3. Start two-phase Live Activity and schedule the dedicated Snooze push alert.
+    final batch = await _liveReminderService.startSnoozeForTimeSlot(
+      timeSlot: time,
+      prescriptions: _prescriptions,
+      profiles: _profiles,
+      skippedSlotKeys: _skippedSlotKeys,
+      bypassBedtime: bypassForThisSnooze,
+    );
+    final outcome = _liveReminderService.lastStartOutcome;
+
+    if (outcome?.snoozeEndTime != null &&
+        batch.remainingDosesCount > 0 &&
+        (outcome!.status == SnoozeStartStatus.started ||
+            outcome.status == SnoozeStartStatus.liveActivitiesDisabled ||
+            outcome.status == SnoozeStartStatus.failed)) {
+      await _notifications.scheduleSnoozeNotification(
+        timeSlot: time,
+        fireAt: outcome.snoozeEndTime!,
+        remainingCount: batch.remainingDosesCount,
+        profileName: batch.profileName,
+      );
+      unawaited(_syncNotifications());
+    }
+
+    if (!mounted) return;
+    final effectiveMins =
+        (outcome != null && outcome.effectiveDurationMinutes > 0)
+            ? outcome.effectiveDurationMinutes
+            : mins;
+    final unit = effectiveMins == 1 ? 'minute' : 'minutes';
+
+    final String message;
+    switch (outcome?.status) {
+      case SnoozeStartStatus.liveActivitiesDisabled:
+        message =
+            'Snoozed for $effectiveMins $unit — enable Live Activities in iOS Settings for Dynamic Island.';
+      case SnoozeStartStatus.failed:
+        message =
+            'Snooze reminder set for $effectiveMins $unit (Live Activity unavailable).';
+      case SnoozeStartStatus.blockedByBedtime:
+        message =
+            'Past bedtime quiet hours — Final Call handles evening reminders.';
+      case SnoozeStartStatus.noPendingDoses:
+        message = 'All doses for $time are already handled.';
+      case SnoozeStartStatus.started:
+      case null:
+        message = (outcome?.clampedToBedtime ?? false) && profileBedtime != null
+            ? 'Snoozed $time reminder until $profileBedtime'
+            : 'Snoozed $time reminder for $effectiveMins $unit';
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 3),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _showRefillDialog(String medName) {
@@ -515,7 +947,14 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   }
 
   void _handleDeleteMedication(String id) {
+    final deleted = _prescriptions.where((p) => p.id == id).toList();
+    final remaining = _prescriptions.where((p) => p.id != id).toList();
     _db.deletePrescription(id);
+    for (final med in deleted) {
+      for (final slot in med.reminderTimes) {
+        unawaited(_syncTimeSlotLiveReminder(slot, remaining));
+      }
+    }
   }
 
   /// [targets] is (prescriptionId, time) pairs -- a prescription with
@@ -587,11 +1026,7 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       );
     }).toList();
     for (final slot in affectedTimeSlots) {
-      unawaited(_liveReminderService.syncTimeSlotDoses(
-        timeSlot: slot,
-        prescriptions: updatedPrescriptions,
-        profiles: _profiles,
-      ));
+      unawaited(_syncTimeSlotLiveReminder(slot, updatedPrescriptions));
     }
   }
 
@@ -613,17 +1048,54 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     }
 
     setState(() => _isScanning = true);
-    final extraction = await Navigator.of(context).push<Extraction>(
-      MaterialPageRoute(
-        builder: (_) => mode == _AddMedsMode.live
-            ? const LiveScanScreen()
-            : const UploadScanScreen(),
-      ),
-    );
+    Extraction? extraction;
+    if (mode == _AddMedsMode.live) {
+      extraction = await Navigator.of(context).push<Extraction>(
+        MaterialPageRoute(
+          builder: (_) => const LiveScanScreen(),
+        ),
+      );
+    } else {
+      try {
+        extraction = await pickAndExtractFromPhoto(
+          context,
+          onProcessingChanged: (processing) {
+            if (mounted) {
+              setState(() => _isProcessingPhoto = processing);
+            }
+          },
+        );
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _isProcessingPhoto = false;
+            _isScanning = false;
+          });
+          await showCupertinoDialog<void>(
+            context: context,
+            builder: (ctx) => CupertinoAlertDialog(
+              title: const Text('Photo Scan Failed'),
+              content: Text(e.toString()),
+              actions: [
+                CupertinoDialogAction(
+                  isDefaultAction: true,
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+    }
     if (!mounted) return;
 
     if (extraction == null) {
-      setState(() => _isScanning = false);
+      setState(() {
+        _isProcessingPhoto = false;
+        _isScanning = false;
+      });
       return;
     }
 
@@ -635,7 +1107,10 @@ class _HomeScaffoldState extends State<HomeScaffold> {
       isManual: isManual,
     );
     if (!mounted) return;
-    setState(() => _isScanning = false);
+    setState(() {
+      _isProcessingPhoto = false;
+      _isScanning = false;
+    });
 
     if (prescription != null) {
       await _db.upsertPrescription(prescription);
@@ -823,6 +1298,21 @@ class _HomeScaffoldState extends State<HomeScaffold> {
     );
   }
 
+  void _handleViewMedicationSlot(Prescription prescription, String time) {
+    final slotKey = '${prescription.id}_$time';
+    MedicationQuickViewSheet.show(
+      context,
+      prescription: prescription,
+      profiles: _profiles,
+      timeSlot: time,
+      isTaken: prescription.takenTimes.contains(time),
+      isSkipped: _skippedSlotKeys.contains(slotKey),
+      onEdit: () => _handleEditMedication(prescription),
+      onSnooze: () => _handleSnoozeDose(prescription.id, time),
+      onSkip: () => _handleSkipDose(prescription.id, time),
+    );
+  }
+
   void _onWalkthroughStateChanged() {
     if (!mounted) return;
     _maybeLaunchPostOnboardingWalkthrough();
@@ -944,12 +1434,17 @@ class _HomeScaffoldState extends State<HomeScaffold> {
         selectedProfileId: _selectedProfileId,
         onSelectProfile: (id) => setState(() => _selectedProfileId = id),
         onTakeDose: _handleTakeDose,
+        onSnoozeDose: _handleSnoozeDose,
+        onSkipDose: _handleSkipDose,
+        skippedSlotKeys: _skippedSlotKeys,
         onViewMedication: _handleViewMedication,
+        onViewSlot: _handleViewMedicationSlot,
         onEditMedication: _handleEditMedication,
         onDeleteMedication: _handleDeleteMedication,
         onToggleAllCompleted: _handleToggleAllCompleted,
         onOpenScan: _openScan,
         isScanning: _isScanning,
+        isActive: _activeTab == AppTab.schedule && !_isShowingWalkthrough,
         firstMedCardKey: _firstMedCardKey,
         profileSwitcherKey: _profileSwitcherKey,
         profileChipKeys: _profileChipKeys,
@@ -993,12 +1488,17 @@ class _HomeScaffoldState extends State<HomeScaffold> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (_walkthroughOverlayEntry?.mounted ?? false) {
       _walkthroughOverlayEntry?.remove();
     }
     _walkthroughOverlayEntry = null;
     _walkthroughService.removeListener(_onWalkthroughStateChanged);
+    _snoozeSettingsService.removeListener(_onSnoozeSettingsChanged);
     widget.appStateManager?.removeListener(_onAppStateChanged);
+    if (NotificationService.onLogAllTaken == _handleLogAllTakenForTimeSlot) {
+      NotificationService.onLogAllTaken = null;
+    }
     _profilesSub?.cancel();
     _prescriptionsSub?.cancel();
     _doseEventsSub?.cancel();
@@ -1049,7 +1549,12 @@ class _HomeScaffoldState extends State<HomeScaffold> {
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: _systemBarsStyle(Theme.of(context).brightness),
-      child: _buildShell(context),
+      child: Stack(
+        children: [
+          _buildShell(context),
+          if (_isProcessingPhoto) const ReadingLabelOverlay(),
+        ],
+      ),
     );
   }
 

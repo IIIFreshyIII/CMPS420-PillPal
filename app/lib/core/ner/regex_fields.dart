@@ -26,6 +26,9 @@ final RegExp _dateRx = RegExp(
 // across from "Qty: 60".
 final RegExp _supplyRxColon = RegExp(r'day(?:s)?\s*supply\s*[:\-]?\s*(\d{1,3})', caseSensitive: false);
 final RegExp _supplyRxBare = RegExp(r'(\d{1,3})[\- ]?day(?:s)?\s*supply', caseSensitive: false);
+final RegExp _qtyRx = RegExp(r'(?:qty|quantity)\s*[:\-]?\s*(\d{1,4})', caseSensitive: false);
+final RegExp _refillsRx = RegExp(r'refills?\s*[:\-]?\s*(\d{1,2})', caseSensitive: false);
+final RegExp _noRefillsRx = RegExp(r'\bno\s+refills?\b', caseSensitive: false);
 
 const _monthNames = {
   'jan': 1, 'january': 1, 'feb': 2, 'february': 2, 'mar': 3, 'march': 3,
@@ -35,9 +38,11 @@ const _monthNames = {
 };
 
 class RegexFields {
-  RegexFields({this.fillDate, this.daysSupply});
+  RegexFields({this.fillDate, this.daysSupply, this.quantity, this.refills});
   final DateTime? fillDate;
   final int? daysSupply;
+  final int? quantity;
+  final int? refills;
 }
 
 RegexFields extractRegexFields(String text) {
@@ -53,7 +58,26 @@ RegexFields extractRegexFields(String text) {
     daysSupply = int.tryParse(supplyMatch.group(1)!);
   }
 
-  return RegexFields(fillDate: fillDate, daysSupply: daysSupply);
+  int? quantity;
+  final qtyMatch = _qtyRx.firstMatch(text);
+  if (qtyMatch != null) {
+    quantity = int.tryParse(qtyMatch.group(1)!);
+  }
+
+  int? refills;
+  final refillsMatch = _refillsRx.firstMatch(text);
+  if (refillsMatch != null) {
+    refills = int.tryParse(refillsMatch.group(1)!);
+  } else if (_noRefillsRx.hasMatch(text)) {
+    refills = 0;
+  }
+
+  return RegexFields(
+    fillDate: fillDate,
+    daysSupply: daysSupply,
+    quantity: quantity,
+    refills: refills,
+  );
 }
 
 DateTime? _parseDate(String s) {

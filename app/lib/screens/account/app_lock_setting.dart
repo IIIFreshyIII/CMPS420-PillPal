@@ -1,8 +1,8 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 
 import '../../core/theme/pillpal_colors.dart';
 import '../../data/services/app_lock_service.dart';
+import '../../presentation/widgets/platform_controls.dart';
 
 /// Profile → Preferences & Storage → App Lock. Turning it on asks for the
 /// device unlock once first, so nobody can turn on a lock their phone can't
@@ -77,7 +77,7 @@ class _AppLockSettingState extends State<AppLockSetting> {
                 ],
               ),
             ),
-            Switch(
+            PlatformSwitch(
               key: const Key('app_lock_switch'),
               value: widget.service.isEnabled,
               activeThumbColor: c.onTeal,

@@ -20,7 +20,11 @@ import '../models/profile.dart';
 /// all logs indefinitely in Settings.
 class DataRetentionService extends ChangeNotifier {
   DataRetentionService({FlutterSecureStorage? storage})
-      : _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ??
+            const FlutterSecureStorage(
+              iOptions:
+                  IOSOptions(accessibility: KeychainAccessibility.first_unlock),
+            );
 
   final FlutterSecureStorage _storage;
 
@@ -133,14 +137,30 @@ class DataRetentionService extends ChangeNotifier {
         DoseAction.skipped => 'Skipped',
       };
 
-      final medName = (med?.name ?? 'Unknown Medication').replaceAll(',', ' ');
-      final dosage = (med?.dosage ?? '').replaceAll(',', ' ');
-      final profileName = (profile?.name ?? 'General').replaceAll(',', ' ');
+      final medName = _escapeCsvCell(med?.name ?? 'Unknown Medication');
+      final dosage = _escapeCsvCell(med?.dosage ?? '');
+      final profileName = _escapeCsvCell(profile?.name ?? 'General');
 
-      buffer.writeln('$dateStr,$timeStr,$statusStr,$medName,$dosage,$profileName');
+      buffer.writeln(
+        '${_escapeCsvCell(dateStr)},${_escapeCsvCell(timeStr)},${_escapeCsvCell(statusStr)},$medName,$dosage,$profileName',
+      );
     }
 
     return buffer.toString();
+  }
+
+  static String _escapeCsvCell(String value) {
+    var safe = value;
+    if (safe.isNotEmpty && '=+-@\t\r'.contains(safe[0])) {
+      safe = "'$safe";
+    }
+    if (safe.contains(',') ||
+        safe.contains('"') ||
+        safe.contains('\n') ||
+        safe.contains('\r')) {
+      safe = '"${safe.replaceAll('"', '""')}"';
+    }
+    return safe;
   }
 
   /// Exports dose history logs to a CSV file and opens the native OS share sheet.
@@ -159,9 +179,17 @@ class DataRetentionService extends ChangeNotifier {
     final file = File('${dir.path}/pillpal_dose_history.csv');
     await file.writeAsString(csvContent);
 
-    await SharePlus.instance.share(ShareParams(
-      files: [XFile(file.path, name: 'pillpal_dose_history.csv')],
-      subject: 'PillPal Medication Dose History',
-    ));
+    try {
+      await SharePlus.instance.share(ShareParams(
+        files: [XFile(file.path, name: 'pillpal_dose_history.csv')],
+        subject: 'PillPal Medication Dose History',
+      ));
+    } finally {
+      try {
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
+    }
   }
 }

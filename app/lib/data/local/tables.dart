@@ -46,6 +46,7 @@ class Prescriptions extends Table {
   TextColumn get takenTimes => text().map(const StringListConverter())();
   IntColumn get remaining => integer()();
   IntColumn get daysSupply => integer()();
+  IntColumn get refillsRemaining => integer().withDefault(const Constant(0))();
   BoolColumn get allowAfterBedtime => boolean().withDefault(const Constant(false))();
 
   @override

@@ -183,6 +183,7 @@ void main() {
       expect(find.text('1 of 3'), findsOneWidget);
       expect(find.text('Next'), findsOneWidget);
       expect(find.text('Skip Tour'), findsOneWidget);
+      expect(find.byKey(const Key('walkthrough_back_button')), findsNothing);
 
       // Advance to Step 2 of 3
       await tester.tap(find.byKey(const Key('walkthrough_next_button')));
@@ -191,7 +192,32 @@ void main() {
 
       expect(find.text('CareRecipient Switcher'), findsOneWidget);
       expect(find.text('2 of 3'), findsOneWidget);
+      expect(find.byKey(const Key('walkthrough_back_button')), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.byKey(const Key('walkthrough_back_button'))).dx,
+        lessThan(
+          tester.getTopLeft(find.byKey(const Key('walkthrough_next_button'))).dx,
+        ),
+      );
       expect(visitedSteps, [1]);
+
+      // Go back to Step 1 of 3
+      await tester.tap(find.byKey(const Key('walkthrough_back_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Your Daily Timeline'), findsOneWidget);
+      expect(find.text('1 of 3'), findsOneWidget);
+      expect(find.byKey(const Key('walkthrough_back_button')), findsNothing);
+      expect(visitedSteps, [1, 0]);
+
+      // Advance to Step 2 of 3 again
+      await tester.tap(find.byKey(const Key('walkthrough_next_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('CareRecipient Switcher'), findsOneWidget);
+      expect(find.text('2 of 3'), findsOneWidget);
 
       // Advance to Step 3 of 3
       await tester.tap(find.byKey(const Key('walkthrough_next_button')));
@@ -201,7 +227,8 @@ void main() {
       expect(find.text('Quick-Scan More Bottles'), findsOneWidget);
       expect(find.text('3 of 3'), findsOneWidget);
       expect(find.text('Got It'), findsOneWidget);
-      expect(visitedSteps, [1, 2]);
+      expect(find.byKey(const Key('walkthrough_back_button')), findsOneWidget);
+      expect(visitedSteps, [1, 0, 1, 2]);
 
       // Complete tour
       await tester.tap(find.byKey(const Key('walkthrough_next_button')));

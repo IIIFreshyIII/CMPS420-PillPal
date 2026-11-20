@@ -10,6 +10,7 @@ import '../../../data/models/profile.dart';
 import '../../../data/services/extractor.dart';
 import '../../../presentation/widgets/confetti_burst.dart';
 import '../../../presentation/widgets/pressable.dart';
+import '../../../ui/widgets/medication_type_selector.dart';
 import '../widgets/onboarding_progress_bar.dart';
 
 /// Step 7: Editable OCR/NER Verification & Celebratory Confirmation.
@@ -32,6 +33,7 @@ class Step7Verification extends StatefulWidget {
     required this.primaryUserName,
     required this.onBack,
     required this.onConfirmAndSave,
+    this.showProgressBar = true,
   });
 
   final Extraction extraction;
@@ -39,6 +41,7 @@ class Step7Verification extends StatefulWidget {
   final VoidCallback onBack;
   final Future<void> Function(Prescription prescription, Profile? newProfile)
       onConfirmAndSave;
+  final bool showProgressBar;
 
   @override
   State<Step7Verification> createState() => _Step7VerificationState();
@@ -49,9 +52,12 @@ enum _FoodInstruction { withFood, withoutFood, anytime }
 class _Step7VerificationState extends State<Step7Verification> {
   late final TextEditingController _nameController;
   late final TextEditingController _dosageController;
+  late final TextEditingController _quantityController;
+  late final TextEditingController _daysSupplyController;
+  late final TextEditingController _refillsController;
   late final TextEditingController _recipientNameController;
 
-  String _route = 'By mouth';
+  String _route = 'Pill / Oral';
   _FoodInstruction _food = _FoodInstruction.anytime;
   String _frequency = 'Once daily';
   List<String> _reminderTimes = ['8:00 AM'];
@@ -99,6 +105,14 @@ class _Step7VerificationState extends State<Step7Verification> {
 
     _dosageController = TextEditingController(text: initialDosage);
 
+    final initialDaysSupply = e.daysSupply ?? 30;
+    final initialQuantity = e.quantity ?? initialDaysSupply;
+    final initialRefills = e.refills ?? 0;
+
+    _quantityController = TextEditingController(text: '$initialQuantity');
+    _daysSupplyController = TextEditingController(text: '$initialDaysSupply');
+    _refillsController = TextEditingController(text: '$initialRefills');
+
     _recipientNameController = TextEditingController(text: '');
 
     // Pre-populate frequency & reminder times
@@ -123,10 +137,27 @@ class _Step7VerificationState extends State<Step7Verification> {
     }
   }
 
+  bool get _hasScannedText => widget.extraction.rawText.trim().isNotEmpty;
+
+  bool _isSupplyFieldFlagged(String field) {
+    if (!_hasScannedText) return false;
+    return switch (field) {
+      'quantity' => widget.extraction.quantity == null,
+      'daysSupply' => widget.extraction.daysSupply == null,
+      // Always prompt the user to verify refills on scanned bottles since
+      // curved-label OCR frequently misreads small refill digits.
+      'refills' => true,
+      _ => false,
+    };
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
     _dosageController.dispose();
+    _quantityController.dispose();
+    _daysSupplyController.dispose();
+    _refillsController.dispose();
     _recipientNameController.dispose();
     super.dispose();
   }
@@ -302,6 +333,12 @@ class _Step7VerificationState extends State<Step7Verification> {
       }
 
       final dosageText = _dosageController.text.trim();
+      final quantity =
+          (int.tryParse(_quantityController.text.trim()) ?? 30).clamp(0, 9999);
+      final daysSupply =
+          (int.tryParse(_daysSupplyController.text.trim()) ?? 30).clamp(1, 9999);
+      final refills =
+          (int.tryParse(_refillsController.text.trim()) ?? 0).clamp(0, 99);
 
       final prescription = Prescription(
         id: 'rx_${DateTime.now().millisecondsSinceEpoch}',
@@ -310,8 +347,9 @@ class _Step7VerificationState extends State<Step7Verification> {
         dosage: dosageText.isNotEmpty ? dosageText : '500 mg',
         reminderTimes:
             _reminderTimes.isNotEmpty ? List.from(_reminderTimes) : ['8:00 AM'],
-        remaining: widget.extraction.daysSupply ?? 30,
-        daysSupply: widget.extraction.daysSupply ?? 30,
+        remaining: quantity,
+        daysSupply: daysSupply,
+        refillsRemaining: refills,
       );
 
       await widget.onConfirmAndSave(prescription, secondaryProfile);
@@ -351,16 +389,19 @@ class _Step7VerificationState extends State<Step7Verification> {
         body: SafeArea(
           child: Column(
             children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                   children: [
-                    SizedBox(height: 12),
-                    OnboardingProgressBar(
-                      currentStep: 5,
-                      totalSteps: 6,
-                    ),
-                    SizedBox(height: 16),
+                    if (widget.showProgressBar) ...[
+                      const SizedBox(height: 12),
+                      const OnboardingProgressBar(
+                        currentStep: 5,
+                        totalSteps: 6,
+                      ),
+                      const SizedBox(height: 16),
+                    ] else
+                      const SizedBox(height: 32),
                   ],
                 ),
               ),
@@ -444,7 +485,7 @@ class _Step7VerificationState extends State<Step7Verification> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Route & Method',
+                          'Medication Type',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -452,23 +493,10 @@ class _Step7VerificationState extends State<Step7Verification> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        _HorizontalChevronScrollRow(
-                          children: [
-                            'By mouth',
-                            'Topical',
-                            'Inhalation',
-                            'Injection',
-                          ].map((opt) {
-                            final isSelected = _route == opt;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: _AdaptiveChoiceChip(
-                                label: opt,
-                                selected: isSelected,
-                                onSelected: (_) => setState(() => _route = opt),
-                              ),
-                            );
-                          }).toList(),
+                        MedicationTypeSelector(
+                          key: const Key('verify_medication_type_selector'),
+                          selectedType: _route,
+                          onSelected: (opt) => setState(() => _route = opt),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -514,7 +542,7 @@ class _Step7VerificationState extends State<Step7Verification> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        _HorizontalChevronScrollRow(
+                        HorizontalChevronScrollRow(
                           children: [
                             'Once daily',
                             'Twice daily',
@@ -596,6 +624,61 @@ class _Step7VerificationState extends State<Step7Verification> {
                               onPressed: _addReminderTime,
                             ),
                           ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  // Section: Supply & Refills
+                  _buildSectionHeader('SUPPLY & REFILLS', c),
+                  const SizedBox(height: 8),
+                  _buildCard(
+                    c: c,
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildInputField(
+                                key: const Key('verify_quantity'),
+                                controller: _quantityController,
+                                label: 'Quantity in Bottle',
+                                hint: 'e.g. 60',
+                                keyboardType: TextInputType.number,
+                                isFlagged: _isSupplyFieldFlagged('quantity'),
+                                flagMessage: 'Verify Qty',
+                                c: c,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: _buildInputField(
+                                key: const Key('verify_days_supply'),
+                                controller: _daysSupplyController,
+                                label: 'Days Supply',
+                                hint: 'e.g. 30',
+                                keyboardType: TextInputType.number,
+                                isFlagged: _isSupplyFieldFlagged('daysSupply'),
+                                flagMessage: 'Verify Supply',
+                                c: c,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _buildInputField(
+                          key: const Key('verify_refills'),
+                          controller: _refillsController,
+                          label: 'Refills Remaining',
+                          hint: 'e.g. 2',
+                          keyboardType: TextInputType.number,
+                          isFlagged: _isSupplyFieldFlagged('refills'),
+                          flagMessage: widget.extraction.refills != null
+                              ? 'Verify (OCR: ${widget.extraction.refills})'
+                              : 'Verify Refills',
+                          c: c,
                         ),
                       ],
                     ),
@@ -1119,6 +1202,7 @@ class _Step7VerificationState extends State<Step7Verification> {
     required String label,
     required String hint,
     required PillPalColors c,
+    TextInputType? keyboardType,
     bool isFlagged = false,
     String? flagMessage,
   }) {
@@ -1172,6 +1256,7 @@ class _Step7VerificationState extends State<Step7Verification> {
         TextField(
           key: key,
           controller: controller,
+          keyboardType: keyboardType,
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -1396,138 +1481,6 @@ class _Step7VerificationState extends State<Step7Verification> {
 }
 
 /// Freely-scrollable horizontal row with Apple-style animated chevrons.
-class _HorizontalChevronScrollRow extends StatefulWidget {
-  const _HorizontalChevronScrollRow({
-    required this.children,
-  });
-
-  final List<Widget> children;
-
-  @override
-  State<_HorizontalChevronScrollRow> createState() =>
-      _HorizontalChevronScrollRowState();
-}
-
-class _HorizontalChevronScrollRowState
-    extends State<_HorizontalChevronScrollRow> {
-  final ScrollController _scrollController = ScrollController();
-  bool _canScrollLeft = false;
-  bool _canScrollRight = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _scrollController.addListener(_onScroll);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _onScroll();
-    });
-  }
-
-  @override
-  void dispose() {
-    _scrollController.removeListener(_onScroll);
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!mounted || !_scrollController.hasClients) return;
-    final pos = _scrollController.position;
-    final canLeft = pos.pixels > 4.0;
-    final canRight = pos.pixels < (pos.maxScrollExtent - 4.0);
-    if (canLeft != _canScrollLeft || canRight != _canScrollRight) {
-      setState(() {
-        _canScrollLeft = canLeft;
-        _canScrollRight = canRight;
-      });
-    }
-  }
-
-  void _scroll(double delta) {
-    if (!_scrollController.hasClients) return;
-    final target = (_scrollController.offset + delta)
-        .clamp(0.0, _scrollController.position.maxScrollExtent);
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        SingleChildScrollView(
-          controller: _scrollController,
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          child: Row(children: widget.children),
-        ),
-        if (_canScrollLeft)
-          Positioned(
-            left: 0,
-            child: Pressable(
-              scale: 0.85,
-              onTap: () => _scroll(-130),
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: c.surface.withValues(alpha: 0.92),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 4,
-                      offset: const Offset(1, 1),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  CupertinoIcons.chevron_left,
-                  size: 14,
-                  color: c.ink,
-                ),
-              ),
-            ),
-          ),
-        if (_canScrollRight)
-          Positioned(
-            right: 0,
-            child: Pressable(
-              scale: 0.85,
-              onTap: () => _scroll(130),
-              child: Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: c.surface.withValues(alpha: 0.92),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 4,
-                      offset: const Offset(-1, 1),
-                    ),
-                  ],
-                ),
-                child: Icon(
-                  CupertinoIcons.chevron_right,
-                  size: 14,
-                  color: c.ink,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
 /// Native iOS-feeling choice chip with spring feedback and zero Material ripple.
 class _AdaptiveChoiceChip extends StatelessWidget {
   const _AdaptiveChoiceChip({

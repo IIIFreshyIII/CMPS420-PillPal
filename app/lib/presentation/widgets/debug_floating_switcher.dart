@@ -9,6 +9,7 @@ import '../../data/local/app_database.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../services/live_reminder_service.dart';
+import 'platform_controls.dart';
 import 'pressable.dart';
 
 /// Small floating developer pill button accessible anywhere in debug builds (kDebugMode).
@@ -421,9 +422,10 @@ class _DebugFloatingSwitcherState extends State<DebugFloatingSwitcher> {
                                 ],
                               ),
                             ),
-                            CupertinoSwitch(
+                            PlatformSwitch(
                               key: const Key('debug_silent_walkthrough_switch'),
                               value: !anySeen,
+                              activeThumbColor: c.onTeal,
                               activeTrackColor: c.teal,
                               onChanged: (clearFlags) async {
                                 if (clearFlags) {

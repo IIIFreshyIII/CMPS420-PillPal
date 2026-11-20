@@ -1,5 +1,9 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -9,14 +13,30 @@ import '../../services/live_reminder_service.dart';
 import '../models/prescription.dart';
 import '../models/profile.dart';
 
+const String _pendingNotifActionsPrefsKey = 'pillpal_pending_notif_actions';
+
+/// Background entry point required by `flutter_local_notifications` when a
+/// notification action button is tapped while the app is terminated.
+@pragma('vm:entry-point')
+Future<void> notificationTapBackground(NotificationResponse response) async {
+  final payload = response.payload?.trim() ?? '';
+  final actionId = response.actionId ?? '';
+  if (payload.isEmpty || actionId.isEmpty) return;
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getStringList(_pendingNotifActionsPrefsKey) ?? <String>[];
+    existing.add('$actionId|$payload');
+    await prefs.setStringList(_pendingNotifActionsPrefsKey, existing);
+  } catch (_) {}
+}
+
 /// Wraps `flutter_local_notifications` behind the one thing the rest of the
-/// app actually needs: keep every prescription's scheduled reminders in
-/// sync with the database. Nothing else touches the plugin directly.
+/// app actually needs: keep every routine's 3-touch reminder system and app
+/// icon badge count in sync with the database.
 ///
-/// Scheduling decisions (does this reminder time pass the assigned
-/// profile's bedtime?) live in `core/scheduling/reminder_scheduler.dart` as
-/// plain, unit-testable functions -- this class is just the thin, untestable
-/// (without a real device) layer that acts on them.
+/// Strict privacy outside the app: zero medication names or dosages are ever
+/// placed in notification titles, bodies, or payloads.
 class NotificationService {
   NotificationService({LiveReminderService? liveReminderService})
       : _plugin = FlutterLocalNotificationsPlugin(),
@@ -28,16 +48,43 @@ class NotificationService {
   bool _initialized = false;
   List<Prescription> _currentPrescriptions = const [];
   List<Profile> _currentProfiles = const [];
+  Set<String> _currentSkippedSlotKeys = const {};
+  final Map<
+      String,
+      ({
+        String timeSlot,
+        DateTime fireAt,
+        int remainingCount,
+        String? profileName,
+      })> _activeSnoozeNotifications = {};
+
+  static const MethodChannel _badgeChannel = MethodChannel('com.pillpal.app/badge');
+
+  /// Optional foreground callback invoked when the user taps [logAllTakenActionId]
+  /// from a notification banner. Registered by `HomeScaffold`.
+  static Future<void> Function(String timeSlot)? onLogAllTaken;
 
   static const _channelId = 'dose_reminders';
   static const _channelName = 'Dose Reminders';
-  static const _channelDescription = 'Reminders to take a scheduled medication dose.';
-  static const snoozeActionId = 'snooze_dose_reminder';
+  static const _channelDescription = 'Consolidated reminders for each medication routine.';
+
+  static const _followUpChannelId = 'dose_followup_nudge';
+  static const _followUpChannelName = 'Follow-Up Nudges';
+  static const _followUpChannelDescription =
+      'Gentle 1-hour follow-up reminder when doses remain unlogged.';
 
   static const _finalCallChannelId = 'bedtime_final_call';
   static const _finalCallChannelName = 'Pre-Bedtime Final Call';
   static const _finalCallChannelDescription =
       'High-priority reminder for pending doses before bedtime.';
+
+  static const _snoozeChannelId = 'dose_snooze_reminders';
+  static const _snoozeChannelName = 'Snooze Reminders';
+  static const _snoozeChannelDescription =
+      'Follow-up alert when a snoozed dose countdown completes.';
+
+  static const logAllTakenActionId = 'log_all_taken';
+  static const snoozeActionId = 'snooze_dose_reminder';
 
   Future<void> init() async {
     if (_initialized) return;
@@ -46,34 +93,72 @@ class NotificationService {
     final localTimezone = await FlutterTimezone.getLocalTimezone();
     tz.setLocalLocation(tz.getLocation(localTimezone.identifier));
 
+    final categories = <DarwinNotificationCategory>[
+      DarwinNotificationCategory(
+        _channelId,
+        actions: <DarwinNotificationAction>[
+          DarwinNotificationAction.plain(
+            logAllTakenActionId,
+            'Log All Taken',
+          ),
+          DarwinNotificationAction.plain(
+            snoozeActionId,
+            'Snooze',
+          ),
+        ],
+      ),
+    ];
+
     await _plugin.initialize(
       InitializationSettings(
         android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
         iOS: DarwinInitializationSettings(
-          notificationCategories: <DarwinNotificationCategory>[
-            DarwinNotificationCategory(
-              _channelId,
-              actions: <DarwinNotificationAction>[
-                DarwinNotificationAction.plain(
-                  snoozeActionId,
-                  'Snooze',
-                  options: <DarwinNotificationActionOption>{
-                    DarwinNotificationActionOption.foreground,
-                  },
-                ),
-              ],
-            ),
-          ],
+          notificationCategories: categories,
         ),
       ),
       onDidReceiveNotificationResponse: _onNotificationResponse,
+      onDidReceiveBackgroundNotificationResponse: notificationTapBackground,
     );
     _initialized = true;
+  }
+
+  /// Drains any notification action taps queued while the app was terminated.
+  Future<List<({String actionId, String timeSlot})>> drainPendingActions() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_pendingNotifActionsPrefsKey) ?? const <String>[];
+      if (list.isEmpty) return const [];
+      await prefs.remove(_pendingNotifActionsPrefsKey);
+      final parsed = <({String actionId, String timeSlot})>[];
+      for (final item in list) {
+        final idx = item.indexOf('|');
+        if (idx <= 0 || idx >= item.length - 1) continue;
+        parsed.add((
+          actionId: item.substring(0, idx),
+          timeSlot: item.substring(idx + 1),
+        ));
+      }
+      return parsed;
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> _onNotificationResponse(NotificationResponse response) async {
     final payload = response.payload;
     if (payload == null || payload.trim().isEmpty) return;
+
+    if (response.actionId == logAllTakenActionId) {
+      if (onLogAllTaken != null) {
+        await onLogAllTaken!(payload);
+      } else {
+        await _liveReminderService.dismissActivity(
+          batchId: batchIdForTimeSlot(payload),
+        );
+      }
+      return;
+    }
+
     if (response.actionId == snoozeActionId ||
         response.notificationResponseType ==
             NotificationResponseType.selectedNotificationAction) {
@@ -82,28 +167,125 @@ class NotificationService {
   }
 
   /// When a reminder triggers for [timeSlot], calculates `remainingDosesCount`
-  /// across all medications sharing that exact scheduled time slot and transitions
-  /// the batch into a native snooze countdown via [LiveReminderService].
+  /// across all medications sharing that exact scheduled time slot, transitions
+  /// the batch into a native snooze countdown via [LiveReminderService], and
+  /// schedules a one-shot follow-up push notification for when the snooze ends.
   Future<DoseBatch> handleReminderSnooze(
     String timeSlot, {
     List<Prescription>? prescriptions,
     List<Profile>? profiles,
     int? snoozeDurationMinutes,
-  }) {
-    return _liveReminderService.startSnoozeForTimeSlot(
+    bool bypassBedtime = false,
+  }) async {
+    final batch = await _liveReminderService.startSnoozeForTimeSlot(
       timeSlot: timeSlot,
       prescriptions: prescriptions ?? _currentPrescriptions,
       profiles: profiles ?? _currentProfiles,
       snoozeDurationMinutes: snoozeDurationMinutes,
+      skippedSlotKeys: _currentSkippedSlotKeys,
+      bypassBedtime: bypassBedtime,
     );
+    final outcome = _liveReminderService.lastStartOutcome;
+    if (outcome != null &&
+        outcome.snoozeEndTime != null &&
+        batch.remainingDosesCount > 0 &&
+        (outcome.status == SnoozeStartStatus.started ||
+            outcome.status == SnoozeStartStatus.liveActivitiesDisabled)) {
+      await scheduleSnoozeNotification(
+        timeSlot: timeSlot,
+        fireAt: outcome.snoozeEndTime!,
+        remainingCount: batch.remainingDosesCount,
+        profileName: batch.profileName,
+      );
+    }
+    return batch;
   }
 
-  /// Requests every permission this app's notifications need on Android:
-  /// `POST_NOTIFICATIONS` (13+, to show anything at all) and
-  /// `SCHEDULE_EXACT_ALARM` (12+, for the precise timing medication
-  /// reminders need -- exact, not approximate, was a deliberate choice).
-  /// On iOS, requests the equivalent alert/sound/badge permission. Returns
-  /// whether everything needed was granted.
+  /// Schedules a single one-shot push notification when a snooze countdown ends.
+  /// Strictly privacy-safe (zero drug names or dosages).
+  Future<void> scheduleSnoozeNotification({
+    required String timeSlot,
+    required DateTime fireAt,
+    required int remainingCount,
+    String? profileName,
+  }) async {
+    if (remainingCount <= 0) {
+      await cancelSnoozeNotification(timeSlot);
+      return;
+    }
+
+    final batchId = batchIdForTimeSlot(timeSlot);
+    _activeSnoozeNotifications[batchId] = (
+      timeSlot: timeSlot,
+      fireAt: fireAt,
+      remainingCount: remainingCount,
+      profileName: profileName,
+    );
+
+    try {
+      await init();
+      final scheduledTz = tz.TZDateTime.from(fireAt, tz.local);
+      final now = tz.TZDateTime.now(tz.local);
+      if (!scheduledTz.isAfter(now)) return;
+
+      const routineActions = <AndroidNotificationAction>[
+        AndroidNotificationAction(
+          logAllTakenActionId,
+          'Log All Taken',
+          showsUserInterface: false,
+        ),
+        AndroidNotificationAction(
+          snoozeActionId,
+          'Snooze',
+          showsUserInterface: true,
+        ),
+      ];
+
+      await _plugin.zonedSchedule(
+        notificationIdForSnooze(timeSlot),
+        formatSnoozeNotificationTitle(timeSlot),
+        formatSnoozeNotificationBody(
+          remainingCount: remainingCount,
+          timeSlot: timeSlot,
+          profileName: profileName,
+        ),
+        scheduledTz,
+        NotificationDetails(
+          android: const AndroidNotificationDetails(
+            _snoozeChannelId,
+            _snoozeChannelName,
+            channelDescription: _snoozeChannelDescription,
+            importance: Importance.high,
+            priority: Priority.high,
+            actions: routineActions,
+          ),
+          iOS: DarwinNotificationDetails(
+            categoryIdentifier: _channelId,
+            interruptionLevel: InterruptionLevel.timeSensitive,
+            badgeNumber: remainingCount,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        payload: timeSlot,
+      );
+    } catch (_) {
+      // Safe no-op in widget/unit test environments without native plugin host.
+    }
+  }
+
+  /// Cancels any pending snooze completion notification for [timeSlot].
+  Future<void> cancelSnoozeNotification(String timeSlot) async {
+    _activeSnoozeNotifications.remove(batchIdForTimeSlot(timeSlot));
+    try {
+      await init();
+      await _plugin.cancel(notificationIdForSnooze(timeSlot));
+    } catch (_) {
+      // Safe no-op in widget/unit test environments without native plugin host.
+    }
+  }
+
   Future<bool> requestPermissions() async {
     await init();
     final android = _plugin
@@ -120,18 +302,21 @@ class NotificationService {
     return granted ?? true;
   }
 
-  /// Whether notifications can currently be shown at all. `true` on
-  /// platforms (like iOS, pre-grant) where this isn't separately queryable
-  /// -- `requestPermissions`'s return value is the real signal there.
   Future<bool> areNotificationsEnabled() async {
     final android = _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
-    if (android == null) return true;
-    return await android.areNotificationsEnabled() ?? false;
+    if (android != null) {
+      return await android.areNotificationsEnabled() ?? false;
+    }
+    final ios = _plugin
+        .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+    if (ios != null) {
+      final perms = await ios.checkPermissions();
+      return perms?.isEnabled ?? false;
+    }
+    return true;
   }
 
-  /// Whether the exact-alarm grant is held. Always `true` on platforms
-  /// without this concept (iOS, or Android versions below the restriction).
   Future<bool> hasExactAlarmPermission() async {
     final android = _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
@@ -139,99 +324,193 @@ class NotificationService {
     return await android.canScheduleExactNotifications() ?? false;
   }
 
-  /// The one method everything else calls: reconciles every
-  /// (prescription, reminderTime) pair against what should currently be
-  /// scheduled, given each one's assigned profile's bedtime and the
-  /// medication's own `allowAfterBedtime` override, then cancels everything
-  /// and reschedules from scratch. A full reconcile on every call, not
-  /// fine-grained create/update/delete diffing -- simplest correct
-  /// strategy, and cheap at this app's scale (a handful of profiles and
-  /// prescriptions, each with at most a few reminder times). Call this
-  /// after any change to `prescriptions` or `profiles` (home_scaffold.dart's
-  /// stream listeners do), and once on startup so a reboot that dropped
-  /// Android's own scheduled alarms gets them back regardless of whether
-  /// the plugin's own boot receiver fired.
-  Future<void> syncAll(List<Prescription> prescriptions, List<Profile> profiles) async {
+  /// Reconciles all 3 touches of PillPal's consolidated notification engine:
+  /// - Touch 1: 1 consolidated alert per routine time slot (zero drug names).
+  /// - Touch 2: 1-hour follow-up nudge if pending doses remain before bedtime.
+  /// - Touch 3: Pre-bedtime final call 10 minutes before each profile's bedtime.
+  /// Also updates the iOS app icon red badge count to reflect currently due
+  /// pending doses.
+  Future<void> syncAll(
+    List<Prescription> prescriptions,
+    List<Profile> profiles, {
+    Set<String> skippedSlotKeys = const {},
+    Map<String, DateTime> activeSnoozeEnds = const {},
+    bool bypassBedtime = false,
+  }) async {
     _currentPrescriptions = List.unmodifiable(prescriptions);
     _currentProfiles = List.unmodifiable(profiles);
+    _currentSkippedSlotKeys = Set.unmodifiable(skippedSlotKeys);
     await init();
     await _plugin.cancelAll();
 
-    for (final prescription in prescriptions) {
-      final profile = _profileFor(prescription.profileId, profiles);
-      for (final time in prescription.reminderTimes) {
-        final shouldSchedule = shouldScheduleReminder(
-          time: time,
-          bedtime: profile?.bedtime,
-          allowAfterBedtime: prescription.allowAfterBedtime,
-        );
-        if (!shouldSchedule) continue;
+    final now = tz.TZDateTime.now(tz.local);
+    final duePendingCount = calculateDuePendingDosesCount(
+      prescriptions,
+      profiles,
+      now: now,
+      skippedSlotKeys: skippedSlotKeys,
+    );
+    await _updateAppBadgeCount(duePendingCount);
 
-        final scheduledDate = _nextInstanceOf(time);
-        if (scheduledDate == null) continue; // unparseable time -- skip, don't crash the sync
+    final plans = buildConsolidatedSlotPlans(
+      prescriptions,
+      profiles,
+      skippedSlotKeys: skippedSlotKeys,
+      bypassBedtime: bypassBedtime,
+    );
+    final plansByBatchId = {for (final p in plans) p.batchId: p};
 
-        await _plugin.zonedSchedule(
-          notificationIdFor(prescription.id, time),
-          prescription.name,
-          _bodyFor(prescription, profile),
-          scheduledDate,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              _channelId,
-              _channelName,
-              channelDescription: _channelDescription,
-              actions: <AndroidNotificationAction>[
-                AndroidNotificationAction(
-                  snoozeActionId,
-                  'Snooze',
-                  showsUserInterface: true,
-                ),
-              ],
-            ),
-            iOS: DarwinNotificationDetails(
-              categoryIdentifier: _channelId,
-            ),
+    const routineActions = <AndroidNotificationAction>[
+      AndroidNotificationAction(
+        logAllTakenActionId,
+        'Log All Taken',
+        showsUserInterface: false,
+      ),
+      AndroidNotificationAction(
+        snoozeActionId,
+        'Snooze',
+        showsUserInterface: true,
+      ),
+    ];
+
+    for (final plan in plans) {
+      // Touch 1: Initial Consolidated Routine Alert
+      var scheduledDate = _nextInstanceOf(plan.timeSlot);
+      if (scheduledDate == null) continue;
+
+      final isScheduledToday = scheduledDate.year == now.year &&
+          scheduledDate.month == now.month &&
+          scheduledDate.day == now.day;
+      if (isScheduledToday && plan.remainingCount == 0) {
+        // Today's doses for this slot are already taken or skipped;
+        // start daily repeat tomorrow instead of nagging today.
+        scheduledDate = scheduledDate.add(const Duration(days: 1));
+      }
+
+      final projectedBadge = duePendingCount +
+          (plan.remainingCount > 0 ? plan.remainingCount : plan.scheduledCount);
+
+      await _plugin.zonedSchedule(
+        notificationIdForTimeSlot(plan.timeSlot),
+        formatRoutineNotificationTitle(plan),
+        formatRoutineNotificationBody(
+          plan,
+          useRemainingCounts: isScheduledToday && plan.remainingCount > 0,
+        ),
+        scheduledDate,
+        NotificationDetails(
+          android: const AndroidNotificationDetails(
+            _channelId,
+            _channelName,
+            channelDescription: _channelDescription,
+            actions: routineActions,
           ),
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          // Daily repeat at this time-of-day -- the plugin/OS re-fires it
-          // every day on its own; syncAll doesn't need to run on a timer.
-          matchDateTimeComponents: DateTimeComponents.time,
-          payload: time,
-        );
+          iOS: DarwinNotificationDetails(
+            categoryIdentifier: _channelId,
+            badgeNumber: projectedBadge,
+          ),
+        ),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: plan.timeSlot,
+      );
+
+      // Touch 2: 1-Hour Follow-Up Nudge
+      if (plan.allowFollowUpNudge) {
+        final nudgeTod = calculateFollowUpNudgeTime(plan.timeSlot);
+        if (nudgeTod != null) {
+          var nudgeDate = _nextInstanceOf(formatTimeOfDayLabel(nudgeTod));
+          if (nudgeDate != null) {
+            final nudgeIsToday = nudgeDate.year == now.year &&
+                nudgeDate.month == now.month &&
+                nudgeDate.day == now.day;
+            final activeSnoozeEnd = activeSnoozeEnds[plan.batchId] ??
+                _activeSnoozeNotifications[plan.batchId]?.fireAt;
+            final suppressForSnooze = nudgeIsToday &&
+                shouldSuppressFollowUpNudgeForSnooze(
+                  nudgeTime: nudgeDate,
+                  activeSnoozeEnd: activeSnoozeEnd,
+                );
+            if (nudgeIsToday && (plan.remainingCount == 0 || suppressForSnooze)) {
+              nudgeDate = nudgeDate.add(const Duration(days: 1));
+            }
+
+            await _plugin.zonedSchedule(
+              notificationIdForFollowUpNudge(plan.timeSlot),
+              formatFollowUpNudgeTitle(plan),
+              formatFollowUpNudgeBody(
+                plan,
+                useRemainingCount: nudgeIsToday && plan.remainingCount > 0,
+              ),
+              nudgeDate,
+              NotificationDetails(
+                android: const AndroidNotificationDetails(
+                  _followUpChannelId,
+                  _followUpChannelName,
+                  channelDescription: _followUpChannelDescription,
+                  actions: routineActions,
+                ),
+                iOS: DarwinNotificationDetails(
+                  categoryIdentifier: _channelId,
+                  badgeNumber: projectedBadge,
+                ),
+              ),
+              androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+              uiLocalNotificationDateInterpretation:
+                  UILocalNotificationDateInterpretation.absoluteTime,
+              matchDateTimeComponents: DateTimeComponents.time,
+              payload: plan.timeSlot,
+            );
+          }
+        }
       }
     }
 
-    // Schedule Pre-Bedtime Final Call for each profile with a configured bedtime
+    // Touch 3: Pre-Bedtime Final Call per profile with configured bedtime
     for (final profile in profiles) {
       final bedtime = profile.bedtime;
       if (bedtime == null) continue;
 
-      final pendingCount = calculatePendingDosesBeforeBedtime(
+      final scheduledCount = calculateScheduledDosesBeforeBedtime(
         profile: profile,
         prescriptions: prescriptions,
       );
-      if (pendingCount <= 0) continue;
+      if (scheduledCount <= 0) continue;
+
+      final pendingCount = calculatePendingDosesBeforeBedtime(
+        profile: profile,
+        prescriptions: prescriptions,
+        skippedSlotKeys: skippedSlotKeys,
+      );
 
       final triggerTod = calculatePreBedtimeNotificationTime(bedtime: bedtime);
       if (triggerTod == null) continue;
 
-      final triggerDate = _nextInstanceOf(formatTimeOfDayLabel(triggerTod));
+      var triggerDate = _nextInstanceOf(formatTimeOfDayLabel(triggerTod));
       if (triggerDate == null) continue;
 
+      final isToday = triggerDate.year == now.year &&
+          triggerDate.month == now.month &&
+          triggerDate.day == now.day;
+      if (isToday && pendingCount == 0) {
+        triggerDate = triggerDate.add(const Duration(days: 1));
+      }
+
+      final displayCount = isToday && pendingCount > 0 ? pendingCount : scheduledCount;
       final message = formatPreBedtimeFinalCallMessage(
-        pendingDosesCount: pendingCount,
+        pendingDosesCount: displayCount,
         bedtime: bedtime,
       );
 
       await _plugin.zonedSchedule(
         notificationIdForPreBedtime(profile.id),
-        'Bedtime Reminder',
+        'Bedtime Final Call',
         message,
         triggerDate,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
+        NotificationDetails(
+          android: const AndroidNotificationDetails(
             _finalCallChannelId,
             _finalCallChannelName,
             channelDescription: _finalCallChannelDescription,
@@ -239,45 +518,62 @@ class NotificationService {
             priority: Priority.high,
           ),
           iOS: DarwinNotificationDetails(
-            categoryIdentifier: _channelId,
             interruptionLevel: InterruptionLevel.timeSensitive,
+            badgeNumber: duePendingCount > 0 ? duePendingCount : displayCount,
           ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
         matchDateTimeComponents: DateTimeComponents.time,
-        payload: formatTimeOfDayLabel(triggerTod),
+        payload: 'pre_bedtime:${profile.id}',
+      );
+    }
+
+    // Re-schedule any still-pending, still-future snooze alerts after cancelAll()
+    // and prune completed or expired snooze entries.
+    final pendingSnoozes = Map.of(_activeSnoozeNotifications);
+    for (final entry in pendingSnoozes.entries) {
+      final batchId = entry.key;
+      final snooze = entry.value;
+      final plan = plansByBatchId[batchId];
+      final fireAtTz = tz.TZDateTime.from(snooze.fireAt, tz.local);
+      if (plan == null || plan.remainingCount <= 0 || !fireAtTz.isAfter(now)) {
+        _activeSnoozeNotifications.remove(batchId);
+        continue;
+      }
+      await scheduleSnoozeNotification(
+        timeSlot: snooze.timeSlot,
+        fireAt: snooze.fireAt,
+        remainingCount: plan.remainingCount,
+        profileName: snooze.profileName,
       );
     }
   }
 
-  Profile? _profileFor(String id, List<Profile> profiles) {
-    for (final p in profiles) {
-      if (p.id == id) return p;
-    }
-    return null;
+  Future<void> _updateAppBadgeCount(int count) async {
+    if (!Platform.isIOS) return;
+    try {
+      await _badgeChannel.invokeMethod<void>(
+        'setBadgeCount',
+        <String, dynamic>{'count': count < 0 ? 0 : count},
+      );
+    } catch (_) {}
   }
 
-  String _bodyFor(Prescription prescription, Profile? profile) {
-    final parts = <String>[
-      if (prescription.dosage.isNotEmpty) prescription.dosage,
-      if (profile != null) 'for ${profile.name}',
-    ];
-    return parts.isEmpty ? 'Time to take this dose.' : 'Time to take ${parts.join(' ')}.';
-  }
-
-  /// The next real wall-clock [tz.TZDateTime] this time-of-day occurs --
-  /// today if it hasn't passed yet, otherwise tomorrow. `zonedSchedule`
-  /// requires a date in the future even for a daily-repeating notification;
-  /// [DateTimeComponents.time] is what makes it actually repeat daily from
-  /// there rather than firing once.
   tz.TZDateTime? _nextInstanceOf(String time) {
     final parsed = parseTimeOfDayLabel(time);
     if (parsed == null) return null;
 
     final now = tz.TZDateTime.now(tz.local);
-    var scheduled = tz.TZDateTime(tz.local, now.year, now.month, now.day, parsed.hour, parsed.minute);
+    var scheduled = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day,
+      parsed.hour,
+      parsed.minute,
+    );
     if (scheduled.isBefore(now)) {
       scheduled = scheduled.add(const Duration(days: 1));
     }

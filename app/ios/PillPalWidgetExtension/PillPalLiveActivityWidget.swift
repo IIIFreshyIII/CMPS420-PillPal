@@ -5,10 +5,47 @@ import SwiftUI
 import WidgetKit
 
 @available(iOS 16.1, *)
-public struct PillPalLiveActivityWidget: Widget {
-  public init() {}
+private enum AdherenceStatusFormatter {
+  static func parseBatch(_ batchId: String) -> (periodName: String, slotLabel: String?) {
+    let parts = batchId.split(separator: "_")
+    guard parts.count == 3,
+          parts[0] == "batch",
+          let hour = Int(parts[1]),
+          let minute = Int(parts[2]),
+          (0...23).contains(hour),
+          (0...59).contains(minute) else {
+      return ("Medication Routine", nil)
+    }
 
-  private func expandedDoseBadgeText(_ state: MedicationLiveActivityAttributes.ContentState) -> String {
+    let totalMinutes = hour * 60 + minute
+    let periodName: String
+    if totalMinutes >= 5 * 60 && totalMinutes < 11 * 60 + 30 {
+      periodName = "Morning"
+    } else if totalMinutes >= 11 * 60 + 30 && totalMinutes < 14 * 60 {
+      periodName = "Midday"
+    } else if totalMinutes >= 14 * 60 && totalMinutes < 17 * 60 {
+      periodName = "Afternoon"
+    } else if totalMinutes >= 17 * 60 && totalMinutes < 21 * 60 {
+      periodName = "Evening"
+    } else {
+      periodName = "Bedtime"
+    }
+
+    let displayHour = hour % 12 == 0 ? 12 : hour % 12
+    let period = hour < 12 ? "AM" : "PM"
+    let slotLabel = String(format: "%d:%02d %@", displayHour, minute, period)
+    return (periodName, slotLabel)
+  }
+
+  static func headerLabel(forBatchId batchId: String) -> String {
+    let parsed = parseBatch(batchId)
+    if let slotLabel = parsed.slotLabel {
+      return "\(parsed.periodName) • \(slotLabel)"
+    }
+    return parsed.periodName
+  }
+
+  static func doseBadgeText(_ state: MedicationLiveActivityAttributes.ContentState) -> String {
     let countText = state.remainingDoseCount == 1 ? "1 Left" : "\(state.remainingDoseCount) Left"
     if let name = state.profileName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
       return "\(name) • \(countText)"
@@ -16,106 +53,82 @@ public struct PillPalLiveActivityWidget: Widget {
     return countText
   }
 
+  static func isCountdownActive(
+    _ state: MedicationLiveActivityAttributes.ContentState,
+    isStale: Bool
+  ) -> Bool {
+    !isStale && state.snoozeEndTime > Date()
+  }
+}
+
+@available(iOS 16.1, *)
+private func isActivityContextStale(
+  _ context: ActivityViewContext<MedicationLiveActivityAttributes>
+) -> Bool {
+  if #available(iOS 16.2, *) {
+    return context.isStale
+  }
+  return false
+}
+
+@available(iOS 16.1, *)
+public struct PillPalLiveActivityWidget: Widget {
+  public init() {}
+
+  private var tealAccent: Color {
+    Color(red: 0.18, green: 0.83, blue: 0.75)
+  }
+
+  private var coralBadge: Color {
+    Color(red: 0.91, green: 0.27, blue: 0.30)
+  }
+
   public var body: some WidgetConfiguration {
     ActivityConfiguration(for: MedicationLiveActivityAttributes.self) { context in
       MedicationLockScreenLiveActivityView(
         batchId: context.attributes.batchId,
-        state: context.state
+        state: context.state,
+        isStale: isActivityContextStale(context)
       )
       .activityBackgroundTint(Color(red: 0.07, green: 0.13, blue: 0.16))
       .activitySystemActionForegroundColor(.white)
       .widgetURL(URL(string: "pillpal://schedule"))
     } dynamicIsland: { context in
-      DynamicIsland {
+      let stale = isActivityContextStale(context)
+      let isCountingDown = AdherenceStatusFormatter.isCountdownActive(
+        context.state,
+        isStale: stale
+      )
+      return DynamicIsland {
         DynamicIslandExpandedRegion(.bottom) {
           VStack(spacing: 12) {
-            // Row 1: Countdown clock (with circular ring to its left) on the left, "X Left" badge on the right
-            HStack(alignment: .center) {
-              HStack(alignment: .center, spacing: 10) {
-                // Circular clock countdown visual right next to the countdown clock (to its left)
-                ZStack {
-                  Circle()
-                    .stroke(Color.white.opacity(0.12), lineWidth: 3.5)
-                    .frame(width: 34, height: 34)
+            LiveActivityHeaderView(
+              batchId: context.attributes.batchId,
+              state: context.state,
+              isCountingDown: isCountingDown,
+              tealAccent: tealAccent,
+              coralBadge: coralBadge
+            )
 
-                  ProgressView(
-                    timerInterval: context.state.timerRange,
-                    countsDown: true
-                  ) {
-                    EmptyView()
-                  } currentValueLabel: {
-                    EmptyView()
-                  }
-                  .progressViewStyle(.circular)
-                  .tint(Color(red: 0.18, green: 0.83, blue: 0.75))
-                  .frame(width: 34, height: 34)
-                }
-
-                // Numerical clock countdown + subtitle
-                VStack(alignment: .leading, spacing: 1) {
-                  Text(
-                    timerInterval: context.state.timerRange,
-                    countsDown: true
-                  )
-                  .font(.system(size: 30, weight: .bold, design: .rounded))
-                  .monospacedDigit()
-                  .minimumScaleFactor(0.85)
-                  .lineLimit(1)
-                  .foregroundColor(Color(red: 0.18, green: 0.83, blue: 0.75))
-
-                  Text("Snooze Countdown")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(.white.opacity(0.68))
-                    .lineLimit(1)
-                }
-              }
-
-              Spacer()
-
-              // "X Left" badge: enlarged, aligned in row with the countdown, right-centered
-              Text(expandedDoseBadgeText(context.state))
-                .font(.system(size: 14, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(
-                  Capsule()
-                    .fill(Color(red: 0.91, green: 0.27, blue: 0.30).opacity(0.92))
-                )
-                .overlay(
-                  Capsule()
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.8)
-                )
-                .fixedSize(horizontal: true, vertical: true)
-            }
-            .padding(.horizontal, 10)
-
-            // Row 2: Action buttons scaled so outer edges are even with inner edges & gap
             LiveActivityActionButtonsRow(
               batchId: context.attributes.batchId,
-              totalDurationSeconds: context.state.totalDurationSeconds
+              isCountingDown: isCountingDown,
+              isPendingCancelConfirmation: context.state.pendingCancelConfirmation
             )
-            .padding(.horizontal, 10)
-            .padding(.bottom, 6)
           }
+          .padding(.horizontal, 12)
+          .padding(.bottom, 6)
         }
       } compactLeading: {
-        // Leading compact: Clean circular ring indicator draining counter-clockwise
-        ProgressView(
-          timerInterval: context.state.timerRange,
-          countsDown: true
-        ) {
-          EmptyView()
-        } currentValueLabel: {
-          EmptyView()
+        ZStack {
+          Circle()
+            .fill(tealAccent.opacity(0.20))
+            .frame(width: 20, height: 20)
+          Image(systemName: "pills.fill")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(tealAccent)
         }
-        .progressViewStyle(.circular)
-        .tint(Color(red: 0.18, green: 0.83, blue: 0.75))
-        .frame(width: 18, height: 18)
       } compactTrailing: {
-        // Trailing compact: Remaining doses count badge
         Text("\(context.state.remainingDoseCount)")
           .font(.system(size: 11, weight: .heavy, design: .rounded))
           .monospacedDigit()
@@ -125,7 +138,7 @@ public struct PillPalLiveActivityWidget: Widget {
           .padding(.vertical, 2)
           .background(
             Capsule()
-              .fill(Color(red: 0.91, green: 0.27, blue: 0.30).opacity(0.90))
+              .fill(coralBadge.opacity(0.90))
           )
           .overlay(
             Capsule()
@@ -133,22 +146,110 @@ public struct PillPalLiveActivityWidget: Widget {
           )
           .fixedSize(horizontal: true, vertical: true)
       } minimal: {
-        // Minimal: Clean circular ring indicator draining counter-clockwise
-        ProgressView(
-          timerInterval: context.state.timerRange,
-          countsDown: true
-        ) {
-          EmptyView()
-        } currentValueLabel: {
-          EmptyView()
+        ZStack {
+          Circle()
+            .fill(tealAccent.opacity(0.20))
+            .frame(width: 20, height: 20)
+          Image(systemName: "pills.fill")
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(tealAccent)
         }
-        .progressViewStyle(.circular)
-        .tint(Color(red: 0.18, green: 0.83, blue: 0.75))
-        .frame(width: 18, height: 18)
       }
-      .keylineTint(Color(red: 0.18, green: 0.83, blue: 0.75))
+      .keylineTint(tealAccent)
       .widgetURL(URL(string: "pillpal://schedule"))
     }
+  }
+}
+
+@available(iOS 16.1, *)
+private struct LiveActivityHeaderView: View {
+  let batchId: String
+  let state: MedicationLiveActivityAttributes.ContentState
+  let isCountingDown: Bool
+  let tealAccent: Color
+  let coralBadge: Color
+
+  var body: some View {
+    HStack(alignment: .center, spacing: 12) {
+      // Native circular countdown ring (unwinds counterclockwise automatically) while
+      // counting down; transitions to a calm pill icon once ready to log.
+      if isCountingDown {
+        ZStack {
+          Circle()
+            .fill(tealAccent.opacity(0.12))
+            .frame(width: 44, height: 44)
+          ProgressView(
+            timerInterval: state.timerRange,
+            countsDown: true,
+            label: { EmptyView() },
+            currentValueLabel: { EmptyView() }
+          )
+          .progressViewStyle(.circular)
+          .tint(tealAccent)
+          .frame(width: 44, height: 44)
+        }
+        .fixedSize()
+      } else {
+        ZStack {
+          Circle()
+            .fill(tealAccent.opacity(0.20))
+            .frame(width: 44, height: 44)
+          Circle()
+            .strokeBorder(tealAccent.opacity(0.65), lineWidth: 2)
+            .frame(width: 44, height: 44)
+          Image(systemName: "pills.fill")
+            .font(.system(size: 18, weight: .bold))
+            .foregroundColor(tealAccent)
+        }
+        .fixedSize()
+      }
+
+      // Line 1: "Morning • 8:00 AM"
+      // Line 2: Large accessible countdown timer (or "Ready to log" once expired)
+      VStack(alignment: .leading, spacing: 1) {
+        Text(AdherenceStatusFormatter.headerLabel(forBatchId: batchId))
+          .font(.system(size: 14, weight: .semibold, design: .rounded))
+          .foregroundColor(.white.opacity(0.86))
+          .lineLimit(1)
+          .minimumScaleFactor(0.85)
+
+        if isCountingDown {
+          Text(timerInterval: state.timerRange, countsDown: true)
+            .font(.system(size: 24, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .foregroundColor(tealAccent)
+            .multilineTextAlignment(.leading)
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
+        } else {
+          Text("Ready to log")
+            .font(.system(size: 20, weight: .bold, design: .rounded))
+            .foregroundColor(tealAccent)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+      }
+      .frame(maxWidth: .infinity, alignment: .leading)
+
+      // Trailing badge flush-aligned with the right edge of the bottom action button
+      Text(AdherenceStatusFormatter.doseBadgeText(state))
+        .font(.system(size: 13, weight: .bold, design: .rounded))
+        .monospacedDigit()
+        .foregroundColor(.white)
+        .lineLimit(1)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(
+          Capsule()
+            .fill(coralBadge.opacity(0.92))
+        )
+        .overlay(
+          Capsule()
+            .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.8)
+        )
+        .fixedSize(horizontal: true, vertical: true)
+    }
+    .frame(maxWidth: .infinity)
   }
 }
 
@@ -156,106 +257,36 @@ public struct PillPalLiveActivityWidget: Widget {
 private struct MedicationLockScreenLiveActivityView: View {
   let batchId: String
   let state: MedicationLiveActivityAttributes.ContentState
+  let isStale: Bool
 
-  private var contextLabel: String {
-    let hour = Calendar.current.component(.hour, from: Date())
-    if hour >= 5 && hour < 12 {
-      return "Morning Routine"
-    } else if hour >= 12 && hour < 17 {
-      return "Afternoon Routine"
-    } else if hour >= 17 && hour < 22 {
-      return "Evening Routine"
-    } else {
-      return "Scheduled slot"
-    }
+  private var tealAccent: Color {
+    Color(red: 0.18, green: 0.83, blue: 0.75)
   }
 
-  private var lockScreenBadgeText: String {
-    let countText = state.remainingDoseCount == 1 ? "1 Left" : "\(state.remainingDoseCount) Left"
-    if let name = state.profileName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
-      return "\(name) • \(countText)"
-    }
-    return state.remainingDoseCount == 1 ? "1 dose left" : "\(state.remainingDoseCount) doses left"
+  private var coralBadge: Color {
+    Color(red: 0.91, green: 0.27, blue: 0.30)
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      // Header: App identity + top-right red badge ("X doses left" or "Name • X Left")
-      HStack(alignment: .center) {
-        HStack(spacing: 8) {
-          ZStack {
-            Circle()
-              .fill(Color(red: 0.18, green: 0.83, blue: 0.75).opacity(0.18))
-              .frame(width: 28, height: 28)
-            Image(systemName: "pills.fill")
-              .font(.system(size: 13, weight: .bold))
-              .foregroundColor(Color(red: 0.18, green: 0.83, blue: 0.75))
-          }
+    let isCountingDown = AdherenceStatusFormatter.isCountdownActive(
+      state,
+      isStale: isStale
+    )
 
-          Text("PillPal Snooze")
-            .font(.system(size: 15, weight: .bold, design: .rounded))
-            .foregroundColor(.white)
-        }
+    VStack(alignment: .leading, spacing: 12) {
+      LiveActivityHeaderView(
+        batchId: batchId,
+        state: state,
+        isCountingDown: isCountingDown,
+        tealAccent: tealAccent,
+        coralBadge: coralBadge
+      )
 
-        Spacer()
-
-        Text(lockScreenBadgeText)
-          .font(.system(size: 12, weight: .bold, design: .rounded))
-          .monospacedDigit()
-          .foregroundColor(.white)
-          .lineLimit(1)
-          .padding(.horizontal, 9)
-          .padding(.vertical, 4)
-          .background(
-            Capsule()
-              .fill(Color(red: 0.91, green: 0.27, blue: 0.30).opacity(0.90))
-          )
-          .overlay(
-            Capsule()
-              .strokeBorder(Color.white.opacity(0.24), lineWidth: 0.8)
-          )
-          .fixedSize(horizontal: true, vertical: true)
-      }
-
-      // Middle: Clean progress ring + large countdown + clean context label ("Morning Routine" / "Scheduled slot")
-      HStack(alignment: .center, spacing: 14) {
-        ZStack {
-          Circle()
-            .stroke(Color.white.opacity(0.08), lineWidth: 4)
-            .frame(width: 44, height: 44)
-
-          ProgressView(
-            timerInterval: state.timerRange,
-            countsDown: true
-          ) {
-            EmptyView()
-          } currentValueLabel: {
-            EmptyView()
-          }
-          .progressViewStyle(.circular)
-          .tint(Color(red: 0.18, green: 0.83, blue: 0.75))
-          .frame(width: 44, height: 44)
-        }
-
-        VStack(alignment: .leading, spacing: 2) {
-          Text(
-            timerInterval: state.timerRange,
-            countsDown: true
-          )
-          .font(.system(size: 32, weight: .bold, design: .rounded))
-          .monospacedDigit()
-          .minimumScaleFactor(0.85)
-          .lineLimit(1)
-          .foregroundColor(.white)
-
-          Text(contextLabel)
-            .font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundColor(.white.opacity(0.65))
-        }
-
-        Spacer()
-      }
-      .padding(.vertical, 2)
+      LiveActivityActionButtonsRow(
+        batchId: batchId,
+        isCountingDown: isCountingDown,
+        isPendingCancelConfirmation: state.pendingCancelConfirmation
+      )
     }
     .padding(16)
     .widgetURL(URL(string: "pillpal://schedule"))
@@ -265,38 +296,30 @@ private struct MedicationLockScreenLiveActivityView: View {
 @available(iOS 16.1, *)
 private struct LiveActivityActionButtonsRow: View {
   let batchId: String
-  let totalDurationSeconds: Double
+  let isCountingDown: Bool
+  let isPendingCancelConfirmation: Bool
+
+  private var tealAccent: Color {
+    Color(red: 0.18, green: 0.83, blue: 0.75)
+  }
+
+  private var destructiveCoral: Color {
+    Color(red: 0.91, green: 0.27, blue: 0.30)
+  }
 
   var body: some View {
     HStack(spacing: 10) {
-      if #available(iOS 17.0, *) {
-        Button(intent: LogTakenLiveActivityIntent(batchId: batchId)) {
-          Label("Log Taken", systemImage: "checkmark.circle.fill")
+      if #available(iOS 17.0, *), isCountingDown && isPendingCancelConfirmation {
+        Button(intent: KeepSnoozeLiveActivityIntent(batchId: batchId)) {
+          Label("Keep Snooze", systemImage: "arrow.uturn.backward.circle.fill")
             .font(.system(size: 13, weight: .bold, design: .rounded))
             .lineLimit(1)
+            .minimumScaleFactor(0.85)
             .frame(maxWidth: .infinity)
             .frame(height: 38)
         }
         .buttonStyle(.plain)
-        .foregroundColor(Color(red: 0.04, green: 0.16, blue: 0.17))
-        .background(
-          Capsule()
-            .fill(Color(red: 0.18, green: 0.83, blue: 0.75))
-        )
-
-        Button(
-          intent: SnoozeLiveActivityIntent(
-            batchId: batchId,
-            durationSeconds: totalDurationSeconds
-          )
-        ) {
-          Label("Snooze", systemImage: "zzz")
-            .font(.system(size: 13, weight: .bold, design: .rounded))
-            .lineLimit(1)
-            .frame(maxWidth: .infinity)
-            .frame(height: 38)
-        }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
         .foregroundColor(.white)
         .background(
           Capsule()
@@ -306,26 +329,57 @@ private struct LiveActivityActionButtonsRow: View {
           Capsule()
             .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.8)
         )
-      } else {
-        Link(destination: URL(string: "pillpal://live_reminder/logTaken?batchId=\(batchId)")!) {
-          Label("Log Taken", systemImage: "checkmark.circle.fill")
+        .contentShape(Capsule())
+
+        Button(intent: CancelSnoozeLiveActivityIntent(batchId: batchId)) {
+          Label("Confirm Cancel", systemImage: "xmark.circle.fill")
             .font(.system(size: 13, weight: .bold, design: .rounded))
             .lineLimit(1)
+            .minimumScaleFactor(0.85)
+            .frame(maxWidth: .infinity)
+            .frame(height: 38)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .foregroundColor(.white)
+        .background(
+          Capsule()
+            .fill(destructiveCoral)
+        )
+        .overlay(
+          Capsule()
+            .strokeBorder(Color.white.opacity(0.22), lineWidth: 0.8)
+        )
+        .contentShape(Capsule())
+      } else {
+        Link(destination: URL(string: "pillpal://schedule")!) {
+          Label("Open to Log", systemImage: "arrow.up.forward.circle.fill")
+            .font(.system(size: 13, weight: .bold, design: .rounded))
+            .lineLimit(1)
+            .minimumScaleFactor(0.85)
             .frame(maxWidth: .infinity)
             .frame(height: 38)
             .foregroundColor(Color(red: 0.04, green: 0.16, blue: 0.17))
             .background(
               Capsule()
-                .fill(Color(red: 0.18, green: 0.83, blue: 0.75))
+                .fill(tealAccent)
             )
+            .contentShape(Capsule())
         }
+        .frame(maxWidth: .infinity)
 
-        Link(destination: URL(string: "pillpal://live_reminder/snooze?batchId=\(batchId)")!) {
-          Label("Snooze", systemImage: "zzz")
-            .font(.system(size: 13, weight: .bold, design: .rounded))
-            .lineLimit(1)
+        if #available(iOS 17.0, *) {
+          if isCountingDown {
+            Button(intent: RequestCancelSnoozeLiveActivityIntent(batchId: batchId)) {
+              Label("Cancel Snooze", systemImage: "xmark.circle.fill")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+            }
+            .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
-            .frame(height: 38)
             .foregroundColor(.white)
             .background(
               Capsule()
@@ -335,9 +389,53 @@ private struct LiveActivityActionButtonsRow: View {
               Capsule()
                 .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.8)
             )
+            .contentShape(Capsule())
+          } else {
+            Button(intent: CancelSnoozeLiveActivityIntent(batchId: batchId)) {
+              Label("Dismiss", systemImage: "xmark.circle.fill")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
+                .frame(height: 38)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
+            .foregroundColor(.white)
+            .background(
+              Capsule()
+                .fill(Color.white.opacity(0.18))
+            )
+            .overlay(
+              Capsule()
+                .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.8)
+            )
+            .contentShape(Capsule())
+          }
+        } else {
+          Link(destination: URL(string: "pillpal://live_reminder/cancelSnooze?batchId=\(batchId)")!) {
+            Label(isCountingDown ? "Cancel Snooze" : "Dismiss", systemImage: "xmark.circle.fill")
+              .font(.system(size: 13, weight: .bold, design: .rounded))
+              .lineLimit(1)
+              .minimumScaleFactor(0.85)
+              .frame(maxWidth: .infinity)
+              .frame(height: 38)
+              .foregroundColor(.white)
+              .background(
+                Capsule()
+                  .fill(Color.white.opacity(0.18))
+              )
+              .overlay(
+                Capsule()
+                  .strokeBorder(Color.white.opacity(0.15), lineWidth: 0.8)
+              )
+              .contentShape(Capsule())
+          }
+          .frame(maxWidth: .infinity)
         }
       }
     }
+    .frame(maxWidth: .infinity)
   }
 }
 #endif

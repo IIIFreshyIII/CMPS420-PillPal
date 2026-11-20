@@ -16,6 +16,7 @@ class Prescription {
   final Set<String> takenTimes;
   final int remaining;
   final int daysSupply;
+  final int refillsRemaining;
 
   /// Per-medication override: let this one's reminders fire even after the
   /// assigned profile's bedtime cutoff.
@@ -29,6 +30,7 @@ class Prescription {
     required this.reminderTimes,
     required this.remaining,
     required this.daysSupply,
+    this.refillsRemaining = 0,
     this.takenTimes = const {},
     this.allowAfterBedtime = false,
   });
@@ -42,6 +44,7 @@ class Prescription {
     Set<String>? takenTimes,
     int? remaining,
     int? daysSupply,
+    int? refillsRemaining,
     bool? allowAfterBedtime,
   }) {
     return Prescription(
@@ -53,6 +56,7 @@ class Prescription {
       takenTimes: takenTimes ?? this.takenTimes,
       remaining: remaining ?? this.remaining,
       daysSupply: daysSupply ?? this.daysSupply,
+      refillsRemaining: refillsRemaining ?? this.refillsRemaining,
       allowAfterBedtime: allowAfterBedtime ?? this.allowAfterBedtime,
     );
   }

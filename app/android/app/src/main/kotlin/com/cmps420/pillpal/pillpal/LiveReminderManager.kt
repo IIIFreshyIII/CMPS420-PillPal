@@ -32,6 +32,9 @@ object LiveReminderManager {
 
     const val ACTION_LOG_TAKEN = "com.cmps420.pillpal.ACTION_LOG_TAKEN"
     const val ACTION_SNOOZE = "com.cmps420.pillpal.ACTION_SNOOZE"
+    const val ACTION_REQUEST_CANCEL_SNOOZE = "com.cmps420.pillpal.ACTION_REQUEST_CANCEL_SNOOZE"
+    const val ACTION_KEEP_SNOOZE = "com.cmps420.pillpal.ACTION_KEEP_SNOOZE"
+    const val ACTION_CANCEL_SNOOZE = "com.cmps420.pillpal.ACTION_CANCEL_SNOOZE"
     const val EXTRA_BATCH_ID = "batchId"
 
     private var channel: MethodChannel? = null
@@ -50,11 +53,19 @@ object LiveReminderManager {
         private set
 
     @Volatile
-    var currentDurationMinutes: Int = 9
+    var currentDurationMinutes: Int = 15
         private set
 
     @Volatile
     var currentProfileName: String? = null
+        private set
+
+    @Volatile
+    var currentSnoozeNotificationId: Int? = null
+        private set
+
+    @Volatile
+    var pendingCancelConfirmation: Boolean = false
         private set
 
     fun attachChannel(methodChannel: MethodChannel, context: Context) {
@@ -89,19 +100,22 @@ object LiveReminderManager {
         snoozeDurationMinutes: Int,
         snoozeEndTimestampMs: Long,
         remainingDoseCount: Int,
-        profileName: String? = null
+        profileName: String? = null,
+        snoozeNotificationId: Int? = null
     ) {
         ensureNotificationChannel(context)
 
         currentBatchId = batchId
-        currentDurationMinutes = if (snoozeDurationMinutes > 0) snoozeDurationMinutes else 9
+        currentDurationMinutes = if (snoozeDurationMinutes > 0) snoozeDurationMinutes else 15
         currentProfileName = profileName?.trim()?.ifEmpty { null }
+        currentSnoozeNotificationId = snoozeNotificationId
         currentSnoozeEndMs = if (snoozeEndTimestampMs > 0L) {
             snoozeEndTimestampMs
         } else {
             System.currentTimeMillis() + (currentDurationMinutes * 60 * 1000L)
         }
         currentRemainingDoses = if (remainingDoseCount > 0) remainingDoseCount else 1
+        pendingCancelConfirmation = false
 
         renderNotification(context)
     }
@@ -121,6 +135,7 @@ object LiveReminderManager {
         if (profileName != null) {
             currentProfileName = profileName.trim().ifEmpty { null }
         }
+        pendingCancelConfirmation = false
         renderNotification(context)
     }
 
@@ -130,6 +145,8 @@ object LiveReminderManager {
             currentRemainingDoses = 0
             currentSnoozeEndMs = 0L
             currentProfileName = null
+            currentSnoozeNotificationId = null
+            pendingCancelConfirmation = false
             try {
                 NotificationManagerCompat.from(context).cancel(NOTIFICATION_ID)
             } catch (_: SecurityException) {}
@@ -143,13 +160,20 @@ object LiveReminderManager {
             return
         }
 
-        val baseTitle = if (count == 1) "1 dose pending" else "$count doses pending"
+        val isCountingDown = currentSnoozeEndMs > System.currentTimeMillis()
+        if (!isCountingDown) {
+            pendingCancelConfirmation = false
+        }
+
+        val headerLabel = formatBatchHeader(currentBatchId)
+        val countLabel = if (count == 1) "1 Left" else "$count Left"
+        val baseTitle = "$headerLabel • $countLabel"
         val title = if (!currentProfileName.isNullOrBlank()) {
             "$currentProfileName • $baseTitle"
         } else {
             baseTitle
         }
-        val subtitle = "PillPal Snooze • Tap to open schedule"
+        val subtitle = formatStatusSubtitle(isCountingDown, pendingCancelConfirmation)
 
         // Deep-link intent when user taps the notification card
         val contentIntent = Intent(Intent.ACTION_VIEW, Uri.parse("pillpal://schedule")).apply {
@@ -163,27 +187,34 @@ object LiveReminderManager {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action 1: "Log Taken" intent
-        val logTakenIntent = Intent(context, LiveReminderActionReceiver::class.java).apply {
-            action = ACTION_LOG_TAKEN
-            putExtra(EXTRA_BATCH_ID, currentBatchId)
-        }
-        val logTakenPendingIntent = PendingIntent.getBroadcast(
+        val requestCancelPendingIntent = PendingIntent.getBroadcast(
             context,
-            1001,
-            logTakenIntent,
+            1004,
+            Intent(context, LiveReminderActionReceiver::class.java).apply {
+                action = ACTION_REQUEST_CANCEL_SNOOZE
+                putExtra(EXTRA_BATCH_ID, currentBatchId)
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Action 2: "Snooze" intent
-        val snoozeIntent = Intent(context, LiveReminderActionReceiver::class.java).apply {
-            action = ACTION_SNOOZE
-            putExtra(EXTRA_BATCH_ID, currentBatchId)
-        }
-        val snoozePendingIntent = PendingIntent.getBroadcast(
+        val keepSnoozePendingIntent = PendingIntent.getBroadcast(
             context,
-            1002,
-            snoozeIntent,
+            1005,
+            Intent(context, LiveReminderActionReceiver::class.java).apply {
+                action = ACTION_KEEP_SNOOZE
+                putExtra(EXTRA_BATCH_ID, currentBatchId)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Final cancel/dismiss action ("Confirm Cancel" during countdown, "Dismiss" once expired)
+        val cancelSnoozePendingIntent = PendingIntent.getBroadcast(
+            context,
+            1003,
+            Intent(context, LiveReminderActionReceiver::class.java).apply {
+                action = ACTION_CANCEL_SNOOZE
+                putExtra(EXTRA_BATCH_ID, currentBatchId)
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
@@ -200,25 +231,42 @@ object LiveReminderManager {
             .setContentText(subtitle)
             .setContentIntent(contentPendingIntent)
             .setOngoing(true)
-            .setUsesChronometer(true)
-            .setChronometerCountDown(true)
-            .setWhen(currentSnoozeEndMs)
+            .setShowWhen(true)
+            .setWhen(if (isCountingDown) currentSnoozeEndMs else System.currentTimeMillis())
+            .setUsesChronometer(isCountingDown)
+            .setChronometerCountDown(isCountingDown)
             .setColor(0xFF168B87.toInt())
             .setColorized(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            .addAction(
-                android.R.drawable.checkbox_on_background,
-                "Log Taken",
-                logTakenPendingIntent
-            )
-            .addAction(
-                android.R.drawable.ic_lock_idle_alarm,
-                "Snooze",
-                snoozePendingIntent
-            )
+
+        if (isCountingDown && pendingCancelConfirmation) {
+            builder
+                .addAction(
+                    android.R.drawable.ic_menu_revert,
+                    "Keep Snooze",
+                    keepSnoozePendingIntent
+                )
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    "Confirm Cancel",
+                    cancelSnoozePendingIntent
+                )
+        } else {
+            builder
+                .addAction(
+                    android.R.drawable.ic_menu_view,
+                    "Open to Log",
+                    contentPendingIntent
+                )
+                .addAction(
+                    android.R.drawable.ic_menu_close_clear_cancel,
+                    if (isCountingDown) "Cancel Snooze" else "Dismiss",
+                    if (isCountingDown) requestCancelPendingIntent else cancelSnoozePendingIntent
+                )
+        }
 
         try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, builder.build())
@@ -231,6 +279,37 @@ object LiveReminderManager {
         val targetBatchId = if (batchId.isNotEmpty()) batchId else currentBatchId
 
         when (action) {
+            ACTION_REQUEST_CANCEL_SNOOZE -> {
+                if (currentRemainingDoses > 0 && currentSnoozeEndMs > System.currentTimeMillis()) {
+                    pendingCancelConfirmation = true
+                    renderNotification(context)
+                } else {
+                    handleAction(context, ACTION_CANCEL_SNOOZE, targetBatchId)
+                }
+            }
+            ACTION_KEEP_SNOOZE -> {
+                if (currentRemainingDoses > 0) {
+                    pendingCancelConfirmation = false
+                    renderNotification(context)
+                }
+            }
+            ACTION_CANCEL_SNOOZE -> {
+                val explicitId = currentSnoozeNotificationId
+                val fallbackId = if (targetBatchId.isNotEmpty()) {
+                    snoozeNotificationIdForBatch(targetBatchId)
+                } else {
+                    null
+                }
+                dismiss(context, targetBatchId)
+                try {
+                    val manager = NotificationManagerCompat.from(context)
+                    if (explicitId != null) manager.cancel(explicitId)
+                    if (fallbackId != null && fallbackId != explicitId) {
+                        manager.cancel(fallbackId)
+                    }
+                } catch (_: SecurityException) {}
+                invokeFlutterMethod("cancelSnooze", mapOf("batchId" to targetBatchId))
+            }
             ACTION_LOG_TAKEN -> {
                 val newCount = currentRemainingDoses - 1
                 if (newCount <= 0) {
@@ -270,6 +349,58 @@ object LiveReminderManager {
 
     fun notifyOpenSchedule() {
         invokeFlutterMethod("openSchedule", mapOf("batchId" to currentBatchId))
+    }
+
+    private fun formatBatchHeader(batchId: String): String {
+        val parts = batchId.split("_")
+        if (parts.size == 3 && parts[0] == "batch") {
+            val hour = parts[1].toIntOrNull()
+            val minute = parts[2].toIntOrNull()
+            if (hour != null && minute != null && hour in 0..23 && minute in 0..59) {
+                val totalMinutes = hour * 60 + minute
+                val periodName = when {
+                    totalMinutes in (5 * 60) until (11 * 60 + 30) -> "Morning"
+                    totalMinutes in (11 * 60 + 30) until (14 * 60) -> "Midday"
+                    totalMinutes in (14 * 60) until (17 * 60) -> "Afternoon"
+                    totalMinutes in (17 * 60) until (21 * 60) -> "Evening"
+                    else -> "Bedtime"
+                }
+                val displayHour = if (hour % 12 == 0) 12 else hour % 12
+                val period = if (hour < 12) "AM" else "PM"
+                val slotLabel = String.format(
+                    java.util.Locale.US,
+                    "%d:%02d %s",
+                    displayHour,
+                    minute,
+                    period
+                )
+                return "$periodName • $slotLabel"
+            }
+        }
+        return "Medication Routine"
+    }
+
+    private fun formatStatusSubtitle(
+        isCountingDown: Boolean,
+        isPendingCancelConfirmation: Boolean
+    ): String {
+        if (isCountingDown && isPendingCancelConfirmation) {
+            return "Cancel this snooze reminder?"
+        }
+        if (isCountingDown) {
+            return "Tap to open"
+        }
+        return "Ready to log • Tap to open"
+    }
+
+    private fun snoozeNotificationIdForBatch(batchId: String): Int {
+        val combined = "snooze_slot\u0000$batchId"
+        var hash = 0x811c9dc5L
+        for (ch in combined) {
+            hash = hash xor ch.code.toLong()
+            hash = (hash * 0x01000193L) and 0xFFFFFFFFL
+        }
+        return (hash and 0x7FFFFFFFL).toInt()
     }
 
     private fun invokeFlutterMethod(method: String, arguments: Map<String, Any>) {

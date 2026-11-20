@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -427,5 +428,195 @@ void main() {
     } finally {
       debugDefaultTargetPlatformOverride = null;
     }
+  });
+
+  testWidgets(
+      'empty schedule with zero prescriptions centers empty state on screen and loops fade cycle only while active',
+      (tester) async {
+    tester.view.physicalSize = const Size(600, 852);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    bool isActive = true;
+    late StateSetter setHostState;
+    final emptyKey = GlobalKey();
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: StatefulBuilder(
+        builder: (context, setState) {
+          setHostState = setState;
+          return MediaQuery(
+            data: const MediaQueryData(
+              size: Size(600, 852),
+              padding: EdgeInsets.only(top: 59),
+              viewPadding: EdgeInsets.only(top: 59),
+            ),
+            child: Scaffold(
+              body: SafeArea(
+                bottom: false,
+                child: ScheduleScreen(
+                  prescriptions: const [],
+                  profiles: const [profile],
+                  selectedProfileId: 'all',
+                  onSelectProfile: (_) {},
+                  onTakeDose: (_, __) {},
+                  onViewMedication: (_) {},
+                  onToggleAllCompleted: (_, __) {},
+                  onOpenScan: () {},
+                  isScanning: false,
+                  isActive: isActive,
+                  emptyScheduleKey: emptyKey,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('No medications yet'), findsOneWidget);
+    expect(
+      find.text(
+        'Tap + Add Meds in the top right to scan a label, upload a photo, or enter one manually.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('empty_feed_cta_button')), findsNothing);
+    expect(find.text('Scan a Bottle'), findsNothing);
+    expect(find.byType(SliverFillRemaining), findsOneWidget);
+
+    // Verify empty state is centered vertically near the middle of the 852px screen.
+    final emptyCenterY = tester.getCenter(find.byKey(emptyKey)).dy;
+    expect(emptyCenterY, inInclusiveRange(380.0, 470.0));
+
+    double arrowOpacity() => tester
+        .widget<AnimatedOpacity>(find.byKey(const Key('add_meds_nudge_arrow')))
+        .opacity;
+
+    expect(arrowOpacity(), 0.0);
+
+    // Appears after 2.5s initial delay.
+    await tester.pump(const Duration(milliseconds: 2600));
+    expect(arrowOpacity(), 1.0);
+
+    // Fades out after the 3.5s visible window.
+    await tester.pump(const Duration(milliseconds: 3500));
+    expect(arrowOpacity(), 0.0);
+
+    // Fades back in after 600ms fade-out + 2.5s hidden pause.
+    await tester.pump(const Duration(milliseconds: 3200));
+    expect(arrowOpacity(), 1.0);
+
+    // Fades out again on the next cycle.
+    await tester.pump(const Duration(milliseconds: 3500));
+    expect(arrowOpacity(), 0.0);
+
+    // Leaving the Schedule page hides the arrow and stops cycling.
+    setHostState(() => isActive = false);
+    await tester.pump();
+    expect(arrowOpacity(), 0.0);
+
+    await tester.pump(const Duration(seconds: 6));
+    expect(arrowOpacity(), 0.0);
+  });
+
+  testWidgets(
+      'empty filtered schedule when prescriptions exist shows Nothing scheduled without nudge arrow',
+      (tester) async {
+    const p1 = Profile(id: '1', name: 'Marcus', color: Colors.blue, isPrimary: true);
+    const p2 = Profile(id: '2', name: 'Mom', color: Colors.orange);
+    const prescriptions = [
+      Prescription(
+        id: '1',
+        name: 'Allegra',
+        dosage: '10mg',
+        reminderTimes: ['8:00 AM'],
+        daysSupply: 14,
+        remaining: 14,
+        profileId: '1',
+        takenTimes: {},
+      ),
+    ];
+
+    await tester.pumpWidget(MaterialApp(
+      theme: AppTheme.lightTheme,
+      home: Scaffold(
+        body: ScheduleScreen(
+          prescriptions: prescriptions,
+          profiles: const [p1, p2],
+          selectedProfileId: '2', // Mom has no medications
+          onSelectProfile: (_) {},
+          onTakeDose: (_, __) {},
+          onViewMedication: (_) {},
+          onToggleAllCompleted: (_, __) {},
+          onOpenScan: () {},
+          isScanning: false,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Nothing scheduled'), findsOneWidget);
+    expect(find.text('No reminders are set for this profile.'), findsOneWidget);
+    expect(find.text('No medications yet'), findsNothing);
+    expect(find.byKey(const Key('empty_feed_cta_button')), findsNothing);
+
+    await tester.pump(const Duration(seconds: 4));
+    final arrowOpacity = tester
+        .widget<AnimatedOpacity>(find.byKey(const Key('add_meds_nudge_arrow')))
+        .opacity;
+    expect(arrowOpacity, 0.0);
+  });
+
+  testWidgets(
+      'Add Meds button uses CupertinoActivityIndicator on iOS and CircularProgressIndicator on Android',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      key: const ValueKey('spinner_ios'),
+      theme: AppTheme.lightTheme.copyWith(platform: TargetPlatform.iOS),
+      home: Scaffold(
+        body: ScheduleScreen(
+          prescriptions: const [],
+          profiles: const [profile],
+          selectedProfileId: 'all',
+          onSelectProfile: (_) {},
+          onTakeDose: (_, __) {},
+          onViewMedication: (_) {},
+          onToggleAllCompleted: (_, __) {},
+          onOpenScan: () {},
+          isScanning: true,
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byType(CupertinoActivityIndicator), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('Add Meds'), findsOneWidget);
+
+    await tester.pumpWidget(MaterialApp(
+      key: const ValueKey('spinner_android'),
+      theme: AppTheme.lightTheme.copyWith(platform: TargetPlatform.android),
+      home: Scaffold(
+        body: ScheduleScreen(
+          prescriptions: const [],
+          profiles: const [profile],
+          selectedProfileId: 'all',
+          onSelectProfile: (_) {},
+          onTakeDose: (_, __) {},
+          onViewMedication: (_) {},
+          onToggleAllCompleted: (_, __) {},
+          onOpenScan: () {},
+          isScanning: true,
+        ),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(CupertinoActivityIndicator), findsNothing);
+    expect(find.text('Add Meds'), findsOneWidget);
   });
 }

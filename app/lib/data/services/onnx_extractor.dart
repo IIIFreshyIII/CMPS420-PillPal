@@ -1,4 +1,5 @@
 import '../../core/ner/ner_engine.dart';
+import '../../core/ner/postprocess.dart' show formatDrugName;
 import 'extractor.dart';
 
 /// The real [Extractor]: on-device NER (distilled from Med7, run via ONNX)
@@ -15,8 +16,9 @@ class OnnxExtractor implements Extractor {
   Future<Extraction> extract(String labelText) async {
     final result = await _engine.extract(labelText);
 
+    final rawDrug = result.fields['drug'];
     final extraction = Extraction(rawText: labelText)
-      ..drug = result.fields['drug']
+      ..drug = rawDrug != null ? formatDrugName(rawDrug) : null
       ..strength = result.fields['strength']
       ..dose = result.fields['dose']
       ..form = result.fields['form']
@@ -24,8 +26,12 @@ class OnnxExtractor implements Extractor {
       ..frequency = result.fields['frequency']
       ..duration = result.fields['duration']
       ..fillDate = result.fillDate
-      ..daysSupply = result.daysSupply;
+      ..daysSupply = result.daysSupply
+      ..quantity = result.quantity
+      ..refills = result.refills;
     extraction.fieldRecognized.addAll(result.recognized);
     return extraction;
   }
+
+  Future<void> dispose() => _engine.dispose();
 }

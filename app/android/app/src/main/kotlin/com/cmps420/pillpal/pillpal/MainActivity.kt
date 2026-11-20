@@ -101,13 +101,14 @@ class MainActivity : FlutterFragmentActivity() {
             when (call.method) {
                 "startSnoozeActivity" -> {
                     val batchId = args["batchId"] as? String ?: ""
-                    val durationMinutes = (args["snoozeDurationMinutes"] as? Number)?.toInt() ?: 9
+                    val durationMinutes = (args["snoozeDurationMinutes"] as? Number)?.toInt() ?: 15
                     val endMs = (args["snoozeEndTimestampMs"] as? Number)?.toLong()
                         ?: (System.currentTimeMillis() + durationMinutes * 60 * 1000L)
                     val remainingCount = (args["remainingDoseCount"] as? Number)?.toInt()
                         ?: (args["remainingCount"] as? Number)?.toInt()
                         ?: 1
                     val profileName = args["profileName"] as? String
+                    val snoozeNotificationId = (args["snoozeNotificationId"] as? Number)?.toInt()
 
                     LiveReminderManager.startSnooze(
                         context = this,
@@ -115,7 +116,8 @@ class MainActivity : FlutterFragmentActivity() {
                         snoozeDurationMinutes = durationMinutes,
                         snoozeEndTimestampMs = endMs,
                         remainingDoseCount = remainingCount,
-                        profileName = profileName
+                        profileName = profileName,
+                        snoozeNotificationId = snoozeNotificationId
                     )
                     result.success(null)
                 }

@@ -11,7 +11,7 @@ class OnboardingProgressBar extends StatelessWidget {
   const OnboardingProgressBar({
     super.key,
     required this.currentStep,
-    this.totalSteps = 6,
+    this.totalSteps = 7,
     this.activeColor,
     this.inactiveColor,
   });

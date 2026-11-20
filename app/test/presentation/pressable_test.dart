@@ -73,4 +73,33 @@ void main() {
     await tester.pumpAndSettle();
     expect(surfaceTaps, 1);
   });
+
+  testWidgets('draws InkWell ripple on Android but omits it on iOS',
+      (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      key: const ValueKey('pressable_android'),
+      theme: ThemeData(platform: TargetPlatform.android),
+      home: Scaffold(
+        body: Pressable(
+          onTap: () {},
+          borderRadius: BorderRadius.circular(18),
+          child: const SizedBox(width: 120, height: 60, child: Text('Android')),
+        ),
+      ),
+    ));
+    expect(find.byType(InkWell), findsOneWidget);
+
+    await tester.pumpWidget(MaterialApp(
+      key: const ValueKey('pressable_ios'),
+      theme: ThemeData(platform: TargetPlatform.iOS),
+      home: Scaffold(
+        body: Pressable(
+          onTap: () {},
+          borderRadius: BorderRadius.circular(18),
+          child: const SizedBox(width: 120, height: 60, child: Text('iOS')),
+        ),
+      ),
+    ));
+    expect(find.byType(InkWell), findsNothing);
+  });
 }

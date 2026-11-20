@@ -213,6 +213,8 @@ DoseBatch calculateDoseBatch(
   List<Prescription> prescriptions,
   String timeSlot, {
   List<Profile>? profiles,
+  Set<String>? skippedSlotKeys,
+  bool bypassBedtime = false,
 }) {
   final parsedSlot = parseTimeOfDayLabel(timeSlot);
   final canonicalSlot =
@@ -239,17 +241,19 @@ DoseBatch calculateDoseBatch(
       final allowed = shouldScheduleReminder(
         time: matchingReminderTime,
         bedtime: profile?.bedtime,
-        allowAfterBedtime: prescription.allowAfterBedtime,
+        allowAfterBedtime: prescription.allowAfterBedtime || bypassBedtime,
       );
       if (!allowed) continue;
     }
 
     scheduled.add(prescription);
 
+    final slotKey = '${prescription.id}_$matchingReminderTime';
+    final isSkipped = skippedSlotKeys != null && skippedSlotKeys.contains(slotKey);
     final isTakenForSlot = prescription.takenTimes.any(
       (takenTime) => isSameTimeSlot(takenTime, matchingReminderTime!),
     );
-    if (!isTakenForSlot) {
+    if (!isTakenForSlot && !isSkipped) {
       remaining.add(prescription);
     }
   }
@@ -351,11 +355,12 @@ bool isAtOrPastBedtime({
   return !dateTime.isBefore(target);
 }
 
-/// Calculates the number of untaken doses for [profile] that are scheduled
-/// before their configured [bedtime].
+/// Calculates the number of untaken, unskipped doses for [profile] that are
+/// scheduled before their configured [bedtime].
 int calculatePendingDosesBeforeBedtime({
   required Profile profile,
   required List<Prescription> prescriptions,
+  Set<String>? skippedSlotKeys,
 }) {
   var count = 0;
   for (final prescription in prescriptions) {
@@ -368,10 +373,35 @@ int calculatePendingDosesBeforeBedtime({
       );
       if (!isBeforeBedtime) continue;
 
+      final isSkipped =
+          skippedSlotKeys != null && skippedSlotKeys.contains('${prescription.id}_$time');
       final isTaken = prescription.takenTimes.any(
         (t) => isSameTimeSlot(t, time),
       );
-      if (!isTaken) {
+      if (!isTaken && !isSkipped) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/// Calculates total doses for [profile] scheduled before their configured [bedtime],
+/// regardless of whether today's doses are already taken or skipped.
+int calculateScheduledDosesBeforeBedtime({
+  required Profile profile,
+  required List<Prescription> prescriptions,
+}) {
+  var count = 0;
+  for (final prescription in prescriptions) {
+    if (prescription.profileId != profile.id) continue;
+    for (final time in prescription.reminderTimes) {
+      final isBeforeBedtime = shouldScheduleReminder(
+        time: time,
+        bedtime: profile.bedtime,
+        allowAfterBedtime: prescription.allowAfterBedtime,
+      );
+      if (isBeforeBedtime) {
         count++;
       }
     }
@@ -410,4 +440,335 @@ String formatPreBedtimeFinalCallMessage({
 /// Deterministic, non-colliding notification ID for a profile's Pre-Bedtime Final Call.
 int notificationIdForPreBedtime(String profileId) {
   return notificationIdFor(profileId, 'pre_bedtime_final_call');
+}
+
+/// Privacy-safe routine label derived purely from wall-clock time-of-day.
+String routineNameForTimeSlot(String timeSlot) {
+  final tod = parseTimeOfDayLabel(timeSlot);
+  if (tod == null) return 'Medication Routine';
+  final minutes = tod.hour * 60 + tod.minute;
+  if (minutes >= 5 * 60 && minutes < 11 * 60 + 30) return 'Morning Routine';
+  if (minutes >= 11 * 60 + 30 && minutes < 14 * 60) return 'Midday Routine';
+  if (minutes >= 14 * 60 && minutes < 17 * 60) return 'Afternoon Routine';
+  if (minutes >= 17 * 60 && minutes < 21 * 60) return 'Evening Routine';
+  return 'Bedtime Routine';
+}
+
+/// Consolidated notification plan for a single time slot (1 alert per routine).
+/// Contains zero medication names or dosages so external lock-screen surfaces
+/// remain strictly private.
+class ConsolidatedSlotPlan {
+  const ConsolidatedSlotPlan({
+    required this.batchId,
+    required this.timeSlot,
+    required this.routineName,
+    required this.scheduledCount,
+    required this.remainingCount,
+    required this.profileCounts,
+    required this.remainingProfileCounts,
+    required this.allowFollowUpNudge,
+  });
+
+  final String batchId;
+  final String timeSlot;
+  final String routineName;
+  final int scheduledCount;
+  final int remainingCount;
+  final Map<String, int> profileCounts;
+  final Map<String, int> remainingProfileCounts;
+  final bool allowFollowUpNudge;
+}
+
+/// Groups all allowed `(prescription, reminderTime)` pairs into one
+/// [ConsolidatedSlotPlan] per unique time slot.
+List<ConsolidatedSlotPlan> buildConsolidatedSlotPlans(
+  List<Prescription> prescriptions,
+  List<Profile> profiles, {
+  Set<String>? skippedSlotKeys,
+  bool bypassBedtime = false,
+}) {
+  final profileMap = {for (final p in profiles) p.id: p};
+  final slotsByBatchId = <String, _MutableSlotPlan>{};
+
+  for (final prescription in prescriptions) {
+    final profile = profileMap[prescription.profileId];
+    for (final rawTime in prescription.reminderTimes) {
+      final allowed = shouldScheduleReminder(
+        time: rawTime,
+        bedtime: profile?.bedtime,
+        allowAfterBedtime: prescription.allowAfterBedtime || bypassBedtime,
+      );
+      if (!allowed) continue;
+
+      final parsed = parseTimeOfDayLabel(rawTime);
+      final canonicalTime =
+          parsed != null ? formatTimeOfDayLabel(parsed) : rawTime.trim();
+      final batchId = batchIdForTimeSlot(canonicalTime);
+
+      final entry = slotsByBatchId.putIfAbsent(
+        batchId,
+        () => _MutableSlotPlan(
+          batchId: batchId,
+          timeSlot: canonicalTime,
+          routineName: routineNameForTimeSlot(canonicalTime),
+        ),
+      );
+
+      entry.scheduledCount++;
+      final profileLabel = profile?.name.trim().isNotEmpty == true
+          ? profile!.name.trim()
+          : 'You';
+      entry.profileCounts[profileLabel] =
+          (entry.profileCounts[profileLabel] ?? 0) + 1;
+
+      final isTaken = prescription.takenTimes.any(
+        (t) => isSameTimeSlot(t, rawTime),
+      );
+      final isSkipped = skippedSlotKeys != null &&
+          (skippedSlotKeys.contains('${prescription.id}_$rawTime') ||
+              skippedSlotKeys.contains('${prescription.id}_$canonicalTime'));
+      if (!isTaken && !isSkipped) {
+        entry.remainingCount++;
+        entry.remainingProfileCounts[profileLabel] =
+            (entry.remainingProfileCounts[profileLabel] ?? 0) + 1;
+      }
+
+      final nudgeTod = calculateFollowUpNudgeTime(canonicalTime);
+      if (nudgeTod != null) {
+        final nudgeAllowed = shouldScheduleReminder(
+          time: formatTimeOfDayLabel(nudgeTod),
+          bedtime: profile?.bedtime,
+          allowAfterBedtime: prescription.allowAfterBedtime || bypassBedtime,
+        );
+        if (nudgeAllowed) {
+          entry.allowFollowUpNudge = true;
+        }
+      }
+    }
+  }
+
+  return slotsByBatchId.values
+      .map(
+        (e) => ConsolidatedSlotPlan(
+          batchId: e.batchId,
+          timeSlot: e.timeSlot,
+          routineName: e.routineName,
+          scheduledCount: e.scheduledCount,
+          remainingCount: e.remainingCount,
+          profileCounts: Map.unmodifiable(e.profileCounts),
+          remainingProfileCounts: Map.unmodifiable(e.remainingProfileCounts),
+          allowFollowUpNudge: e.allowFollowUpNudge,
+        ),
+      )
+      .toList();
+}
+
+class _MutableSlotPlan {
+  _MutableSlotPlan({
+    required this.batchId,
+    required this.timeSlot,
+    required this.routineName,
+  });
+
+  final String batchId;
+  final String timeSlot;
+  final String routineName;
+  int scheduledCount = 0;
+  int remainingCount = 0;
+  final Map<String, int> profileCounts = {};
+  final Map<String, int> remainingProfileCounts = {};
+  bool allowFollowUpNudge = false;
+}
+
+/// Calculates the [TimeOfDay] for the Touch 2 1-Hour Follow-Up Nudge.
+/// Returns `null` if [timeSlot] is unparseable or adding [delayMinutes]
+/// would wrap past midnight into sleep hours.
+TimeOfDay? calculateFollowUpNudgeTime(
+  String timeSlot, {
+  int delayMinutes = 60,
+}) {
+  final tod = parseTimeOfDayLabel(timeSlot);
+  if (tod == null) return null;
+  final totalMinutes = tod.hour * 60 + tod.minute + delayMinutes;
+  if (totalMinutes >= 24 * 60) return null;
+  return TimeOfDay(hour: totalMinutes ~/ 60, minute: totalMinutes % 60);
+}
+
+/// Privacy-safe Touch 1 notification title (no drug names or dosages).
+String formatRoutineNotificationTitle(ConsolidatedSlotPlan plan) {
+  return '${plan.routineName} • ${plan.timeSlot}';
+}
+
+/// Privacy-safe Touch 1 notification body (no drug names or dosages).
+String formatRoutineNotificationBody(
+  ConsolidatedSlotPlan plan, {
+  bool useRemainingCounts = false,
+}) {
+  final count = useRemainingCounts && plan.remainingCount > 0
+      ? plan.remainingCount
+      : plan.scheduledCount;
+  final countsByProfile = useRemainingCounts && plan.remainingProfileCounts.isNotEmpty
+      ? plan.remainingProfileCounts
+      : plan.profileCounts;
+  final doseWord = count == 1 ? '1 dose' : '$count doses';
+
+  if (countsByProfile.isEmpty) {
+    return 'Time for $doseWord.';
+  }
+  if (countsByProfile.length == 1) {
+    return 'Time for $doseWord for ${countsByProfile.keys.first}.';
+  }
+  final breakdown = countsByProfile.entries
+      .map((e) => '${e.value} for ${e.key}')
+      .join(', ');
+  return 'Time for $doseWord ($breakdown).';
+}
+
+/// Privacy-safe Touch 2 (1-Hour Follow-Up Nudge) title.
+String formatFollowUpNudgeTitle(ConsolidatedSlotPlan plan) {
+  return 'Gentle Reminder • ${plan.routineName}';
+}
+
+/// Privacy-safe Touch 2 (1-Hour Follow-Up Nudge) body.
+String formatFollowUpNudgeBody(
+  ConsolidatedSlotPlan plan, {
+  bool useRemainingCount = true,
+}) {
+  final count = useRemainingCount && plan.remainingCount > 0
+      ? plan.remainingCount
+      : plan.scheduledCount;
+  final doseWord = count == 1 ? '1 pending dose' : '$count pending doses';
+  return 'You still have $doseWord from your ${plan.timeSlot} routine.';
+}
+
+/// Deterministic notification ID for Touch 1 (consolidated routine alert).
+int notificationIdForTimeSlot(String timeSlot) {
+  return notificationIdFor('routine_slot', batchIdForTimeSlot(timeSlot));
+}
+
+/// Deterministic notification ID for Touch 2 (1-hour follow-up nudge).
+int notificationIdForFollowUpNudge(String timeSlot) {
+  return notificationIdFor('followup_nudge', batchIdForTimeSlot(timeSlot));
+}
+
+/// Deterministic notification ID for a dedicated snooze-ended alert.
+int notificationIdForSnooze(String timeSlot) {
+  return notificationIdFor('snooze_slot', batchIdForTimeSlot(timeSlot));
+}
+
+/// Privacy-safe snooze completion notification title (zero drug names).
+String formatSnoozeNotificationTitle(String timeSlot) {
+  return '${routineNameForTimeSlot(timeSlot)} • Snooze Ended';
+}
+
+/// Privacy-safe snooze completion notification body (zero drug names).
+String formatSnoozeNotificationBody({
+  required int remainingCount,
+  required String timeSlot,
+  String? profileName,
+}) {
+  final count = remainingCount > 0 ? remainingCount : 1;
+  final doseWord = count == 1 ? '1 pending dose' : '$count pending doses';
+  final cleanProfile = profileName?.trim();
+  if (cleanProfile != null && cleanProfile.isNotEmpty) {
+    return 'Time to log $doseWord for $cleanProfile ($timeSlot).';
+  }
+  return 'Time to log $doseWord from your $timeSlot routine.';
+}
+
+/// Computes the next morning reset timestamp (defaults to 6:00 AM).
+/// If [now] is already before [resetHour]:00 (e.g., 1:30 AM), returns today at
+/// [resetHour]:00; otherwise returns tomorrow at [resetHour]:00.
+DateTime calculateNextMorningReset(DateTime now, {int resetHour = 6}) {
+  final todayReset = DateTime(now.year, now.month, now.day, resetHour, 0);
+  if (now.isBefore(todayReset)) {
+    return todayReset;
+  }
+  return todayReset.add(const Duration(days: 1));
+}
+
+/// Returns `true` when an active snooze alert for the same slot will fire within
+/// [overlapWindow] before [nudgeTime] (or at/after [nudgeTime]) on the same day,
+/// so Touch 2's 1-hour gentle nudge should be skipped today to avoid double-buzzing.
+bool shouldSuppressFollowUpNudgeForSnooze({
+  required DateTime nudgeTime,
+  required DateTime? activeSnoozeEnd,
+  Duration overlapWindow = const Duration(minutes: 20),
+}) {
+  if (activeSnoozeEnd == null) return false;
+  final sameDay = activeSnoozeEnd.year == nudgeTime.year &&
+      activeSnoozeEnd.month == nudgeTime.month &&
+      activeSnoozeEnd.day == nudgeTime.day;
+  if (!sameDay) return false;
+  return !activeSnoozeEnd.isBefore(nudgeTime.subtract(overlapWindow));
+}
+
+/// Returns the duration from [now] until today's occurrence of [timeSlot].
+/// Negative or zero means the scheduled slot has already arrived/passed today.
+Duration? timeUntilScheduledSlot({
+  required DateTime now,
+  required String timeSlot,
+}) {
+  final tod = parseTimeOfDayLabel(timeSlot);
+  if (tod == null) return null;
+  final scheduledToday = DateTime(
+    now.year,
+    now.month,
+    now.day,
+    tod.hour,
+    tod.minute,
+  );
+  return scheduledToday.difference(now);
+}
+
+/// Formats a positive lead-time duration cleanly for prompts (e.g. `2 hr 15 min`).
+String formatLeadTimeDuration(Duration duration) {
+  final totalMinutes = duration.inMinutes.clamp(1, 24 * 60);
+  final hours = totalMinutes ~/ 60;
+  final minutes = totalMinutes % 60;
+  if (hours == 0) return '$minutes min';
+  if (minutes == 0) return '$hours hr';
+  return '$hours hr $minutes min';
+}
+
+/// Calculates the number of currently due, untaken, unskipped doses up to [now]
+/// today for driving the app icon red badge count.
+int calculateDuePendingDosesCount(
+  List<Prescription> prescriptions,
+  List<Profile> profiles, {
+  required DateTime now,
+  Set<String>? skippedSlotKeys,
+}) {
+  final profileMap = {for (final p in profiles) p.id: p};
+  final nowMinutes = now.hour * 60 + now.minute;
+  var count = 0;
+
+  for (final prescription in prescriptions) {
+    final profile = profileMap[prescription.profileId];
+    for (final rawTime in prescription.reminderTimes) {
+      final allowed = shouldScheduleReminder(
+        time: rawTime,
+        bedtime: profile?.bedtime,
+        allowAfterBedtime: prescription.allowAfterBedtime,
+      );
+      if (!allowed) continue;
+
+      final parsed = parseTimeOfDayLabel(rawTime);
+      if (parsed == null) continue;
+      final slotMinutes = parsed.hour * 60 + parsed.minute;
+      if (slotMinutes > nowMinutes) continue;
+
+      final isTaken = prescription.takenTimes.any(
+        (t) => isSameTimeSlot(t, rawTime),
+      );
+      final canonicalTime = formatTimeOfDayLabel(parsed);
+      final isSkipped = skippedSlotKeys != null &&
+          (skippedSlotKeys.contains('${prescription.id}_$rawTime') ||
+              skippedSlotKeys.contains('${prescription.id}_$canonicalTime'));
+      if (!isTaken && !isSkipped) {
+        count++;
+      }
+    }
+  }
+  return count;
 }

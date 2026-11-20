@@ -371,6 +371,14 @@ class $PrescriptionsTable extends Prescriptions
   late final GeneratedColumn<int> daysSupply = GeneratedColumn<int>(
       'days_supply', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _refillsRemainingMeta =
+      const VerificationMeta('refillsRemaining');
+  @override
+  late final GeneratedColumn<int> refillsRemaining = GeneratedColumn<int>(
+      'refills_remaining', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
   static const VerificationMeta _allowAfterBedtimeMeta =
       const VerificationMeta('allowAfterBedtime');
   @override
@@ -391,6 +399,7 @@ class $PrescriptionsTable extends Prescriptions
         takenTimes,
         remaining,
         daysSupply,
+        refillsRemaining,
         allowAfterBedtime
       ];
   @override
@@ -440,6 +449,12 @@ class $PrescriptionsTable extends Prescriptions
     } else if (isInserting) {
       context.missing(_daysSupplyMeta);
     }
+    if (data.containsKey('refills_remaining')) {
+      context.handle(
+          _refillsRemainingMeta,
+          refillsRemaining.isAcceptableOrUnknown(
+              data['refills_remaining']!, _refillsRemainingMeta));
+    }
     if (data.containsKey('allow_after_bedtime')) {
       context.handle(
           _allowAfterBedtimeMeta,
@@ -473,6 +488,8 @@ class $PrescriptionsTable extends Prescriptions
           .read(DriftSqlType.int, data['${effectivePrefix}remaining'])!,
       daysSupply: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}days_supply'])!,
+      refillsRemaining: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}refills_remaining'])!,
       allowAfterBedtime: attachedDatabase.typeMapping.read(
           DriftSqlType.bool, data['${effectivePrefix}allow_after_bedtime'])!,
     );
@@ -498,6 +515,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
   final List<String> takenTimes;
   final int remaining;
   final int daysSupply;
+  final int refillsRemaining;
   final bool allowAfterBedtime;
   const PrescriptionRow(
       {required this.id,
@@ -508,6 +526,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       required this.takenTimes,
       required this.remaining,
       required this.daysSupply,
+      required this.refillsRemaining,
       required this.allowAfterBedtime});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -526,6 +545,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
     }
     map['remaining'] = Variable<int>(remaining);
     map['days_supply'] = Variable<int>(daysSupply);
+    map['refills_remaining'] = Variable<int>(refillsRemaining);
     map['allow_after_bedtime'] = Variable<bool>(allowAfterBedtime);
     return map;
   }
@@ -540,6 +560,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       takenTimes: Value(takenTimes),
       remaining: Value(remaining),
       daysSupply: Value(daysSupply),
+      refillsRemaining: Value(refillsRemaining),
       allowAfterBedtime: Value(allowAfterBedtime),
     );
   }
@@ -556,6 +577,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       takenTimes: serializer.fromJson<List<String>>(json['takenTimes']),
       remaining: serializer.fromJson<int>(json['remaining']),
       daysSupply: serializer.fromJson<int>(json['daysSupply']),
+      refillsRemaining: serializer.fromJson<int>(json['refillsRemaining']),
       allowAfterBedtime: serializer.fromJson<bool>(json['allowAfterBedtime']),
     );
   }
@@ -571,6 +593,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       'takenTimes': serializer.toJson<List<String>>(takenTimes),
       'remaining': serializer.toJson<int>(remaining),
       'daysSupply': serializer.toJson<int>(daysSupply),
+      'refillsRemaining': serializer.toJson<int>(refillsRemaining),
       'allowAfterBedtime': serializer.toJson<bool>(allowAfterBedtime),
     };
   }
@@ -584,6 +607,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           List<String>? takenTimes,
           int? remaining,
           int? daysSupply,
+          int? refillsRemaining,
           bool? allowAfterBedtime}) =>
       PrescriptionRow(
         id: id ?? this.id,
@@ -594,6 +618,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
         takenTimes: takenTimes ?? this.takenTimes,
         remaining: remaining ?? this.remaining,
         daysSupply: daysSupply ?? this.daysSupply,
+        refillsRemaining: refillsRemaining ?? this.refillsRemaining,
         allowAfterBedtime: allowAfterBedtime ?? this.allowAfterBedtime,
       );
   PrescriptionRow copyWithCompanion(PrescriptionsCompanion data) {
@@ -610,6 +635,9 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       remaining: data.remaining.present ? data.remaining.value : this.remaining,
       daysSupply:
           data.daysSupply.present ? data.daysSupply.value : this.daysSupply,
+      refillsRemaining: data.refillsRemaining.present
+          ? data.refillsRemaining.value
+          : this.refillsRemaining,
       allowAfterBedtime: data.allowAfterBedtime.present
           ? data.allowAfterBedtime.value
           : this.allowAfterBedtime,
@@ -627,6 +655,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           ..write('takenTimes: $takenTimes, ')
           ..write('remaining: $remaining, ')
           ..write('daysSupply: $daysSupply, ')
+          ..write('refillsRemaining: $refillsRemaining, ')
           ..write('allowAfterBedtime: $allowAfterBedtime')
           ..write(')'))
         .toString();
@@ -634,7 +663,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
 
   @override
   int get hashCode => Object.hash(id, profileId, name, dosage, reminderTimes,
-      takenTimes, remaining, daysSupply, allowAfterBedtime);
+      takenTimes, remaining, daysSupply, refillsRemaining, allowAfterBedtime);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -647,6 +676,7 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           other.takenTimes == this.takenTimes &&
           other.remaining == this.remaining &&
           other.daysSupply == this.daysSupply &&
+          other.refillsRemaining == this.refillsRemaining &&
           other.allowAfterBedtime == this.allowAfterBedtime);
 }
 
@@ -659,6 +689,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
   final Value<List<String>> takenTimes;
   final Value<int> remaining;
   final Value<int> daysSupply;
+  final Value<int> refillsRemaining;
   final Value<bool> allowAfterBedtime;
   final Value<int> rowid;
   const PrescriptionsCompanion({
@@ -670,6 +701,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     this.takenTimes = const Value.absent(),
     this.remaining = const Value.absent(),
     this.daysSupply = const Value.absent(),
+    this.refillsRemaining = const Value.absent(),
     this.allowAfterBedtime = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -682,6 +714,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     required List<String> takenTimes,
     required int remaining,
     required int daysSupply,
+    this.refillsRemaining = const Value.absent(),
     this.allowAfterBedtime = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -701,6 +734,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     Expression<String>? takenTimes,
     Expression<int>? remaining,
     Expression<int>? daysSupply,
+    Expression<int>? refillsRemaining,
     Expression<bool>? allowAfterBedtime,
     Expression<int>? rowid,
   }) {
@@ -713,6 +747,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
       if (takenTimes != null) 'taken_times': takenTimes,
       if (remaining != null) 'remaining': remaining,
       if (daysSupply != null) 'days_supply': daysSupply,
+      if (refillsRemaining != null) 'refills_remaining': refillsRemaining,
       if (allowAfterBedtime != null) 'allow_after_bedtime': allowAfterBedtime,
       if (rowid != null) 'rowid': rowid,
     });
@@ -727,6 +762,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
       Value<List<String>>? takenTimes,
       Value<int>? remaining,
       Value<int>? daysSupply,
+      Value<int>? refillsRemaining,
       Value<bool>? allowAfterBedtime,
       Value<int>? rowid}) {
     return PrescriptionsCompanion(
@@ -738,6 +774,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
       takenTimes: takenTimes ?? this.takenTimes,
       remaining: remaining ?? this.remaining,
       daysSupply: daysSupply ?? this.daysSupply,
+      refillsRemaining: refillsRemaining ?? this.refillsRemaining,
       allowAfterBedtime: allowAfterBedtime ?? this.allowAfterBedtime,
       rowid: rowid ?? this.rowid,
     );
@@ -773,6 +810,9 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     if (daysSupply.present) {
       map['days_supply'] = Variable<int>(daysSupply.value);
     }
+    if (refillsRemaining.present) {
+      map['refills_remaining'] = Variable<int>(refillsRemaining.value);
+    }
     if (allowAfterBedtime.present) {
       map['allow_after_bedtime'] = Variable<bool>(allowAfterBedtime.value);
     }
@@ -793,6 +833,7 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
           ..write('takenTimes: $takenTimes, ')
           ..write('remaining: $remaining, ')
           ..write('daysSupply: $daysSupply, ')
+          ..write('refillsRemaining: $refillsRemaining, ')
           ..write('allowAfterBedtime: $allowAfterBedtime, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -1471,6 +1512,7 @@ typedef $$PrescriptionsTableCreateCompanionBuilder = PrescriptionsCompanion
   required List<String> takenTimes,
   required int remaining,
   required int daysSupply,
+  Value<int> refillsRemaining,
   Value<bool> allowAfterBedtime,
   Value<int> rowid,
 });
@@ -1484,6 +1526,7 @@ typedef $$PrescriptionsTableUpdateCompanionBuilder = PrescriptionsCompanion
   Value<List<String>> takenTimes,
   Value<int> remaining,
   Value<int> daysSupply,
+  Value<int> refillsRemaining,
   Value<bool> allowAfterBedtime,
   Value<int> rowid,
 });
@@ -1555,6 +1598,10 @@ class $$PrescriptionsTableFilterComposer
 
   ColumnFilters<int> get daysSupply => $composableBuilder(
       column: $table.daysSupply, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get refillsRemaining => $composableBuilder(
+      column: $table.refillsRemaining,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<bool> get allowAfterBedtime => $composableBuilder(
       column: $table.allowAfterBedtime,
@@ -1633,6 +1680,10 @@ class $$PrescriptionsTableOrderingComposer
   ColumnOrderings<int> get daysSupply => $composableBuilder(
       column: $table.daysSupply, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get refillsRemaining => $composableBuilder(
+      column: $table.refillsRemaining,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<bool> get allowAfterBedtime => $composableBuilder(
       column: $table.allowAfterBedtime,
       builder: (column) => ColumnOrderings(column));
@@ -1689,6 +1740,9 @@ class $$PrescriptionsTableAnnotationComposer
 
   GeneratedColumn<int> get daysSupply => $composableBuilder(
       column: $table.daysSupply, builder: (column) => column);
+
+  GeneratedColumn<int> get refillsRemaining => $composableBuilder(
+      column: $table.refillsRemaining, builder: (column) => column);
 
   GeneratedColumn<bool> get allowAfterBedtime => $composableBuilder(
       column: $table.allowAfterBedtime, builder: (column) => column);
@@ -1766,6 +1820,7 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             Value<List<String>> takenTimes = const Value.absent(),
             Value<int> remaining = const Value.absent(),
             Value<int> daysSupply = const Value.absent(),
+            Value<int> refillsRemaining = const Value.absent(),
             Value<bool> allowAfterBedtime = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -1778,6 +1833,7 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             takenTimes: takenTimes,
             remaining: remaining,
             daysSupply: daysSupply,
+            refillsRemaining: refillsRemaining,
             allowAfterBedtime: allowAfterBedtime,
             rowid: rowid,
           ),
@@ -1790,6 +1846,7 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             required List<String> takenTimes,
             required int remaining,
             required int daysSupply,
+            Value<int> refillsRemaining = const Value.absent(),
             Value<bool> allowAfterBedtime = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -1802,6 +1859,7 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             takenTimes: takenTimes,
             remaining: remaining,
             daysSupply: daysSupply,
+            refillsRemaining: refillsRemaining,
             allowAfterBedtime: allowAfterBedtime,
             rowid: rowid,
           ),

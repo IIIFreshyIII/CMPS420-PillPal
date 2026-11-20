@@ -13,15 +13,51 @@ export '../core/scheduling/reminder_scheduler.dart'
         batchIdForTimeSlot,
         calculateBedtimeDateTime,
         calculateDoseBatch,
+        calculateNextMorningReset,
         calculatePendingDosesBeforeBedtime,
         calculatePreBedtimeNotificationTime,
         calculateRemainingDosesCount,
         clampSnoozeDurationToBedtime,
+        formatLeadTimeDuration,
         formatPreBedtimeFinalCallMessage,
+        formatSnoozeNotificationBody,
+        formatSnoozeNotificationTitle,
         isAtOrPastBedtime,
         isSameTimeSlot,
-        notificationIdForPreBedtime;
+        notificationIdForPreBedtime,
+        notificationIdForSnooze,
+        shouldSuppressFollowUpNudgeForSnooze,
+        timeUntilScheduledSlot;
 export 'snooze_settings_service.dart';
+
+/// Outcome of attempting to start a native snooze countdown / Live Activity.
+enum SnoozeStartStatus {
+  started,
+  blockedByBedtime,
+  noPendingDoses,
+  liveActivitiesDisabled,
+  failed,
+}
+
+class SnoozeStartOutcome {
+  const SnoozeStartOutcome({
+    required this.status,
+    this.batchId,
+    this.snoozeEndTime,
+    this.effectiveDurationMinutes = 0,
+    this.clampedToBedtime = false,
+    this.errorMessage,
+  });
+
+  final SnoozeStartStatus status;
+  final String? batchId;
+  final DateTime? snoozeEndTime;
+  final int effectiveDurationMinutes;
+  final bool clampedToBedtime;
+  final String? errorMessage;
+
+  bool get started => status == SnoozeStartStatus.started;
+}
 
 /// Native bridge service for managing persistent, real-time snooze countdowns
 /// on iOS (ActivityKit / Dynamic Island Live Activity) and Android
@@ -49,6 +85,19 @@ class LiveReminderService {
   final SnoozeSettingsService? _snoozeSettings;
   final DateTime Function() _clock;
   final Map<String, Timer> _bedtimeTimers = {};
+  final Map<String, DateTime> _activeSnoozeEnds = {};
+  SnoozeStartOutcome? _lastStartOutcome;
+
+  /// Outcome of the most recent [startSnoozeActivity] or [startSnoozeForTimeSlot] call.
+  SnoozeStartOutcome? get lastStartOutcome => _lastStartOutcome;
+
+  /// Active snooze end timestamps keyed by `batchId`.
+  Map<String, DateTime> get activeSnoozeEnds =>
+      Map.unmodifiable(_activeSnoozeEnds);
+
+  /// Active snooze end timestamp for [timeSlot], if any.
+  DateTime? activeSnoozeEndForTimeSlot(String timeSlot) =>
+      _activeSnoozeEnds[batchIdForTimeSlot(timeSlot)];
 
   /// Optional callback invoked when the native iOS Live Activity or Android
   /// Ongoing Notification triggers an action back into Flutter.
@@ -82,10 +131,13 @@ class LiveReminderService {
     List<String> medicationNames = const [],
     String? profileName,
     int? snoozeEndTimestampMs,
+    int? snoozeNotificationId,
+    bool clampedToBedtime = false,
   }) async {
     final nowMs = _clock().millisecondsSinceEpoch;
     final effectiveEndMs =
         snoozeEndTimestampMs ?? (nowMs + (snoozeDurationMinutes * 60 * 1000));
+    final snoozeEnd = DateTime.fromMillisecondsSinceEpoch(effectiveEndMs);
 
     try {
       await _channel.invokeMethod<void>('startSnoozeActivity', <String, dynamic>{
@@ -96,11 +148,40 @@ class LiveReminderService {
         'remainingDoseCount': remainingCount,
         'medicationNames': List<String>.from(medicationNames),
         'profileName': profileName,
+        if (snoozeNotificationId != null)
+          'snoozeNotificationId': snoozeNotificationId,
       });
+      _activeSnoozeEnds[batchId] = snoozeEnd;
+      _lastStartOutcome = SnoozeStartOutcome(
+        status: SnoozeStartStatus.started,
+        batchId: batchId,
+        snoozeEndTime: snoozeEnd,
+        effectiveDurationMinutes: snoozeDurationMinutes,
+        clampedToBedtime: clampedToBedtime,
+      );
     } on MissingPluginException {
       // Safe no-op in unit/widget test environments without a native host.
+      _activeSnoozeEnds[batchId] = snoozeEnd;
+      _lastStartOutcome = SnoozeStartOutcome(
+        status: SnoozeStartStatus.started,
+        batchId: batchId,
+        snoozeEndTime: snoozeEnd,
+        effectiveDurationMinutes: snoozeDurationMinutes,
+        clampedToBedtime: clampedToBedtime,
+      );
     } on PlatformException catch (e) {
       debugPrint('LiveReminderService.startSnoozeActivity failed: ${e.message}');
+      final status = e.code == 'LIVE_ACTIVITIES_DISABLED'
+          ? SnoozeStartStatus.liveActivitiesDisabled
+          : SnoozeStartStatus.failed;
+      _lastStartOutcome = SnoozeStartOutcome(
+        status: status,
+        batchId: batchId,
+        snoozeEndTime: snoozeEnd,
+        effectiveDurationMinutes: snoozeDurationMinutes,
+        clampedToBedtime: clampedToBedtime,
+        errorMessage: e.message ?? e.code,
+      );
     }
   }
 
@@ -134,6 +215,7 @@ class LiveReminderService {
   }) async {
     _bedtimeTimers[batchId]?.cancel();
     _bedtimeTimers.remove(batchId);
+    _activeSnoozeEnds.remove(batchId);
 
     try {
       await _channel.invokeMethod<void>('dismissActivity', <String, dynamic>{
@@ -146,26 +228,65 @@ class LiveReminderService {
     }
   }
 
+  /// Resolves the applicable profile bedtime string for a [DoseBatch].
+  static String? resolveBedtimeForBatch({
+    required DoseBatch batch,
+    List<Profile>? profiles,
+  }) {
+    if (profiles == null || profiles.isEmpty) return null;
+    final profileMap = {for (final p in profiles) p.id: p};
+    final profileIds =
+        batch.remainingPrescriptions.map((p) => p.profileId).toSet();
+    String? profileBedtime;
+    if (profileIds.length == 1) {
+      profileBedtime = profileMap[profileIds.first]?.bedtime;
+    } else if (profileIds.isNotEmpty) {
+      final matchingProfiles =
+          profileIds.map((id) => profileMap[id]).whereType<Profile>();
+      final withBedtime = matchingProfiles.where((p) => p.bedtime != null);
+      if (withBedtime.isNotEmpty) {
+        profileBedtime = withBedtime.first.bedtime;
+      }
+    }
+    return profileBedtime ??
+        profiles
+            .firstWhere((p) => p.isPrimary, orElse: () => profiles.first)
+            .bedtime;
+  }
+
   /// Calculates the [DoseBatch] for all medications sharing [timeSlot] and,
   /// if any doses remain untaken, starts the native snooze countdown using
   /// either [snoozeDurationMinutes] or the persisted default snooze duration.
   ///
-  /// Clamps the snooze countdown to end at the profile's bedtime blackout window.
-  /// If bedtime has arrived or passed, dismisses the live countdown.
+  /// Clamps the snooze countdown to end at the profile's bedtime blackout window
+  /// unless [bypassBedtime] is `true` or bedtime quiet hours are paused tonight.
+  /// If bedtime has arrived or passed (and not bypassed), dismisses the live countdown.
   Future<DoseBatch> startSnoozeForTimeSlot({
     required String timeSlot,
     required List<Prescription> prescriptions,
     List<Profile>? profiles,
     int? snoozeDurationMinutes,
+    Set<String>? skippedSlotKeys,
+    bool bypassBedtime = false,
   }) async {
+    final now = _clock();
+    final effectiveBypass =
+        bypassBedtime || (_snoozeSettings?.isBedtimeBypassed(now: now) ?? false);
+
     final batch = calculateDoseBatch(
       prescriptions,
       timeSlot,
       profiles: profiles,
+      skippedSlotKeys: skippedSlotKeys,
+      bypassBedtime: effectiveBypass,
     );
 
     if (batch.remainingDosesCount <= 0) {
       await dismissActivity(batchId: batch.batchId);
+      _lastStartOutcome = SnoozeStartOutcome(
+        status: SnoozeStartStatus.noPendingDoses,
+        batchId: batch.batchId,
+      );
       return batch;
     }
 
@@ -178,40 +299,29 @@ class LiveReminderService {
       duration = settings.snoozeDurationMinutes;
     }
 
-    // Determine profile bedtime for clamping
-    String? profileBedtime;
-    if (profiles != null && profiles.isNotEmpty) {
-      final profileMap = {for (final p in profiles) p.id: p};
-      final profileIds =
-          batch.remainingPrescriptions.map((p) => p.profileId).toSet();
-      if (profileIds.length == 1) {
-        profileBedtime = profileMap[profileIds.first]?.bedtime;
-      } else if (profileIds.isNotEmpty) {
-        final matchingProfiles =
-            profileIds.map((id) => profileMap[id]).whereType<Profile>();
-        final withBedtime = matchingProfiles.where((p) => p.bedtime != null);
-        if (withBedtime.isNotEmpty) {
-          profileBedtime = withBedtime.first.bedtime;
-        }
-      }
-      profileBedtime ??= profiles
-          .firstWhere((p) => p.isPrimary, orElse: () => profiles.first)
-          .bedtime;
-    }
+    final profileBedtime = effectiveBypass
+        ? null
+        : resolveBedtimeForBatch(batch: batch, profiles: profiles);
 
-    final now = _clock();
-    final clampedDuration = clampSnoozeDurationToBedtime(
-      now: now,
-      requestedMinutes: duration,
-      bedtime: profileBedtime,
-    );
+    final clampedDuration = effectiveBypass
+        ? duration
+        : clampSnoozeDurationToBedtime(
+            now: now,
+            requestedMinutes: duration,
+            bedtime: profileBedtime,
+          );
 
     if (clampedDuration <= 0) {
       await dismissActivity(batchId: batch.batchId);
+      _lastStartOutcome = SnoozeStartOutcome(
+        status: SnoozeStartStatus.blockedByBedtime,
+        batchId: batch.batchId,
+      );
       return batch;
     }
 
     int? endTimestampMs;
+    var wasClamped = false;
     if (profileBedtime != null) {
       final targetBedtime =
           calculateBedtimeDateTime(now: now, bedtime: profileBedtime);
@@ -219,6 +329,7 @@ class LiveReminderService {
         final requestedEnd = now.add(Duration(minutes: duration));
         if (requestedEnd.isAfter(targetBedtime)) {
           endTimestampMs = targetBedtime.millisecondsSinceEpoch;
+          wasClamped = true;
         }
       }
     }
@@ -230,6 +341,7 @@ class LiveReminderService {
       medicationNames: batch.medicationNames,
       profileName: batch.profileName,
       snoozeEndTimestampMs: endTimestampMs,
+      clampedToBedtime: wasClamped,
     );
 
     if (profileBedtime != null) {
@@ -250,18 +362,24 @@ class LiveReminderService {
     return batch;
   }
 
-  /// Reconciles an active time-slot batch after a dose is marked taken or
-  /// untaken: updates the native countdown when doses remain, or dismisses
-  /// the activity once `remainingDosesCount` reaches 0.
+  /// Reconciles an active time-slot batch after a dose is marked taken,
+  /// untaken, skipped, or deleted: updates the native countdown when doses
+  /// remain, or dismisses the activity once `remainingDosesCount` reaches 0.
   Future<DoseBatch> syncTimeSlotDoses({
     required String timeSlot,
     required List<Prescription> prescriptions,
     List<Profile>? profiles,
+    Set<String>? skippedSlotKeys,
+    bool bypassBedtime = false,
   }) async {
+    final effectiveBypass = bypassBedtime ||
+        (_snoozeSettings?.isBedtimeBypassed(now: _clock()) ?? false);
     final batch = calculateDoseBatch(
       prescriptions,
       timeSlot,
       profiles: profiles,
+      skippedSlotKeys: skippedSlotKeys,
+      bypassBedtime: effectiveBypass,
     );
 
     if (batch.remainingDosesCount <= 0) {

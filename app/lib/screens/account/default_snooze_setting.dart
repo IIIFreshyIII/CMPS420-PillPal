@@ -6,7 +6,7 @@ import '../../core/theme/pillpal_colors.dart';
 import '../../services/snooze_settings_service.dart';
 
 /// Profile → Preferences & Storage → Default Snooze Duration:
-/// Provides selectable preset options (`5m`, `9m` default, `15m`, `30m`) and a
+/// Provides selectable preset options (`5m`, `10m`, `15m` default, `30m`) and a
 /// `Custom` button that opens a modal dialog for entering any positive minute
 /// duration, persisted via `shared_preferences`.
 class DefaultSnoozeSetting extends StatefulWidget {

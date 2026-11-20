@@ -82,6 +82,18 @@ class DrugMatcher {
       }
     }
 
+    // Barcode/border glyphs next to a drug name can glue a stray leading char
+    // onto the word (e.g. "efinasteride"). Try stripping 1 leading char if it
+    // yields an exact dictionary match.
+    for (final f in forms) {
+      if (f.length >= 6) {
+        final tail = f.substring(1);
+        if (_exact.contains(tail)) {
+          return DrugMatchResult(canonical: tail, recognized: true, corrected: true);
+        }
+      }
+    }
+
     return DrugMatchResult(canonical: forms.first, recognized: false, corrected: false);
   }
 

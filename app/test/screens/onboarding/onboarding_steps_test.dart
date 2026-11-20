@@ -2,16 +2,14 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pillpal/core/permissions/camera_permission.dart';
 import 'package:pillpal/core/state/app_state_manager.dart';
 import 'package:pillpal/core/theme/app_theme.dart';
-import 'package:pillpal/core/utils/ios_design_era.dart';
 import 'package:pillpal/data/services/notification_service.dart';
-import 'package:pillpal/presentation/widgets/scan_bottle_button.dart';
 import 'package:pillpal/screens/onboarding/steps/step1_splash.dart';
 import 'package:pillpal/screens/onboarding/steps/step2_legal.dart';
 import 'package:pillpal/screens/onboarding/steps/step3_name_morph.dart';
 import 'package:pillpal/screens/onboarding/steps/step4_permissions.dart';
+import 'package:pillpal/screens/onboarding/steps/step5_bedtime.dart';
 import 'package:pillpal/screens/onboarding/steps/step5_first_reminder.dart';
 
 class MockStorage extends Fake implements FlutterSecureStorage {
@@ -75,10 +73,6 @@ class FakeNotificationService extends NotificationService {
 }
 
 void main() {
-  tearDown(() {
-    debugIsLiquidGlassSupportedOverride = null;
-  });
-
   Widget wrap(Widget child) {
     return MaterialApp(
       theme: AppTheme.lightTheme,
@@ -175,7 +169,7 @@ void main() {
     expect(nextTapped, isTrue);
   });
 
-  testWidgets('Step 4 Permissions displays controls and enables Next',
+  testWidgets('Step 4 Privacy & Protection displays controls and enables Continue',
       (tester) async {
     final storage = MockStorage();
     final manager = AppStateManager(storage: storage);
@@ -186,111 +180,130 @@ void main() {
       appStateManager: manager,
       notificationService: fakeNotifs,
       onNext: () => nextTapped = true,
-      requestCamera: () async => CameraPermissionResult.granted,
-      checkCamera: () async => CameraPermissionResult.denied,
     )));
     await tester.pumpAndSettle();
 
-    expect(find.text('Permissions & Local Setup'), findsOneWidget);
-    expect(find.textContaining('Account tab'), findsOneWidget);
-    expect(find.text('On-Device Camera Access'), findsOneWidget);
-    expect(find.text('Dose & Refill Notifications'), findsOneWidget);
-    expect(find.text('Appearance Theme'), findsOneWidget);
-    expect(find.text('History Retention'), findsOneWidget);
+    expect(find.text('Privacy & Security'), findsOneWidget);
+    expect(find.text('Your Data Stays on Your Device'), findsOneWidget);
+    expect(find.text('Lock with Face ID / Passcode'), findsOneWidget);
+    expect(find.text('Dose Reminder Alerts'), findsOneWidget);
 
-    // CupertinoSwitch is rendered
-    final cupertinoSwitches = find.byType(CupertinoSwitch);
-    expect(cupertinoSwitches, findsWidgets);
+    // PlatformSwitch renders Material Switch on Android (default test platform)
+    final switches = find.byType(Switch);
+    expect(switches, findsNWidgets(2));
 
-    // Toggle camera switch
-    await tester.tap(cupertinoSwitches.first);
+    // Toggle biometrics switch
+    await tester.tap(switches.first);
     await tester.pumpAndSettle();
+    expect(manager.biometricsEnabled, isTrue);
 
     // Toggle notif switch
-    await tester.tap(cupertinoSwitches.at(1));
+    await tester.tap(switches.at(1));
     await tester.pumpAndSettle();
+    expect(fakeNotifs.enabled, isTrue);
 
-    // Test Theme Selector
-    await tester.tap(find.text('Dark'));
+    // On iOS, PlatformSwitch renders CupertinoSwitch
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(platform: TargetPlatform.iOS),
+      home: Scaffold(
+        body: Step4Permissions(
+          appStateManager: manager,
+          notificationService: fakeNotifs,
+          onNext: () => nextTapped = true,
+        ),
+      ),
+    ));
     await tester.pumpAndSettle();
-    expect(manager.appearanceMode, ThemeMode.dark);
+    expect(find.byType(CupertinoSwitch), findsNWidgets(2));
+    expect(find.byType(Switch), findsNothing);
 
-    // Test Retention Pull-Down Menu
-    await tester.ensureVisible(find.text('History Retention'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.textContaining('Months'));
-    await tester.pumpAndSettle();
-    expect(find.text('6 Months'), findsOneWidget);
-    await tester.tap(find.text('6 Months'));
-    await tester.pumpAndSettle();
-    expect(manager.retentionDays, 180);
-
-    // Tap Next
-    final nextButton = find.text('Next');
-    expect(nextButton, findsOneWidget);
-    await tester.tap(nextButton);
+    // Tap Continue
+    final continueButton = find.text('Continue');
+    expect(continueButton, findsOneWidget);
+    await tester.tap(continueButton);
     await tester.pumpAndSettle();
     expect(nextTapped, isTrue);
   });
 
-  testWidgets('Step 5 First Reminder renders ScanBottleButton and options',
+  testWidgets('Step 5 Bedtime displays default 10:00 PM and confirms bedtime',
+      (tester) async {
+    String? savedBedtime;
+    var nextTapped = false;
+
+    await tester.pumpWidget(wrap(Step5Bedtime(
+      onBedtimeConfirmed: (time) async {
+        savedBedtime = time;
+      },
+      onNext: () => nextTapped = true,
+    )));
+    await tester.pumpAndSettle();
+
+    expect(find.text('When do you head to bed?'), findsOneWidget);
+    expect(find.text('10:00 PM'), findsOneWidget);
+
+    // Tap Save & Continue
+    await tester.tap(find.text('Save & Continue'));
+    await tester.pumpAndSettle();
+
+    expect(savedBedtime, '10:00 PM');
+    expect(nextTapped, isTrue);
+  });
+
+  testWidgets('Step 5 Bedtime allows skipping with Set later in Account',
+      (tester) async {
+    String? savedBedtime = 'placeholder';
+    var nextTapped = false;
+
+    await tester.pumpWidget(wrap(Step5Bedtime(
+      onBedtimeConfirmed: (time) async {
+        savedBedtime = time;
+      },
+      onNext: () => nextTapped = true,
+    )));
+    await tester.pumpAndSettle();
+
+    // Tap Set later in Account
+    await tester.tap(find.text('Set later in Account'));
+    await tester.pumpAndSettle();
+
+    expect(savedBedtime, isNull);
+    expect(nextTapped, isTrue);
+  });
+
+  testWidgets('Step 6 First Reminder renders all 3 entry options and skip capsule',
       (tester) async {
     var scanTapped = false;
+    var photoTapped = false;
+    var manualTapped = false;
     var skipTapped = false;
 
     await tester.pumpWidget(wrap(Step5FirstReminder(
       onStartScan: () => scanTapped = true,
+      onUploadPhoto: () => photoTapped = true,
+      onManualEntry: () => manualTapped = true,
       onSkipToSchedule: () => skipTapped = true,
     )));
 
-    expect(find.text("Thanks! Now, let's set up your first reminder!"), findsOneWidget);
-    expect(find.byType(ScanBottleButton), findsOneWidget);
-    expect(find.text('Add New Prescription'), findsOneWidget);
+    expect(find.text("Now, let's add your first medication!"), findsOneWidget);
+    expect(find.text('Scan Prescription Label'), findsOneWidget);
+    expect(find.text('From Photos'), findsOneWidget);
+    expect(find.text('Enter Manually'), findsOneWidget);
+    expect(find.text('Or go directly to Schedule'), findsOneWidget);
 
-    await tester.tap(find.text('Add New Prescription'));
+    await tester.tap(find.text('Scan Prescription Label'));
     await tester.pumpAndSettle();
     expect(scanTapped, isTrue);
+
+    await tester.tap(find.text('From Photos'));
+    await tester.pumpAndSettle();
+    expect(photoTapped, isTrue);
+
+    await tester.tap(find.text('Enter Manually'));
+    await tester.pumpAndSettle();
+    expect(manualTapped, isTrue);
 
     await tester.tap(find.text('Or go directly to Schedule'));
     await tester.pumpAndSettle();
     expect(skipTapped, isTrue);
-  });
-
-  testWidgets('Step 4 Permissions hides Liquid Glass styling when not supported (Android / pre-iOS 26)',
-      (tester) async {
-    debugIsLiquidGlassSupportedOverride = false;
-    final storage = MockStorage();
-    final manager = AppStateManager(storage: storage);
-    final fakeNotifs = FakeNotificationService();
-
-    await tester.pumpWidget(wrap(Step4Permissions(
-      appStateManager: manager,
-      notificationService: fakeNotifs,
-      onNext: () {},
-      requestCamera: () async => CameraPermissionResult.granted,
-      checkCamera: () async => CameraPermissionResult.denied,
-    )));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Liquid Glass Styling'), findsNothing);
-  });
-
-  testWidgets('Step 4 Permissions shows Liquid Glass styling when supported (iOS 26+)',
-      (tester) async {
-    debugIsLiquidGlassSupportedOverride = true;
-    final storage = MockStorage();
-    final manager = AppStateManager(storage: storage);
-    final fakeNotifs = FakeNotificationService();
-
-    await tester.pumpWidget(wrap(Step4Permissions(
-      appStateManager: manager,
-      notificationService: fakeNotifs,
-      onNext: () {},
-      requestCamera: () async => CameraPermissionResult.granted,
-      checkCamera: () async => CameraPermissionResult.denied,
-    )));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Liquid Glass Styling'), findsOneWidget);
   });
 }

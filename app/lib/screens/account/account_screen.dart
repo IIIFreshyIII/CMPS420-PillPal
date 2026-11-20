@@ -20,6 +20,7 @@ import '../../ui/widgets/walkthrough_overlay.dart';
 import 'add_profile_sheet.dart';
 import 'app_lock_setting.dart';
 import 'appearance_setting.dart';
+import 'bedtime_quiet_hours_setting.dart';
 import 'default_snooze_setting.dart';
 import 'dose_log_retention_sheet.dart';
 import 'dose_reminders_sheet.dart';
@@ -150,7 +151,7 @@ class _AccountScreenState extends State<AccountScreen> {
         targetKey: _snoozeKey,
         title: 'Custom Snooze Intervals',
         description:
-            'Choose your preferred reminder snooze interval (5m, 9m, 15m, 30m) or enter a custom duration that suits your routine.',
+            'Choose your preferred reminder snooze interval (5m, 10m, 15m, 30m) or enter a custom duration that suits your routine.',
         icon: CupertinoIcons.timer,
         borderRadius: 16.0,
       ),
@@ -306,6 +307,11 @@ class _AccountScreenState extends State<AccountScreen> {
           KeyedSubtree(
             key: _snoozeKey,
             child: DefaultSnoozeSetting(service: widget.snoozeSettingsService),
+          ),
+          const SizedBox(height: 10),
+          BedtimeQuietHoursSetting(
+            service: widget.snoozeSettingsService,
+            profiles: widget.profiles,
           ),
           const SizedBox(height: 10),
           if (widget.themeController != null) ...[

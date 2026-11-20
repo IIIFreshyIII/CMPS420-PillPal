@@ -13,7 +13,14 @@ const Map<String, String> nerFieldNames = {
 };
 
 class NerEngineResult {
-  NerEngineResult({required this.fields, required this.recognized, this.fillDate, this.daysSupply});
+  NerEngineResult({
+    required this.fields,
+    required this.recognized,
+    this.fillDate,
+    this.daysSupply,
+    this.quantity,
+    this.refills,
+  });
 
   /// Field name (per [nerFieldNames]'s values) -> canonical extracted value.
   /// A field absent here means the model found nothing for it.
@@ -24,6 +31,8 @@ class NerEngineResult {
 
   final DateTime? fillDate;
   final int? daysSupply;
+  final int? quantity;
+  final int? refills;
 }
 
 /// Glues the tokenizer, ONNX model, BIO decoder, and validation layer into
@@ -70,6 +79,8 @@ class NerEngine {
       recognized: recognized,
       fillDate: regexResult.fillDate,
       daysSupply: regexResult.daysSupply,
+      quantity: regexResult.quantity,
+      refills: regexResult.refills,
     );
   }
 

@@ -16,6 +16,8 @@ class Extraction {
   String? duration;
   DateTime? fillDate;
   int? daysSupply;
+  int? quantity;
+  int? refills;
 
   /// Per-field name (`'drug'`, `'strength'`, etc. -- matching the property
   /// names above) -> whether the validation layer could confidently match

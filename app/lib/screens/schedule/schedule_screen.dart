@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -23,13 +24,18 @@ class ScheduleScreen extends StatelessWidget {
   final String selectedProfileId;
   final ValueChanged<String> onSelectProfile;
   final void Function(String prescriptionId, String time) onTakeDose;
+  final void Function(String prescriptionId, String time)? onSnoozeDose;
+  final void Function(String prescriptionId, String time)? onSkipDose;
+  final Set<String> skippedSlotKeys;
   final ValueChanged<Prescription> onViewMedication;
+  final void Function(Prescription prescription, String time)? onViewSlot;
   final ValueChanged<Prescription>? onEditMedication;
   final ValueChanged<String>? onDeleteMedication;
   final void Function(List<(String, String)> targets, bool shouldMarkTaken)
       onToggleAllCompleted;
   final VoidCallback onOpenScan;
   final bool isScanning;
+  final bool isActive;
   final GlobalKey? firstMedCardKey;
   final GlobalKey? profileSwitcherKey;
   final List<GlobalKey>? profileChipKeys;
@@ -43,12 +49,17 @@ class ScheduleScreen extends StatelessWidget {
     required this.selectedProfileId,
     required this.onSelectProfile,
     required this.onTakeDose,
+    this.onSnoozeDose,
+    this.onSkipDose,
+    this.skippedSlotKeys = const {},
     required this.onViewMedication,
+    this.onViewSlot,
     this.onEditMedication,
     this.onDeleteMedication,
     required this.onToggleAllCompleted,
     required this.onOpenScan,
     required this.isScanning,
+    this.isActive = true,
     this.firstMedCardKey,
     this.profileSwitcherKey,
     this.profileChipKeys,
@@ -104,8 +115,21 @@ class ScheduleScreen extends StatelessWidget {
       (title: 'NIGHT', slots: nightSlots),
     ].where((s) => s.slots.isNotEmpty).toList();
 
-    return CustomScrollView(
-      slivers: [
+    final topSafeArea = MediaQuery.viewPaddingOf(context).top;
+    final headerApproxHeight = profiles.length > 1 ? 228.0 : 180.0;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final viewportHeight = constraints.maxHeight;
+        final remainingEstimate =
+            (viewportHeight - headerApproxHeight).clamp(0.0, viewportHeight);
+        final maxBottomOffset =
+            (remainingEstimate - 210.0).clamp(0.0, double.infinity);
+        final emptyBottomOffset =
+            (topSafeArea + headerApproxHeight).clamp(0.0, maxBottomOffset);
+
+        return CustomScrollView(
+          slivers: [
         SliverToBoxAdapter(
           child: Container(
             margin: EdgeInsets.fromLTRB(16, Platform.isIOS ? 4 : 8, 16, 8),
@@ -166,10 +190,19 @@ class ScheduleScreen extends StatelessWidget {
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: ScanBottleButton(
-                    key: scanButtonKey,
-                    onTap: onOpenScan,
-                    isLoading: isScanning,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      ScanBottleButton(
+                        key: scanButtonKey,
+                        onTap: onOpenScan,
+                        isLoading: isScanning,
+                      ),
+                      _AddMedsNudgeArrow(
+                        shouldNudge: prescriptions.isEmpty && isActive,
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -231,10 +264,28 @@ class ScheduleScreen extends StatelessWidget {
             ),
           ),
         ),
-        SliverToBoxAdapter(
-          child: _buildScheduleContent(context, sections, allSlots),
-        ),
+        if (sections.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.only(bottom: emptyBottomOffset),
+                child: KeyedSubtree(
+                  key: emptyScheduleKey,
+                  child: _EmptySchedule(
+                    hasAnyPrescriptions: prescriptions.isNotEmpty,
+                  ),
+                ),
+              ),
+            ),
+          )
+        else
+          SliverToBoxAdapter(
+            child: _buildScheduleContent(context, sections, allSlots),
+          ),
       ],
+    );
+      },
     );
   }
 
@@ -284,7 +335,9 @@ class ScheduleScreen extends StatelessWidget {
           visible: !hasAnyVisible,
           child: KeyedSubtree(
             key: emptyScheduleKey,
-            child: _EmptySchedule(onOpenScan: onOpenScan),
+            child: _EmptySchedule(
+              hasAnyPrescriptions: prescriptions.isNotEmpty,
+            ),
           ),
         ),
         const SizedBox(height: 120),
@@ -349,7 +402,9 @@ class ScheduleScreen extends StatelessWidget {
             children: [
               KeyedSubtree(
                 key: emptyScheduleKey,
-                child: _EmptySchedule(onOpenScan: onOpenScan),
+                child: _EmptySchedule(
+                  hasAnyPrescriptions: prescriptions.isNotEmpty,
+                ),
               ),
               const SizedBox(height: 120),
             ],
@@ -420,7 +475,14 @@ class ScheduleScreen extends StatelessWidget {
     final sectionTaken = visibleSlots
         .where((s) => s.prescription.takenTimes.contains(s.time))
         .length;
-    final sectionAllDone = sectionTotal > 0 && sectionTaken == sectionTotal;
+    final sectionResolved = visibleSlots
+        .where((s) {
+          final slotKey = '${s.prescription.id}_${s.time}';
+          return s.prescription.takenTimes.contains(s.time) ||
+              skippedSlotKeys.contains(slotKey);
+        })
+        .length;
+    final sectionAllDone = sectionTotal > 0 && sectionResolved == sectionTotal;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(20, isFirst ? 20 : 16, 20, 10),
@@ -514,12 +576,15 @@ class ScheduleScreen extends StatelessWidget {
   }
 
   Widget _slotCard(ScheduleSlot slot, {bool isTargetCard = false}) {
+    final slotKey = '${slot.prescription.id}_${slot.time}';
+    final isSkipped = skippedSlotKeys.contains(slotKey);
     return MedicationCard(
       key: ValueKey('med_${slot.prescription.id}_${slot.time}'),
       targetKey: isTargetCard ? firstMedCardKey : null,
       item: slot.prescription,
       time: slot.time,
       isTaken: slot.prescription.takenTimes.contains(slot.time),
+      isSkipped: isSkipped,
       profile: profiles.length > 1
           ? profiles.cast<Profile?>().firstWhere(
                 (p) => p?.id == slot.prescription.profileId,
@@ -527,7 +592,15 @@ class ScheduleScreen extends StatelessWidget {
               )
           : null,
       onTakeDose: () => onTakeDose(slot.prescription.id, slot.time),
-      onViewDetails: () => onViewMedication(slot.prescription),
+      onSnooze: onSnoozeDose != null
+          ? () => onSnoozeDose!(slot.prescription.id, slot.time)
+          : null,
+      onSkip: onSkipDose != null
+          ? () => onSkipDose!(slot.prescription.id, slot.time)
+          : null,
+      onViewDetails: () => onViewSlot != null
+          ? onViewSlot!(slot.prescription, slot.time)
+          : onViewMedication(slot.prescription),
       onEdit: onEditMedication != null ? () => onEditMedication!(slot.prescription) : null,
       onDelete: onDeleteMedication != null ? () => onDeleteMedication!(slot.prescription.id) : null,
     );
@@ -700,17 +773,160 @@ class _AndroidAnimatedCollapseItem extends StatelessWidget {
 typedef _ProfileChip = ProfileChip;
 
 class _EmptySchedule extends StatelessWidget {
-  final VoidCallback onOpenScan;
+  final bool hasAnyPrescriptions;
 
-  const _EmptySchedule({required this.onOpenScan});
+  const _EmptySchedule({required this.hasAnyPrescriptions});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedEmptyFeedState(
-      title: 'Nothing due right now',
-      subtitle: 'Scan a bottle to add a medication.',
-      ctaLabel: 'Scan a Bottle',
-      onCtaTap: onOpenScan,
+    if (hasAnyPrescriptions) {
+      return const AnimatedEmptyFeedState(
+        icon: CupertinoIcons.checkmark_seal,
+        title: 'Nothing scheduled',
+        subtitle: 'No reminders are set for this profile.',
+      );
+    }
+
+    return const AnimatedEmptyFeedState(
+      icon: CupertinoIcons.calendar_badge_plus,
+      title: 'No medications yet',
+      subtitle:
+          'Tap + Add Meds in the top right to scan a label, upload a photo, or enter one manually.',
+    );
+  }
+}
+
+/// Subtle, non-intrusive animated upward arrow tucked beneath "+ Add Meds"
+/// when the user has zero medications registered and remains on the Schedule
+/// tab for a short moment.
+class _AddMedsNudgeArrow extends StatefulWidget {
+  final bool shouldNudge;
+
+  const _AddMedsNudgeArrow({required this.shouldNudge});
+
+  @override
+  State<_AddMedsNudgeArrow> createState() => _AddMedsNudgeArrowState();
+}
+
+class _AddMedsNudgeArrowState extends State<_AddMedsNudgeArrow>
+    with SingleTickerProviderStateMixin {
+  static const _initialDelay = Duration(milliseconds: 2500);
+  static const _visibleDuration = Duration(milliseconds: 3500);
+  static const _hiddenPause = Duration(milliseconds: 2500);
+  static const _fadeDuration = Duration(milliseconds: 600);
+
+  late final AnimationController _bobController;
+  late final Animation<double> _bobAnimation;
+  Timer? _cycleTimer;
+  bool _showArrow = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _bobController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+    _bobAnimation = CurvedAnimation(
+      parent: _bobController,
+      curve: Curves.easeInOutSine,
+    );
+    if (widget.shouldNudge) {
+      _scheduleReveal(_initialDelay);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _AddMedsNudgeArrow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.shouldNudge && !oldWidget.shouldNudge) {
+      _scheduleReveal(_initialDelay);
+    } else if (!widget.shouldNudge && oldWidget.shouldNudge) {
+      _cancelNudge();
+    }
+  }
+
+  void _scheduleReveal(Duration delay) {
+    _cycleTimer?.cancel();
+    _cycleTimer = Timer(delay, () {
+      if (!mounted || !widget.shouldNudge) return;
+      setState(() => _showArrow = true);
+      final disableAnimations =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+      if (!disableAnimations && !_bobController.isAnimating) {
+        _bobController.repeat(reverse: true);
+      }
+      _cycleTimer = Timer(_visibleDuration, _hideAndReschedule);
+    });
+  }
+
+  void _hideAndReschedule() {
+    if (!mounted || !widget.shouldNudge) return;
+    setState(() => _showArrow = false);
+    // Keep bobbing smoothly through the fade-out, then pause before fading in again.
+    _cycleTimer = Timer(_fadeDuration, () {
+      if (!mounted || !widget.shouldNudge) return;
+      _bobController.stop();
+      _bobController.reset();
+      _scheduleReveal(_hiddenPause);
+    });
+  }
+
+  void _cancelNudge() {
+    _cycleTimer?.cancel();
+    _cycleTimer = null;
+    _bobController.stop();
+    _bobController.reset();
+    if (_showArrow) {
+      setState(() => _showArrow = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _cycleTimer?.cancel();
+    _bobController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+
+    return IgnorePointer(
+      child: SizedBox(
+        height: 32,
+        child: Center(
+          child: AnimatedOpacity(
+            key: const Key('add_meds_nudge_arrow'),
+            opacity: _showArrow ? 1.0 : 0.0,
+            duration: _fadeDuration,
+            curve: Curves.easeInOut,
+            child: AnimatedBuilder(
+              animation: _bobAnimation,
+              builder: (context, child) {
+                final dy = disableAnimations
+                    ? 0.0
+                    : -4.0 * _bobAnimation.value;
+                return Transform.translate(
+                  offset: Offset(0, dy),
+                  child: child,
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Icon(
+                  CupertinoIcons.arrow_up,
+                  size: 25,
+                  color: c.tealDeep.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

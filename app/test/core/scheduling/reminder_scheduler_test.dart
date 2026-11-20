@@ -568,4 +568,126 @@ void main() {
       expect(id1, greaterThanOrEqualTo(0));
     });
   });
+
+  group('Phase 3 Consolidated Notifications & 3-Touch Engine', () {
+    test('buildConsolidatedSlotPlans groups multiple medications into 1 routine alert with zero drug names', () {
+      const pMe = Profile(id: 'p1', name: 'Me', color: Color(0xFF168B87), bedtime: '10:00 PM');
+      const pDad = Profile(id: 'p2', name: 'Dad', color: Color(0xFF000000), bedtime: '9:30 PM');
+
+      final plans = buildConsolidatedSlotPlans(
+        [
+          const Prescription(
+            id: 'rx1',
+            profileId: 'p1',
+            name: 'Metformin',
+            dosage: '500mg',
+            reminderTimes: ['8:00 AM', '8:00 PM'],
+            remaining: 30,
+            daysSupply: 30,
+          ),
+          const Prescription(
+            id: 'rx2',
+            profileId: 'p1',
+            name: 'Lisinopril',
+            dosage: '10mg',
+            reminderTimes: ['8:00 AM'],
+            remaining: 30,
+            daysSupply: 30,
+          ),
+          const Prescription(
+            id: 'rx3',
+            profileId: 'p2',
+            name: 'Atorvastatin',
+            dosage: '20mg',
+            reminderTimes: ['08:00 AM'],
+            remaining: 30,
+            daysSupply: 30,
+          ),
+        ],
+        [pMe, pDad],
+      );
+
+      expect(plans.length, 2); // 8:00 AM consolidated + 8:00 PM
+      final morning = plans.firstWhere((p) => p.batchId == 'batch_08_00');
+      expect(morning.routineName, 'Morning Routine');
+      expect(morning.scheduledCount, 3);
+      expect(morning.remainingCount, 3);
+      expect(morning.profileCounts, {'Me': 2, 'Dad': 1});
+      expect(morning.allowFollowUpNudge, isTrue);
+
+      final title = formatRoutineNotificationTitle(morning);
+      final body = formatRoutineNotificationBody(morning);
+      final nudgeTitle = formatFollowUpNudgeTitle(morning);
+      final nudgeBody = formatFollowUpNudgeBody(morning);
+
+      expect(title, 'Morning Routine • 8:00 AM');
+      expect(body, 'Time for 3 doses (2 for Me, 1 for Dad).');
+      expect(nudgeTitle, 'Gentle Reminder • Morning Routine');
+      expect(nudgeBody, 'You still have 3 pending doses from your 8:00 AM routine.');
+
+      // Strict privacy check: zero medication names or dosages
+      for (final text in [title, body, nudgeTitle, nudgeBody]) {
+        expect(text.contains('Metformin'), isFalse);
+        expect(text.contains('Lisinopril'), isFalse);
+        expect(text.contains('Atorvastatin'), isFalse);
+        expect(text.contains('500mg'), isFalse);
+        expect(text.contains('10mg'), isFalse);
+        expect(text.contains('20mg'), isFalse);
+      }
+    });
+
+    test('calculateFollowUpNudgeTime adds 60 minutes and guards midnight wrap', () {
+      expect(
+        calculateFollowUpNudgeTime('8:00 AM'),
+        const TimeOfDay(hour: 9, minute: 0),
+      );
+      expect(
+        calculateFollowUpNudgeTime('11:30 PM'),
+        isNull,
+      );
+    });
+
+    test('calculateDuePendingDosesCount excludes future, taken, and skipped doses', () {
+      const profile = Profile(id: 'p1', name: 'Me', color: Color(0xFF168B87), bedtime: '10:00 PM');
+      final meds = [
+        const Prescription(
+          id: 'rx1',
+          profileId: 'p1',
+          name: 'MedA',
+          dosage: '10mg',
+          reminderTimes: ['8:00 AM', '12:00 PM', '8:00 PM'],
+          takenTimes: {'8:00 AM'},
+          remaining: 30,
+          daysSupply: 30,
+        ),
+        const Prescription(
+          id: 'rx2',
+          profileId: 'p1',
+          name: 'MedB',
+          dosage: '20mg',
+          reminderTimes: ['8:00 AM', '12:00 PM'],
+          remaining: 30,
+          daysSupply: 30,
+        ),
+      ];
+
+      // At 1:00 PM: 8:00 AM and 12:00 PM are due (4 slots total),
+      // 8:00 PM is future (excluded), rx1@8:00 AM is taken, rx2@8:00 AM is skipped -> 2 due pending
+      final dueCount = calculateDuePendingDosesCount(
+        meds,
+        [profile],
+        now: DateTime(2026, 11, 17, 13, 0),
+        skippedSlotKeys: {'rx2_8:00 AM'},
+      );
+      expect(dueCount, 2);
+
+      // calculatePendingDosesBeforeBedtime also respects skippedSlotKeys
+      final bedtimePending = calculatePendingDosesBeforeBedtime(
+        profile: profile,
+        prescriptions: meds,
+        skippedSlotKeys: {'rx2_8:00 AM'},
+      );
+      expect(bedtimePending, 3); // rx1@12PM, rx1@8PM, rx2@12PM
+    });
+  });
 }

@@ -17,7 +17,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -35,11 +35,19 @@ class AppDatabase extends _$AppDatabase {
             await m.deleteTable('prescriptions');
             await m.createTable(prescriptions);
           }
+          if (from < 3) {
+            await m.addColumn(prescriptions, prescriptions.refillsRemaining);
+          }
         },
       );
 
   Stream<List<Profile>> watchProfiles() {
     return select(profiles).watch().map((rows) => rows.map(_toProfile).toList());
+  }
+
+  Future<Profile?> getProfileById(String id) async {
+    final row = await (select(profiles)..where((t) => t.id.equals(id))).getSingleOrNull();
+    return row != null ? _toProfile(row) : null;
   }
 
   Stream<List<Prescription>> watchPrescriptions() {
@@ -72,6 +80,7 @@ class AppDatabase extends _$AppDatabase {
       takenTimes: prescription.takenTimes.toList(),
       remaining: prescription.remaining,
       daysSupply: prescription.daysSupply,
+      refillsRemaining: Value(prescription.refillsRemaining),
       allowAfterBedtime: Value(prescription.allowAfterBedtime),
     ));
   }
@@ -154,6 +163,7 @@ class AppDatabase extends _$AppDatabase {
                 takenTimes: m.takenTimes.toList(),
                 remaining: m.remaining,
                 daysSupply: m.daysSupply,
+                refillsRemaining: Value(m.refillsRemaining),
                 allowAfterBedtime: Value(m.allowAfterBedtime),
               )),
         );
@@ -195,6 +205,7 @@ class AppDatabase extends _$AppDatabase {
       takenTimes: row.takenTimes.toSet(),
       remaining: row.remaining,
       daysSupply: row.daysSupply,
+      refillsRemaining: row.refillsRemaining,
       allowAfterBedtime: row.allowAfterBedtime,
     );
   }

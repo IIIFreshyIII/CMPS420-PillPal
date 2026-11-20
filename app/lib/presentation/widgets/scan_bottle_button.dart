@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/material.dart';
 
 import '../../core/theme/pillpal_colors.dart';
+import 'platform_controls.dart';
 import 'pressable.dart';
 
 /// Reusable "+ Add Meds" action button component matching
@@ -43,38 +43,36 @@ class ScanBottleButton extends StatelessWidget {
             ),
           ],
         ),
-        child: isLoading
-            ? SizedBox(
-                width: 15,
-                height: 15,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (isLoading)
+              SizedBox(
+                width: 13,
+                height: 13,
                 child: Center(
-                  child: SizedBox(
-                    width: 13,
-                    height: 13,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: c.teal,
-                    ),
+                  child: PlatformLoadingIndicator(
+                    size: 13,
+                    strokeWidth: 2,
+                    color: c.tealDeep,
                   ),
                 ),
               )
-            : Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(CupertinoIcons.plus, size: 13, color: c.tealDeep),
-                  const SizedBox(width: 5),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: c.tealDeep,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 13,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                ],
+            else
+              Icon(CupertinoIcons.plus, size: 13, color: c.tealDeep),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                color: c.tealDeep,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                letterSpacing: -0.2,
               ),
+            ),
+          ],
+        ),
       ),
     );
   }

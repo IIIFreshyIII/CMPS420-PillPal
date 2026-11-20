@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pillpal/data/models/prescription.dart';
 import 'package:pillpal/data/models/profile.dart';
 import 'package:pillpal/screens/medication_detail/medication_detail_sheet.dart';
+import 'package:pillpal/screens/medication_detail/medication_quick_view_sheet.dart';
 
 void main() {
   const prescription = Prescription(
@@ -83,5 +84,44 @@ void main() {
 
     expect(find.text('Discard changes?'), findsNothing);
     expect(find.text('Allegra XR'), findsNothing); // sheet is gone
+  });
+
+  testWidgets('MedicationQuickViewSheet exposes Snooze and Skip Dose actions when untaken',
+      (tester) async {
+    var snoozed = false;
+    var skipped = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => ElevatedButton(
+          onPressed: () => MedicationQuickViewSheet.show(
+            context,
+            prescription: prescription,
+            profiles: profiles,
+            timeSlot: '8:00 AM',
+            onEdit: () {},
+            onSnooze: () => snoozed = true,
+            onSkip: () => skipped = true,
+          ),
+          child: const Text('open'),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('quick_view_snooze_button')), findsOneWidget);
+    expect(find.byKey(const Key('quick_view_skip_button')), findsOneWidget);
+    expect(find.text('Skip Dose'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('quick_view_snooze_button')));
+    await tester.pumpAndSettle();
+    expect(snoozed, isTrue);
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('quick_view_skip_button')));
+    await tester.pumpAndSettle();
+    expect(skipped, isTrue);
   });
 }

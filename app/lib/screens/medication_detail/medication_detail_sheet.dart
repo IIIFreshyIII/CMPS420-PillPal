@@ -2,9 +2,11 @@ import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/services/ios_accessibility_service.dart';
 import '../../core/theme/pillpal_colors.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
+import '../../presentation/widgets/platform_controls.dart';
 
 class MedicationDetailSheet extends StatefulWidget {
   final Prescription prescription;
@@ -55,6 +57,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
   late TextEditingController _dosageController;
   late int _remaining;
   late int _daysSupply;
+  late int _refillsRemaining;
   late String _selectedProfileId;
   late bool _allowAfterBedtime;
 
@@ -65,6 +68,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
     _dosageController = TextEditingController(text: widget.prescription.dosage);
     _remaining = widget.prescription.remaining;
     _daysSupply = widget.prescription.daysSupply;
+    _refillsRemaining = widget.prescription.refillsRemaining;
     _selectedProfileId = widget.prescription.profileId;
     _allowAfterBedtime = widget.prescription.allowAfterBedtime;
   }
@@ -81,6 +85,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
       _dosageController.text.trim() != widget.prescription.dosage ||
       _remaining != widget.prescription.remaining ||
       _daysSupply != widget.prescription.daysSupply ||
+      _refillsRemaining != widget.prescription.refillsRemaining ||
       _selectedProfileId != widget.prescription.profileId ||
       _allowAfterBedtime != widget.prescription.allowAfterBedtime;
 
@@ -125,6 +130,7 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
           : _dosageController.text.trim(),
       remaining: _remaining,
       daysSupply: _daysSupply,
+      refillsRemaining: _refillsRemaining,
       profileId: _selectedProfileId,
       allowAfterBedtime: _allowAfterBedtime,
     );
@@ -173,39 +179,47 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
     bool isPrimary = false,
   }) {
     final c = context.colors;
+    final reduceTransparency =
+        IOSAccessibilityService.instance.isReduceTransparency ||
+            MediaQuery.highContrastOf(context);
+    final inner = Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: isPrimary
+            ? c.teal.withValues(alpha: reduceTransparency ? 1.0 : 0.90)
+            : (reduceTransparency ? c.surface : c.glass),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isPrimary ? c.teal : c.glassRim,
+          width: 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: c.liftShadow,
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Icon(
+          icon,
+          size: 18,
+          color: isPrimary ? c.onTeal : c.ink,
+        ),
+      ),
+    );
     return GestureDetector(
       onTap: onTap,
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-          child: Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: isPrimary ? c.teal.withValues(alpha: 0.90) : c.glass,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isPrimary ? c.teal : c.glassRim,
-                width: 1.2,
+        child: reduceTransparency
+            ? inner
+            : BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: inner,
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: c.liftShadow,
-                  blurRadius: 10,
-                  offset: const Offset(0, 3),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Icon(
-                icon,
-                size: 18,
-                color: isPrimary ? c.onTeal : c.ink,
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -437,6 +451,61 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                           ),
                           Divider(height: 20, color: c.borderLight),
                           Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Refills Remaining',
+                                      style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600)),
+                                  const SizedBox(height: 2),
+                                  Text('Update when renewed by prescriber',
+                                      style: TextStyle(
+                                          fontSize: 12, color: c.inkMuted)),
+                                ],
+                              ),
+                              Row(
+                                children: [
+                                  IconButton(
+                                    key: const Key('detail_refills_minus'),
+                                    icon: Icon(CupertinoIcons.minus_circle,
+                                        color: c.teal, size: 26),
+                                    onPressed: () {
+                                      if (_refillsRemaining > 0) {
+                                        HapticFeedback.lightImpact();
+                                        setState(() => _refillsRemaining--);
+                                      }
+                                    },
+                                  ),
+                                  Container(
+                                    constraints:
+                                        const BoxConstraints(minWidth: 36),
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '$_refillsRemaining',
+                                      key: const Key('detail_refills_value'),
+                                      style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w800),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    key: const Key('detail_refills_plus'),
+                                    icon: Icon(CupertinoIcons.plus_circle,
+                                        color: c.teal, size: 26),
+                                    onPressed: () {
+                                      HapticFeedback.lightImpact();
+                                      setState(() => _refillsRemaining++);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          Divider(height: 20, color: c.borderLight),
+                          Row(
                             children: [
                               Expanded(
                                 child: CupertinoButton(
@@ -595,9 +664,10 @@ class _MedicationDetailSheetState extends State<MedicationDetailSheet> {
                                       fontWeight: FontWeight.w600),
                                 ),
                               ),
-                              Switch(
+                              PlatformSwitch(
                                 value: _allowAfterBedtime,
-                                activeThumbColor: c.teal,
+                                activeThumbColor: c.onTeal,
+                                activeTrackColor: c.teal,
                                 onChanged: (val) =>
                                     setState(() => _allowAfterBedtime = val),
                               ),

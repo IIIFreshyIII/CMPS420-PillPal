@@ -4,12 +4,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/ner/postprocess.dart' show formOptions;
-import '../../core/ner/refill_math.dart';
 import '../../core/theme/pillpal_colors.dart';
 import '../../core/utils/date_formatter.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/extractor.dart';
+import '../../ui/widgets/medication_type_selector.dart';
 
 /// All-in-one verification & manual entry screen (Option B):
 /// - Unified single-sheet experience matching the Onboarding verification model.
@@ -59,11 +59,12 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   late final TextEditingController _drug;
   late final TextEditingController _strength;
   late final TextEditingController _dose;
+  late final TextEditingController _quantity;
   late final TextEditingController _daysSupply;
+  late final TextEditingController _refills;
   String? _formValue;
   late String _profileId;
 
-  String _route = 'By mouth';
   String _foodInstruction = 'Anytime';
   String _frequency = 'Once daily';
   List<String> _reminderTimes = ['8:00 AM'];
@@ -79,7 +80,11 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _drug = TextEditingController(text: e?.drug ?? '');
     _strength = TextEditingController(text: e?.strength ?? '');
     _dose = TextEditingController(text: e?.dose ?? '');
-    _daysSupply = TextEditingController(text: e?.daysSupply?.toString() ?? '30');
+    final initialDaysSupply = e?.daysSupply ?? 30;
+    final initialQuantity = e?.quantity ?? initialDaysSupply;
+    _quantity = TextEditingController(text: '$initialQuantity');
+    _daysSupply = TextEditingController(text: '$initialDaysSupply');
+    _refills = TextEditingController(text: '${e?.refills ?? 0}');
 
     if (e?.form != null && formOptions.contains(e!.form)) {
       _formValue = e.form;
@@ -90,10 +95,6 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _profileId = widget.profiles.isNotEmpty ? widget.profiles.first.id : '1';
 
     if (e != null) {
-      if (e.route != null && e.route!.isNotEmpty) {
-        _route = e.route!;
-      }
-
       final rawFreq = (e.frequency ?? '').toLowerCase();
       if (rawFreq.contains('twice') || rawFreq.contains('2 times') || rawFreq.contains('bid')) {
         _frequency = 'Twice daily';
@@ -123,7 +124,9 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
     _drug.dispose();
     _strength.dispose();
     _dose.dispose();
+    _quantity.dispose();
     _daysSupply.dispose();
+    _refills.dispose();
     super.dispose();
   }
 
@@ -152,8 +155,13 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
         return _formValue == null || !e.isRecognized('form');
       case 'frequency':
         return !e.isRecognized('frequency');
+      case 'quantity':
+        return e.quantity == null;
       case 'daysSupply':
         return e.daysSupply == null;
+      case 'refills':
+        // Always prompt to verify refills on scanned/photo labels.
+        return e.rawText.trim().isNotEmpty;
       default:
         return false;
     }
@@ -169,21 +177,23 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
   void _savePrescription() {
     if (!_canContinue) return;
 
-    final days = int.tryParse(_daysSupply.text.trim()) ?? 30;
+    final days = (int.tryParse(_daysSupply.text.trim()) ?? 30).clamp(1, 9999);
+    final qty = (int.tryParse(_quantity.text.trim()) ?? days).clamp(0, 9999);
+    final refills = (int.tryParse(_refills.text.trim()) ?? 0).clamp(0, 99);
     final dosageParts = [_strength.text, _dose.text, _formValue ?? '']
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .join(', ');
 
-    final fillDate = widget.extraction?.fillDate ?? DateTime.now();
     final prescription = Prescription(
       id: 'rx_${DateTime.now().millisecondsSinceEpoch}',
       profileId: _profileId,
       name: _drug.text.trim(),
       dosage: dosageParts.isNotEmpty ? dosageParts : '500 mg',
       reminderTimes: List.from(_reminderTimes),
-      remaining: days,
+      remaining: qty,
       daysSupply: days,
+      refillsRemaining: refills,
     );
 
     Navigator.of(context).pop(prescription);
@@ -587,27 +597,20 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
                         const SizedBox(height: 12),
 
-                        // Form
-                        DropdownButtonFormField<String>(
-                          key: const Key('field_form'),
-                          value: _formValue,
-                          isExpanded: true,
-                          hint: const Text('Select form (e.g. tablet, capsule)'),
-                          decoration: InputDecoration(
-                            labelText: 'Form',
-                            border: const UnderlineInputBorder(),
-                            focusedBorder: UnderlineInputBorder(
-                              borderSide: BorderSide(color: c.teal, width: 2),
-                            ),
+                        // Form / Medication Type
+                        Text(
+                          'Form / Type',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: c.inkMuted,
                           ),
-                          items: formOptions
-                              .map((f) => DropdownMenuItem(
-                                    value: f,
-                                    child: Text(
-                                        f[0].toUpperCase() + f.substring(1)),
-                                  ))
-                              .toList(),
-                          onChanged: (val) => setState(() => _formValue = val),
+                        ),
+                        const SizedBox(height: 8),
+                        MedicationTypeSelector(
+                          key: const Key('field_form'),
+                          selectedType: _formValue,
+                          onSelected: (val) => setState(() => _formValue = val),
                         ),
                         if (_isFieldFlagged('form'))
                           _buildConfidenceBadge(
@@ -616,23 +619,66 @@ class _ConfirmScreenState extends State<ConfirmScreen> {
 
                         const SizedBox(height: 12),
 
-                        // Days Supply
+                        // Quantity in Bottle & Days Supply
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                key: const Key('field_quantity'),
+                                controller: _quantity,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => setState(() {}),
+                                decoration: InputDecoration(
+                                  labelText: 'Quantity in Bottle',
+                                  border: const UnderlineInputBorder(),
+                                  focusedBorder: UnderlineInputBorder(
+                                    borderSide:
+                                        BorderSide(color: c.teal, width: 2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                key: const Key('field_days_supply'),
+                                controller: _daysSupply,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => setState(() {}),
+                                decoration: InputDecoration(
+                                  labelText: 'Days Supply',
+                                  border: const UnderlineInputBorder(),
+                                  focusedBorder: UnderlineInputBorder(
+                                    borderSide:
+                                        BorderSide(color: c.teal, width: 2),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_isFieldFlagged('quantity') ||
+                            _isFieldFlagged('daysSupply'))
+                          _buildConfidenceBadge(
+                            'Verify quantity & days supply',
+                          ),
+                        const SizedBox(height: 12),
                         TextField(
-                          key: const Key('field_days_supply'),
-                          controller: _daysSupply,
+                          key: const Key('field_refills'),
+                          controller: _refills,
                           keyboardType: TextInputType.number,
                           onChanged: (_) => setState(() {}),
                           decoration: InputDecoration(
-                            labelText: 'Days Supply / Quantity',
+                            labelText: 'Refills Remaining',
                             border: const UnderlineInputBorder(),
                             focusedBorder: UnderlineInputBorder(
                               borderSide: BorderSide(color: c.teal, width: 2),
                             ),
                           ),
                         ),
-                        if (_isFieldFlagged('daysSupply'))
+                        if (_isFieldFlagged('refills'))
                           _buildConfidenceBadge(
-                            _flagMessage('daysSupply', widget.extraction?.daysSupply?.toString()),
+                            _flagMessage('refills', widget.extraction?.refills?.toString()),
                           ),
                       ],
                     ),

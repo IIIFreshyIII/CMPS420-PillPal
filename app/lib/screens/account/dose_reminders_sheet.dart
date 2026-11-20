@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/pillpal_colors.dart';
 import '../../data/services/notification_service.dart';
+import '../../presentation/widgets/platform_controls.dart';
 
 /// Status + grant UI for the two Android permissions dose reminders need --
 /// `POST_NOTIFICATIONS` (show anything at all) and the exact-alarm grant
@@ -123,9 +124,14 @@ class _DoseRemindersSheetState extends State<DoseRemindersSheet> {
                       border: Border.all(color: c.borderLight),
                     ),
                     child: _loading
-                        ? const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Center(child: CircularProgressIndicator()),
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Center(
+                              child: PlatformLoadingIndicator(
+                                size: 24,
+                                color: c.teal,
+                              ),
+                            ),
                           )
                         : Column(
                             children: [

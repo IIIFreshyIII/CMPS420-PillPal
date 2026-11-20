@@ -9,29 +9,39 @@ public struct MedicationLiveActivityAttributes: ActivityAttributes {
     public var totalDurationSeconds: Double
     public var remainingDoseCount: Int
     public var profileName: String?
+    public var snoozeNotificationId: Int?
+    public var pendingCancelConfirmation: Bool
 
     public init(
       snoozeEndTime: Date,
       totalDurationSeconds: Double,
       remainingDoseCount: Int,
-      profileName: String? = nil
+      profileName: String? = nil,
+      snoozeNotificationId: Int? = nil,
+      pendingCancelConfirmation: Bool = false
     ) {
       self.snoozeEndTime = snoozeEndTime
       self.totalDurationSeconds = totalDurationSeconds
       self.remainingDoseCount = remainingDoseCount
       self.profileName = profileName
+      self.snoozeNotificationId = snoozeNotificationId
+      self.pendingCancelConfirmation = pendingCancelConfirmation
     }
 
     public init(
       snoozeEndTime: Date,
       totalDurationSeconds: Double,
       remainingCount: Int,
-      profileName: String? = nil
+      profileName: String? = nil,
+      snoozeNotificationId: Int? = nil,
+      pendingCancelConfirmation: Bool = false
     ) {
       self.snoozeEndTime = snoozeEndTime
       self.totalDurationSeconds = totalDurationSeconds
       self.remainingDoseCount = remainingCount
       self.profileName = profileName
+      self.snoozeNotificationId = snoozeNotificationId
+      self.pendingCancelConfirmation = pendingCancelConfirmation
     }
 
     /// Backwards-compatible accessor for remainingCount.
@@ -57,6 +67,8 @@ public struct MedicationLiveActivityAttributes: ActivityAttributes {
       case remainingDoseCount
       case remainingCount
       case profileName
+      case snoozeNotificationId
+      case pendingCancelConfirmation
     }
 
     public init(from decoder: Decoder) throws {
@@ -71,6 +83,9 @@ public struct MedicationLiveActivityAttributes: ActivityAttributes {
         remainingDoseCount = 1
       }
       profileName = try container.decodeIfPresent(String.self, forKey: .profileName)
+      snoozeNotificationId = try container.decodeIfPresent(Int.self, forKey: .snoozeNotificationId)
+      pendingCancelConfirmation =
+        try container.decodeIfPresent(Bool.self, forKey: .pendingCancelConfirmation) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -79,6 +94,8 @@ public struct MedicationLiveActivityAttributes: ActivityAttributes {
       try container.encode(totalDurationSeconds, forKey: .totalDurationSeconds)
       try container.encode(remainingDoseCount, forKey: .remainingDoseCount)
       try container.encodeIfPresent(profileName, forKey: .profileName)
+      try container.encodeIfPresent(snoozeNotificationId, forKey: .snoozeNotificationId)
+      try container.encode(pendingCancelConfirmation, forKey: .pendingCancelConfirmation)
     }
   }
 

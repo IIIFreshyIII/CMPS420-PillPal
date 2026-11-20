@@ -14,7 +14,7 @@ void main() {
   });
 
   testWidgets(
-      'DefaultSnoozeSetting defaults to 9m and persists preset selections via shared_preferences',
+      'DefaultSnoozeSetting defaults to 15m and persists preset selections via shared_preferences',
       (tester) async {
     final service = SnoozeSettingsService();
     await service.load();
@@ -30,25 +30,25 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Default Snooze Duration'), findsOneWidget);
-    expect(find.text('9m (Default)'), findsOneWidget);
+    expect(find.text('15m (Default)'), findsOneWidget);
     expect(find.text('5m'), findsOneWidget);
-    expect(find.text('9m'), findsOneWidget);
+    expect(find.text('10m'), findsOneWidget);
     expect(find.text('15m'), findsOneWidget);
     expect(find.text('30m'), findsOneWidget);
     expect(find.text('Custom'), findsOneWidget);
-    expect(service.snoozeDurationMinutes, 9);
+    expect(service.snoozeDurationMinutes, 15);
 
-    // Select 15m preset
-    await tester.tap(find.byKey(const ValueKey('snooze_preset_15m')));
+    // Select 10m preset
+    await tester.tap(find.byKey(const ValueKey('snooze_preset_10m')));
     await tester.pumpAndSettle();
 
-    expect(service.snoozeDurationMinutes, 15);
-    expect(find.text('15m'), findsWidgets);
+    expect(service.snoozeDurationMinutes, 10);
+    expect(find.text('10m'), findsWidgets);
 
     final prefs = await SharedPreferences.getInstance();
     expect(
       prefs.getInt(SnoozeSettingsService.keyDefaultSnoozeDuration),
-      15,
+      10,
     );
 
     // Select 5m preset
@@ -125,6 +125,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Default Snooze Duration'), findsOneWidget);
-    expect(find.text('9m (Default)'), findsOneWidget);
+    expect(find.text('15m (Default)'), findsOneWidget);
   });
 }

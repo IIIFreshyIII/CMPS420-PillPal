@@ -8,11 +8,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_commons/google_mlkit_commons.dart';
 
+import '../../../core/ner/postprocess.dart' show hasCompleteStrengthUnit;
 import '../../../core/permissions/camera_permission.dart';
 import '../../../data/services/extractor.dart';
 import '../../../data/services/ocr_service.dart';
 import '../../../data/services/onnx_extractor.dart';
-import '../widgets/onboarding_progress_bar.dart';
+import '../../../ui/widgets/camera_zoom_bar.dart';
 import '../widgets/prescription_scan_guide_animation.dart';
 
 /// Onboarding Step 6: Full-Screen Camera OCR/NER Scanner.
@@ -51,7 +52,13 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
   CameraController? _cameraController;
   bool _isCameraInitialized = false;
   bool _isCameraUnavailable = false;
+  bool _isInitializingCamera = false;
+  bool _isDisposed = false;
   bool _isTorchOn = false;
+  double _minZoom = 1.0;
+  double _maxZoom = 1.0;
+  double _currentZoom = 1.0;
+  double _baseZoom = 1.0;
 
   final OcrService _ocr = OcrService();
   OnnxExtractor? _extractor;
@@ -60,6 +67,7 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
   String? _lastExtractedText;
   Extraction? _liveExtraction;
   int _consecutivePasses = 0;
+  String? _lastReadySignature;
   bool _ocrInFlight = false;
   DateTime _lastOcrAt = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -93,38 +101,59 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
     }
   }
 
-  void _stopAndDisposeCamera() {
-    _cameraController?.dispose();
+  void _disposeController(CameraController? controller) {
+    if (controller == null) return;
+    Future<void>(() async {
+      try {
+        if (controller.value.isStreamingImages) {
+          await controller.stopImageStream();
+        }
+      } catch (_) {}
+      try {
+        await controller.dispose();
+      } catch (_) {}
+    });
+  }
+
+  void _stopAndDisposeCamera({bool updateState = true}) {
+    final controller = _cameraController;
     _cameraController = null;
-    if (mounted) {
-      setState(() {
-        _isCameraInitialized = false;
-        _isTorchOn = false;
-      });
+    _disposeController(controller);
+    _isCameraInitialized = false;
+    _isTorchOn = false;
+    if (updateState && mounted) {
+      setState(() {});
     }
   }
 
   Future<void> _initScanner() async {
+    if (_isInitializingCamera || _isDisposed || !widget.isActive) return;
+    _isInitializingCamera = true;
     try {
       final perm = await checkCameraPermission();
+      if (_isDisposed || !mounted || !widget.isActive) return;
       if (perm != CameraPermissionResult.granted) {
         final req = await requestCameraPermission();
-        if (!mounted) return;
+        if (_isDisposed || !mounted || !widget.isActive) return;
         if (req != CameraPermissionResult.granted) {
           setState(() => _isCameraUnavailable = true);
           return;
         }
       }
 
-      final Future<OnnxExtractor?> extractorFuture =
-          OnnxExtractor.load().then<OnnxExtractor?>((e) => e).catchError((Object e) {
-        debugPrint('ONNX Extractor load error: $e');
-        return null;
-      });
+      final Future<OnnxExtractor?> extractorFuture = _extractor != null
+          ? Future<OnnxExtractor?>.value(_extractor)
+          : OnnxExtractor.load()
+              .then<OnnxExtractor?>((e) => e)
+              .catchError((Object e) {
+              debugPrint('ONNX Extractor load error: $e');
+              return null;
+            });
 
       final cameras = await availableCameras();
+      if (_isDisposed || !mounted || !widget.isActive) return;
       if (cameras.isEmpty) {
-        if (mounted) setState(() => _isCameraUnavailable = true);
+        setState(() => _isCameraUnavailable = true);
         return;
       }
 
@@ -144,10 +173,22 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
 
       await controller.initialize();
       _extractor = await extractorFuture;
-      if (!mounted) {
-        await controller.dispose();
+      if (_isDisposed || !mounted || !widget.isActive) {
+        _disposeController(controller);
         return;
       }
+
+      try {
+        final minZ = await controller.getMinZoomLevel();
+        final maxZ = await controller.getMaxZoomLevel();
+        if (_isDisposed || !mounted || !widget.isActive) {
+          _disposeController(controller);
+          return;
+        }
+        _minZoom = minZ;
+        _maxZoom = maxZ.clamp(minZ, 5.0);
+        _currentZoom = minZ.clamp(1.0, _maxZoom);
+      } catch (_) {}
 
       _cameraController = controller;
       _isCameraInitialized = true;
@@ -155,18 +196,25 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
       setState(() {});
 
       try {
-        await controller.startImageStream(_onFrame);
+        if (!_isDisposed &&
+            mounted &&
+            widget.isActive &&
+            _cameraController == controller) {
+          await controller.startImageStream(_onFrame);
+        }
       } catch (streamError) {
         debugPrint('Camera image stream warning: $streamError');
       }
     } catch (e) {
       debugPrint('Camera initialization error (using fallback): $e');
-      if (mounted) {
+      if (!_isDisposed && mounted) {
         setState(() {
           _isCameraUnavailable = true;
           _isCameraInitialized = false;
         });
       }
+    } finally {
+      _isInitializingCamera = false;
     }
   }
 
@@ -208,19 +256,25 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
 
       final ready = _requiredFields.every((f) => extraction.isRecognized(f)) &&
           extraction.drug != null &&
-          extraction.drug!.isNotEmpty;
+          extraction.drug!.isNotEmpty &&
+          hasCompleteStrengthUnit(extraction.strength);
 
       setState(() {
         _liveExtraction = extraction;
       });
 
       if (ready) {
-        _consecutivePasses++;
+        final sig =
+            '${extraction.drug}|${extraction.strength}|${extraction.dose}';
+        _consecutivePasses =
+            (sig == _lastReadySignature) ? _consecutivePasses + 1 : 1;
+        _lastReadySignature = sig;
         if (_consecutivePasses >= _requiredPasses) {
           _completeWithExtraction(extraction);
         }
       } else {
         _consecutivePasses = 0;
+        _lastReadySignature = null;
       }
     } catch (e) {
       debugPrint('Error processing OCR frame: $e');
@@ -311,6 +365,17 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
     _triggerSimulatedScan();
   }
 
+  Future<void> _setZoom(double zoom) async {
+    final controller = _cameraController;
+    if (controller == null || !_isCameraInitialized) return;
+    final clamped = zoom.clamp(_minZoom, _maxZoom);
+    if ((clamped - _currentZoom).abs() < 0.01) return;
+    setState(() => _currentZoom = clamped);
+    try {
+      await controller.setZoomLevel(clamped);
+    } catch (_) {}
+  }
+
   Future<void> _toggleTorch() async {
     final controller = _cameraController;
     if (controller == null || !_isCameraInitialized) return;
@@ -323,19 +388,25 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final controller = _cameraController;
-    if (controller == null || !controller.value.isInitialized) return;
-    if (state == AppLifecycleState.inactive) {
-      controller.stopImageStream().catchError((_) {});
-    } else if (state == AppLifecycleState.resumed && _isCameraInitialized) {
-      controller.startImageStream(_onFrame).catchError((_) {});
+    if (_isDisposed) return;
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _stopAndDisposeCamera();
+    } else if (state == AppLifecycleState.resumed &&
+        widget.isActive &&
+        widget.autoStartCamera &&
+        !_isCameraInitialized &&
+        !_isCameraUnavailable) {
+      _initScanner();
     }
   }
 
   @override
   void dispose() {
+    _isDisposed = true;
     WidgetsBinding.instance.removeObserver(this);
-    _cameraController?.dispose();
+    _stopAndDisposeCamera(updateState: false);
+    _extractor?.dispose();
     _ocr.close();
     super.dispose();
   }
@@ -399,9 +470,18 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
             ),
 
           // 2. Cutout Scrim (Translucent overlay with clear window & white border)
-          CustomPaint(
-            size: Size.infinite,
-            painter: _CutoutScrimPainter(cutoutRect: cutoutRect),
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onScaleStart: (_) => _baseZoom = _currentZoom,
+            onScaleUpdate: (details) {
+              if (details.pointerCount >= 2 || details.scale != 1.0) {
+                _setZoom(_baseZoom * details.scale);
+              }
+            },
+            child: CustomPaint(
+              size: Size.infinite,
+              painter: _CutoutScrimPainter(cutoutRect: cutoutRect),
+            ),
           ),
 
           // 3. Top Controls (Progress Bar, Title, Torch Toggle)
@@ -412,12 +492,7 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const OnboardingProgressBar(
-                  currentStep: 4,
-                  totalSteps: 6,
-                  inactiveColor: Color(0x40FFFFFF),
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -540,6 +615,18 @@ class _Step6ScanState extends State<Step6Scan> with WidgetsBindingObserver {
                           ),
                         ),
                       ],
+                    ),
+                  ),
+
+                // Quick-tap zoom pills when camera active
+                if (_isCameraInitialized && _maxZoom > _minZoom + 0.1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: CameraZoomBar(
+                      currentZoom: _currentZoom,
+                      minZoom: _minZoom,
+                      maxZoom: _maxZoom,
+                      onSelectZoom: _setZoom,
                     ),
                   ),
 

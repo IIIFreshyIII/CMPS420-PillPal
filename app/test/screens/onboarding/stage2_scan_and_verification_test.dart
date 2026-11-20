@@ -1,5 +1,4 @@
 import 'package:drift/native.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -349,29 +348,26 @@ void main() {
       await tester.tap(find.text('Next'));
       await tester.pumpAndSettle();
 
-      // Step 4: Permissions -> toggle required switches -> next
-      expect(find.text('Permissions & Local Setup'), findsOneWidget);
-      final switches = find.byType(CupertinoSwitch);
-      expect(switches, findsWidgets);
-      // Toggle Camera permission
-      await tester.tap(switches.first);
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
-      // Toggle Notification permission
-      await tester.tap(switches.at(1));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
-
-      final nextBtn = find.text('Next');
-      expect(nextBtn, findsOneWidget);
-      await tester.tap(nextBtn);
+      // Step 4: Privacy & Protection -> Continue
+      expect(find.text('Privacy & Security'), findsOneWidget);
+      final continueBtn = find.text('Continue');
+      expect(continueBtn, findsOneWidget);
+      await tester.tap(continueBtn);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      // Step 5: First Reminder Prompt -> tap "Add New Prescription"
-      expect(find.text("Thanks! Now, let's set up your first reminder!"),
+      // Step 5: Bedtime Setup -> Save & Continue
+      expect(find.text('When do you head to bed?'), findsOneWidget);
+      final bedtimeBtn = find.text('Save & Continue');
+      expect(bedtimeBtn, findsOneWidget);
+      await tester.tap(bedtimeBtn);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // Step 6: First Medication Setup Prompt -> tap "Scan Prescription Label"
+      expect(find.text("Now, let's add your first medication!"),
           findsOneWidget);
-      await tester.tap(find.text('Add New Prescription'));
+      await tester.tap(find.text('Scan Prescription Label'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
@@ -410,6 +406,10 @@ void main() {
       expect(rows.length, 1);
       expect(rows.first.name, 'Metformin HCl');
       expect(rows.first.profileId, '1');
+
+      final profileRows = await db.select(db.profiles).get();
+      expect(profileRows.length, 1);
+      expect(profileRows.first.bedtime, '10:00 PM');
 
       // Unmount tree cleanly to stop all tickers and active controllers
       await tester.pumpWidget(const SizedBox());

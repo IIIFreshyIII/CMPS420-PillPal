@@ -96,6 +96,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
   late final AnimationController _transitionController;
 
   WalkthroughStep? _outgoingStep;
+  int? _outgoingStepIndex;
   List<Rect> _outgoingRects = const [];
   double _outgoingRadius = 18.0;
   Rect? _outgoingCombinedRect;
@@ -118,6 +119,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
         if (mounted && _outgoingStep != null) {
           setState(() {
             _outgoingStep = null;
+            _outgoingStepIndex = null;
             _outgoingRects = const [];
             _outgoingCombinedRect = null;
           });
@@ -322,44 +324,56 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
     });
   }
 
+  void _transitionToStep(int nextIndex) {
+    final prevIndex = _currentIndex;
+    final prevStep = widget.steps[prevIndex];
+    final nextStep = widget.steps[nextIndex];
+
+    final currentActiveRects = _activeTargetRects;
+    final currentCombined = _activeCombinedRect;
+    final outgoingRects = currentActiveRects.isNotEmpty
+        ? currentActiveRects
+        : (currentCombined != null ? [currentCombined] : <Rect>[]);
+    final outgoingRadius = _currentRadius;
+
+    setState(() {
+      _outgoingStep = prevStep;
+      _outgoingStepIndex = prevIndex;
+      _outgoingRects = outgoingRects;
+      _outgoingCombinedRect = currentCombined;
+      _outgoingRadius = outgoingRadius;
+
+      _currentIndex = nextIndex;
+      _currentRect = nextStep.targetKey != null
+          ? _measureKeyRect(nextStep.targetKey!, nextStep.padding)
+          : null;
+      _currentRadius = nextStep.borderRadius;
+    });
+
+    _transitionController.duration = const Duration(milliseconds: 350);
+    _transitionController.forward(from: 0.0);
+    _updateScrollTracking();
+    _ensureActiveTargetVisible();
+    widget.onStepChanged?.call(nextIndex);
+  }
+
   void _handleNext() {
     if (_isClosing) return;
     if (_outgoingStep != null && _transitionController.isAnimating) return;
     HapticFeedback.selectionClick();
     if (_currentIndex < widget.steps.length - 1) {
-      final prevIndex = _currentIndex;
-      final prevStep = widget.steps[prevIndex];
-      final nextIndex = _currentIndex + 1;
-      final nextStep = widget.steps[nextIndex];
-
-      final currentActiveRects = _activeTargetRects;
-      final currentCombined = _activeCombinedRect;
-      final outgoingRects = currentActiveRects.isNotEmpty
-          ? currentActiveRects
-          : (currentCombined != null ? [currentCombined] : <Rect>[]);
-      final outgoingRadius = _currentRadius;
-
-      setState(() {
-        _outgoingStep = prevStep;
-        _outgoingRects = outgoingRects;
-        _outgoingCombinedRect = currentCombined;
-        _outgoingRadius = outgoingRadius;
-
-        _currentIndex = nextIndex;
-        _currentRect = nextStep.targetKey != null
-            ? _measureKeyRect(nextStep.targetKey!, nextStep.padding)
-            : null;
-        _currentRadius = nextStep.borderRadius;
-      });
-
-      _transitionController.duration = const Duration(milliseconds: 350);
-      _transitionController.forward(from: 0.0);
-      _updateScrollTracking();
-      _ensureActiveTargetVisible();
-      widget.onStepChanged?.call(nextIndex);
+      _transitionToStep(_currentIndex + 1);
     } else {
       _close(skipped: false);
     }
+  }
+
+  void _handleBack() {
+    if (_isClosing) return;
+    if (_outgoingStep != null && _transitionController.isAnimating) return;
+    if (_currentIndex <= 0) return;
+    HapticFeedback.selectionClick();
+    _transitionToStep(_currentIndex - 1);
   }
 
   void _handleSkip() {
@@ -514,7 +528,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
                         safeBottom: safeBottom,
                         targetRect: _outgoingCombinedRect,
                         step: _outgoingStep!,
-                        stepIndex: _currentIndex - 1,
+                        stepIndex: _outgoingStepIndex ?? _currentIndex,
                         cardProgress: 1.0,
                         cardOpacity: outgoingCardOpacity,
                         disableAnimations: disableAnimations,
@@ -627,6 +641,7 @@ class _WalkthroughOverlayState extends State<WalkthroughOverlay>
                 stepIndex: stepIndex,
                 totalSteps: widget.steps.length,
                 onNext: _handleNext,
+                onBack: stepIndex > 0 ? _handleBack : null,
                 onSkip: _handleSkip,
               ),
             ),
@@ -811,6 +826,7 @@ class _FrostedTooltipCard extends StatelessWidget {
     required this.totalSteps,
     required this.onNext,
     required this.onSkip,
+    this.onBack,
   });
 
   final WalkthroughStep step;
@@ -818,6 +834,7 @@ class _FrostedTooltipCard extends StatelessWidget {
   final int totalSteps;
   final VoidCallback onNext;
   final VoidCallback onSkip;
+  final VoidCallback? onBack;
 
   @override
   Widget build(BuildContext context) {
@@ -948,29 +965,70 @@ class _FrostedTooltipCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              // Bottom Row: Dot Progress Indicator + Next / Got It Button
+              // Bottom Row: Back Button (when > step 0) + Dot Progress Indicator + Next / Got It Button
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Dot Progress Indicator
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: List.generate(totalSteps, (idx) {
-                      final active = idx == stepIndex;
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        curve: Curves.easeOut,
-                        margin: const EdgeInsets.only(right: 5),
-                        width: active ? 16 : 5,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: active
-                              ? c.teal
-                              : c.inkMuted.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(2.5),
+                  if (onBack != null)
+                    Pressable(
+                      key: const Key('walkthrough_back_button'),
+                      onTap: onBack!,
+                      scale: 0.96,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
                         ),
-                      );
-                    }),
+                        decoration: BoxDecoration(
+                          color: c.neutralChip,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: c.borderChip,
+                            width: 1.0,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              CupertinoIcons.arrow_left,
+                              size: 13,
+                              color: c.neutralInk,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Back',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                                color: c.neutralInk,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  // Dot Progress Indicator
+                  Flexible(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(totalSteps, (idx) {
+                        final active = idx == stepIndex;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          curve: Curves.easeOut,
+                          margin: const EdgeInsets.only(right: 5),
+                          width: active ? 16 : 5,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: active
+                                ? c.teal
+                                : c.inkMuted.withValues(alpha: 0.25),
+                            borderRadius: BorderRadius.circular(2.5),
+                          ),
+                        );
+                      }),
+                    ),
                   ),
                   Pressable(
                     key: const Key('walkthrough_next_button'),
@@ -1127,15 +1185,15 @@ class AnimatedEmptyFeedState extends StatefulWidget {
     super.key,
     required this.title,
     required this.subtitle,
-    required this.ctaLabel,
-    required this.onCtaTap,
+    this.ctaLabel,
+    this.onCtaTap,
     this.icon = CupertinoIcons.checkmark_seal,
   });
 
   final String title;
   final String subtitle;
-  final String ctaLabel;
-  final VoidCallback onCtaTap;
+  final String? ctaLabel;
+  final VoidCallback? onCtaTap;
   final IconData icon;
 
   @override
@@ -1180,7 +1238,7 @@ class _AnimatedEmptyFeedStateState extends State<AnimatedEmptyFeedState>
 
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 40, 24, 24),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1243,44 +1301,46 @@ class _AnimatedEmptyFeedStateState extends State<AnimatedEmptyFeedState>
                 height: 1.38,
               ),
             ),
-            const SizedBox(height: 18),
-            Pressable(
-              key: const Key('empty_feed_cta_button'),
-              onTap: widget.onCtaTap,
-              scale: 0.95,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: c.teal,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                      color: c.teal.withValues(alpha: 0.22),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(CupertinoIcons.camera, size: 15, color: c.onTeal),
-                    const SizedBox(width: 7),
-                    Text(
-                      widget.ctaLabel,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: c.onTeal,
+            if (widget.ctaLabel != null && widget.onCtaTap != null) ...[
+              const SizedBox(height: 18),
+              Pressable(
+                key: const Key('empty_feed_cta_button'),
+                onTap: widget.onCtaTap,
+                scale: 0.95,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.teal,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: [
+                      BoxShadow(
+                        color: c.teal.withValues(alpha: 0.22),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(CupertinoIcons.camera, size: 15, color: c.onTeal),
+                      const SizedBox(width: 7),
+                      Text(
+                        widget.ctaLabel!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: c.onTeal,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
+            ],
           ],
         ),
       ),

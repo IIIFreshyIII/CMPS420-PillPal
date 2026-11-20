@@ -133,6 +133,45 @@ bool _isManufacturerOrJunk(String n) {
   return letters.length < 3;
 }
 
+final RegExp _strengthWithUnit = RegExp(
+  r'(?:\d\s*(?:mg|mcg|ug|g|kg|ml|l|iu|u|units?|meq|mmol|mg/ml|mcg/hr|mg/5ml)\b|\d\s*%)',
+  caseSensitive: false,
+);
+
+/// Returns true when [strength] contains a digit followed by a complete
+/// dosage unit (e.g. `1MG`, `500 mg`), rejecting truncated reads like `1M`.
+bool hasCompleteStrengthUnit(String? strength) {
+  if (strength == null) return false;
+  return _strengthWithUnit.hasMatch(strength.trim());
+}
+
+const Map<String, String> _drugSuffixCasing = {
+  'hcl': 'HCl',
+  'er': 'ER',
+  'xr': 'XR',
+  'sr': 'SR',
+  'cr': 'CR',
+  'dr': 'DR',
+  'xl': 'XL',
+  'ir': 'IR',
+  'la': 'LA',
+  'hfa': 'HFA',
+};
+
+/// Formats a matched or raw drug name in clean Title Case while preserving
+/// common pharmaceutical salt/release suffixes (`HCl`, `ER`, `XR`, etc.).
+String formatDrugName(String raw) {
+  final trimmed = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (trimmed.isEmpty) return trimmed;
+  return trimmed.split(' ').map((word) {
+    final lower = word.toLowerCase();
+    final suffix = _drugSuffixCasing[lower];
+    if (suffix != null) return suffix;
+    if (word.length == 1) return word.toUpperCase();
+    return '${word[0].toUpperCase()}${lower.substring(1)}';
+  }).join(' ');
+}
+
 /// `spans`: raw `(start, end, type)` triples from [decodeBioSpans].
 List<RefinedSpan> refine(List<(int, int, String)> spans, String text, DrugMatcher matcher) {
   final out = <RefinedSpan>[];

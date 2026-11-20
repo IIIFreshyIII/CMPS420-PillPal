@@ -7,6 +7,8 @@ import 'package:pillpal/data/models/profile.dart';
 import 'package:pillpal/core/theme/liquid_glass_controller.dart';
 import 'package:pillpal/data/services/notification_service.dart';
 import 'package:pillpal/screens/account/account_screen.dart';
+import 'package:pillpal/services/snooze_settings_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   tearDown(() {
@@ -151,6 +153,10 @@ void main() {
       ),
     ));
 
+    await tester.scrollUntilVisible(
+      find.text('Liquid Glass Effect'),
+      200,
+    );
     expect(find.text('Liquid Glass Effect'), findsOneWidget);
     expect(find.text('Auto'), findsWidgets);
   });
@@ -176,6 +182,58 @@ void main() {
     ));
 
     expect(find.text('Liquid Glass Effect'), findsNothing);
+  });
+
+  testWidgets('Bedtime Quiet Hours toggle pauses until 6:00 AM and resumes cleanly',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final snoozeSettings = SnoozeSettingsService(
+      clock: () => DateTime(2026, 10, 26, 21, 0),
+    );
+    await snoozeSettings.load();
+
+    const meWithBedtime = Profile(
+      id: '1',
+      name: 'Me',
+      color: Colors.blue,
+      isPrimary: true,
+      bedtime: '10:00 PM',
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: AccountScreen(
+        profiles: const [meWithBedtime],
+        prescriptions: const [],
+        onUpdateProfile: (_) {},
+        onDeleteProfile: (_) {},
+        notificationService: NotificationService(),
+        snoozeSettingsService: snoozeSettings,
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bedtime Quiet Hours'), findsOneWidget);
+    expect(find.text('Active — pauses reminders after 10:00 PM.'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('bedtime_quiet_hours_switch')),
+      200,
+    );
+    await tester.tap(find.byKey(const Key('bedtime_quiet_hours_switch')));
+    await tester.pumpAndSettle();
+
+    expect(snoozeSettings.isBedtimeBypassed(), isTrue);
+    expect(
+      find.text('Paused until 6:00 AM — reminders & snoozes allowed tonight.'),
+      findsOneWidget,
+    );
+
+    // Toggle back on -> resumes immediately
+    await tester.tap(find.byKey(const Key('bedtime_quiet_hours_switch')));
+    await tester.pumpAndSettle();
+
+    expect(snoozeSettings.isBedtimeBypassed(), isFalse);
+    expect(find.text('Active — pauses reminders after 10:00 PM.'), findsOneWidget);
   });
 }
 

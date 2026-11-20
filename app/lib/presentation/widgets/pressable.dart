@@ -66,7 +66,8 @@ class _PressableState extends State<Pressable> {
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null;
     final instant = MediaQuery.of(context).disableAnimations;
-    final ripple = widget.borderRadius != null;
+    final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
+    final ripple = !isIOS && widget.borderRadius != null;
 
     Widget surface = widget.padding != null
         ? Padding(padding: widget.padding!, child: widget.child)
