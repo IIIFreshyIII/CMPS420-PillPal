@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pillpal/data/models/prescription.dart';
 import 'package:pillpal/data/models/profile.dart';
+import 'package:pillpal/services/bedtime_service.dart';
 import 'package:pillpal/services/live_reminder_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -448,5 +449,92 @@ void main() {
     );
     expect(title, 'Morning Routine • Snooze Ended');
     expect(body, 'Time to log 2 pending doses for Leo (8:00 AM).');
+  });
+
+  test(
+      'startSnoozeForTimeSlot routes through BedtimeService (clamping, quiet hours, and pauseTonight auto-resume)',
+      () async {
+    // Monday Oct 26, 2026 9:45 PM; Bedtime 10:00 PM -> 7:00 AM
+    var currentTime = DateTime(2026, 10, 26, 21, 45);
+    final bedtimeService = BedtimeService(
+      clock: () => currentTime,
+      initialSchedule: BedtimeSchedule.everyDay(
+        isEnabled: true,
+        bedtime: '10:00 PM',
+        wakeTime: '7:00 AM',
+      ),
+    );
+    await bedtimeService.load();
+
+    final liveService = LiveReminderService(
+      channel: channel,
+      bedtimeService: bedtimeService,
+      clock: () => currentTime,
+    );
+
+    const prescriptions = [
+      Prescription(
+        id: '1',
+        profileId: 'p1',
+        name: 'Night Med',
+        dosage: '10mg',
+        reminderTimes: ['9:30 PM'],
+        remaining: 10,
+        daysSupply: 10,
+      ),
+    ];
+    const profiles = [
+      Profile(id: 'p1', name: 'Leo', color: Colors.blue, isPrimary: true),
+    ];
+
+    // 9:45 PM + 30m -> clamped to 15m (ends at 10:00 PM)
+    await liveService.startSnoozeForTimeSlot(
+      timeSlot: '9:30 PM',
+      prescriptions: prescriptions,
+      profiles: profiles,
+      snoozeDurationMinutes: 30,
+    );
+    expect(liveService.lastStartOutcome?.status, SnoozeStartStatus.started);
+    expect(liveService.lastStartOutcome?.effectiveDurationMinutes, 15);
+    expect(liveService.lastStartOutcome?.clampedToBedtime, isTrue);
+
+    // 10:15 PM -> blocked by quiet hours
+    currentTime = DateTime(2026, 10, 26, 22, 15);
+    await liveService.startSnoozeForTimeSlot(
+      timeSlot: '9:30 PM',
+      prescriptions: prescriptions,
+      profiles: profiles,
+      snoozeDurationMinutes: 15,
+    );
+    expect(
+      liveService.lastStartOutcome?.status,
+      SnoozeStartStatus.blockedByBedtime,
+    );
+
+    // Pause tonight -> allows snooze tonight, auto-resumes Tuesday 10:00 PM
+    final resumeAt = await bedtimeService.pauseTonight();
+    expect(resumeAt, DateTime(2026, 10, 27, 22, 0));
+
+    await liveService.startSnoozeForTimeSlot(
+      timeSlot: '9:30 PM',
+      prescriptions: prescriptions,
+      profiles: profiles,
+      snoozeDurationMinutes: 15,
+    );
+    expect(liveService.lastStartOutcome?.status, SnoozeStartStatus.started);
+    expect(liveService.lastStartOutcome?.effectiveDurationMinutes, 15);
+
+    // Tuesday 10:00 PM -> auto-resumed -> blocked again!
+    currentTime = DateTime(2026, 10, 27, 22, 0);
+    await liveService.startSnoozeForTimeSlot(
+      timeSlot: '9:30 PM',
+      prescriptions: prescriptions,
+      profiles: profiles,
+      snoozeDurationMinutes: 15,
+    );
+    expect(
+      liveService.lastStartOutcome?.status,
+      SnoozeStartStatus.blockedByBedtime,
+    );
   });
 }

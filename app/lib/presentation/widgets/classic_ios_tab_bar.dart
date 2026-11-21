@@ -59,9 +59,9 @@ class ClassicIOSTabBar extends StatelessWidget {
     ),
     (
       tab: AppTab.profile,
-      label: 'Profile',
-      icon: CupertinoIcons.person_crop_circle,
-      activeIcon: CupertinoIcons.person_crop_circle_fill,
+      label: 'Settings',
+      icon: CupertinoIcons.gear,
+      activeIcon: CupertinoIcons.gear_solid,
     ),
   ];
 

@@ -14,6 +14,7 @@ import '../../data/services/data_retention_service.dart';
 import '../../data/services/notification_service.dart';
 import '../../core/theme/liquid_glass_controller.dart';
 import '../../core/utils/ios_design_era.dart';
+import '../../services/bedtime_service.dart';
 import '../../services/snooze_settings_service.dart';
 import '../../services/walkthrough_service.dart';
 import '../../ui/widgets/walkthrough_overlay.dart';
@@ -41,6 +42,7 @@ class AccountScreen extends StatefulWidget {
     this.doseEvents = const [],
     this.retentionService,
     this.snoozeSettingsService,
+    this.bedtimeService,
     this.database,
     this.walkthroughService,
     this.isActive = true,
@@ -54,6 +56,7 @@ class AccountScreen extends StatefulWidget {
   final NotificationService notificationService;
   final DataRetentionService? retentionService;
   final SnoozeSettingsService? snoozeSettingsService;
+  final BedtimeService? bedtimeService;
   final AppDatabase? database;
   final WalkthroughService? walkthroughService;
   final bool isActive;
@@ -143,7 +146,7 @@ class _AccountScreenState extends State<AccountScreen> {
         targetKey: _profilesKey,
         title: 'Caregiver & Family Profiles',
         description:
-            'Add family members or care recipients to manage their schedules, color-code badges, and set custom bedtimes.',
+            'Add family members or care recipients to manage their schedules and color-coded badges.',
         icon: CupertinoIcons.person_2_fill,
         borderRadius: 20.0,
       ),
@@ -217,12 +220,17 @@ class _AccountScreenState extends State<AccountScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final showLiquidGlass =
+        widget.liquidGlassController != null && isLiquidGlassSupported(context);
+    final showAppearanceSection =
+        widget.themeController != null || showLiquidGlass;
+
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
         children: [
           Text(
-            'Profile',
+            'Settings',
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w800,
@@ -236,6 +244,9 @@ class _AccountScreenState extends State<AccountScreen> {
               key: i == 0 ? _profilesKey : null,
               child: _ProfileTile(
                 profile: widget.profiles[i],
+                medicationCount: widget.prescriptions
+                    .where((p) => p.profileId == widget.profiles[i].id)
+                    .length,
                 onTap: () => EditProfileSheet.show(
                   context,
                   profile: widget.profiles[i],
@@ -255,83 +266,54 @@ class _AccountScreenState extends State<AccountScreen> {
                   AddProfileSheet.show(context, onAdd: widget.onUpdateProfile),
             ),
           ),
+
+          // Section 1: Reminders & Sleep
+          const SizedBox(height: 28),
+          const _SectionHeader('REMINDERS & SLEEP'),
           const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: c.privacyBg,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: c.privacyBorder),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(CupertinoIcons.shield_lefthalf_fill,
-                    size: 22, color: c.privacyIcon),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Zero-Knowledge Architecture',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: c.privacyTitle,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Medication profiles and schedules are stored exclusively on this device.',
-                        style: TextStyle(
-                            fontSize: 12, color: c.privacyBody, height: 1.4),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          BedtimeSettingRow(service: widget.bedtimeService),
+          const SizedBox(height: 10),
+          _SettingTile(
+            icon: CupertinoIcons.bell,
+            title: 'Dose Reminders',
+            onTap: () => DoseRemindersSheet.show(
+              context,
+              notificationService: widget.notificationService,
             ),
           ),
-          const SizedBox(height: 24),
-          Text(
-            'PREFERENCES & STORAGE',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: c.inkMuted,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           KeyedSubtree(
             key: _snoozeKey,
             child: DefaultSnoozeSetting(service: widget.snoozeSettingsService),
           ),
+
+          // Section 2: Appearance
+          if (showAppearanceSection) ...[
+            const SizedBox(height: 28),
+            const _SectionHeader('APPEARANCE'),
+            const SizedBox(height: 10),
+            if (widget.themeController != null) ...[
+              KeyedSubtree(
+                key: _appearanceKey,
+                child: AppearanceSetting(controller: widget.themeController!),
+              ),
+              if (showLiquidGlass) const SizedBox(height: 10),
+            ],
+            if (showLiquidGlass)
+              LiquidGlassSetting(controller: widget.liquidGlassController!),
+          ],
+
+          // Section 3: Privacy & Data
+          const SizedBox(height: 28),
+          const _SectionHeader('PRIVACY & DATA'),
           const SizedBox(height: 10),
-          BedtimeQuietHoursSetting(
-            service: widget.snoozeSettingsService,
-            profiles: widget.profiles,
-          ),
-          const SizedBox(height: 10),
-          if (widget.themeController != null) ...[
+          if (widget.appLock != null) ...[
             KeyedSubtree(
-              key: _appearanceKey,
-              child: AppearanceSetting(controller: widget.themeController!),
+              key: _appLockKey,
+              child: AppLockSetting(service: widget.appLock!),
             ),
             const SizedBox(height: 10),
           ],
-          if (widget.liquidGlassController != null &&
-              isLiquidGlassSupported(context)) ...[
-            LiquidGlassSetting(controller: widget.liquidGlassController!),
-            const SizedBox(height: 10),
-          ],
-          _SettingTile(
-            icon: CupertinoIcons.tray_arrow_down,
-            title: 'Export Local Data (.sqlite)',
-            onTap: () => _exportData(context),
-          ),
-          const SizedBox(height: 10),
           _SettingTile(
             icon: CupertinoIcons.archivebox,
             title: 'Dose Log Retention',
@@ -345,18 +327,22 @@ class _AccountScreenState extends State<AccountScreen> {
             ),
           ),
           const SizedBox(height: 10),
-          if (widget.appLock != null) ...[
-            KeyedSubtree(
-              key: _appLockKey,
-              child: AppLockSetting(service: widget.appLock!),
-            ),
-            const SizedBox(height: 10),
-          ],
           _SettingTile(
-            icon: CupertinoIcons.bell,
-            title: 'Dose Reminders',
-            onTap: () => DoseRemindersSheet.show(context,
-                notificationService: widget.notificationService),
+            icon: CupertinoIcons.tray_arrow_down,
+            title: 'Export Local Data (.sqlite)',
+            onTap: () => _exportData(context),
+          ),
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              'All data is stored locally on this device.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: c.inkMuted,
+              ),
+            ),
           ),
         ],
       ),
@@ -364,15 +350,44 @@ class _AccountScreenState extends State<AccountScreen> {
   }
 }
 
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w700,
+        color: c.inkMuted,
+        letterSpacing: 0.6,
+      ),
+    );
+  }
+}
+
 class _ProfileTile extends StatelessWidget {
-  const _ProfileTile({required this.profile, required this.onTap});
+  const _ProfileTile({
+    required this.profile,
+    required this.medicationCount,
+    required this.onTap,
+  });
 
   final Profile profile;
+  final int medicationCount;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final medLabel =
+        medicationCount == 1 ? '1 medication' : '$medicationCount medications';
+    final subtitle = profile.isPrimary ? 'Primary · $medLabel' : medLabel;
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -406,9 +421,7 @@ class _ProfileTile extends StatelessWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    profile.bedtime != null
-                        ? 'Bedtime: ${profile.bedtime}'
-                        : 'No bedtime set',
+                    subtitle,
                     style: TextStyle(fontSize: 13, color: c.inkMuted),
                   ),
                 ],
@@ -523,15 +536,18 @@ class _SettingTile extends StatelessWidget {
           children: [
             Icon(icon, size: 20, color: c.ink),
             const SizedBox(width: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: c.ink,
-                letterSpacing: -0.2,
+            Expanded(
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: c.ink,
+                  letterSpacing: -0.2,
+                ),
               ),
             ),
+            Icon(CupertinoIcons.chevron_right, size: 16, color: c.inkMuted),
           ],
         ),
       ),

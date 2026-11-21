@@ -2,6 +2,8 @@ import 'package:flutter/material.dart' show TimeOfDay;
 
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
+import '../../services/bedtime_service.dart'
+    show BedtimeQuietHours, BedtimeSchedule;
 import '../utils/date_formatter.dart' show formatTimeOfDayLabel, parseTimeOfDayLabel;
 
 /// Converts a label's free-text frequency into a fixed hourly repeat
@@ -74,33 +76,43 @@ List<TimeOfDay> buildReminderTimes({
 }
 
 /// False when this specific reminder [time] should NOT actually be
-/// scheduled as a notification -- it falls at/after the assigned profile's
-/// [bedtime] and this medication hasn't been given the after-bedtime
-/// override ([allowAfterBedtime]). A missing [bedtime], the override being
-/// on, or either time failing to parse all default to `true` (schedule it)
-/// -- the safer failure mode for a medication reminder is over-notifying,
-/// never silently dropping a dose reminder.
-///
-/// Known limitation, confirmed on-device, not just theoretical: both
-/// [time] and [bedtime] are compared as plain minutes-since-midnight, which
-/// assumes an evening bedtime (the normal case -- e.g. bedtime 10:00 PM
-/// correctly blocks an 11:00 PM reminder and allows an 8:00 AM one). A
-/// bedtime set to an early-morning hour (e.g. 12:45 AM) instead reads as
-/// "blocked until just before midnight the *next* night," which silently
-/// suppresses every reminder for the rest of that calendar day -- there's
-/// no separate "wake time" concept to bound the quiet window the other
-/// way. Not fixed here: the correct behavior for a past-midnight bedtime
-/// is a genuine product question (it needs a wake-time input to answer),
-/// not a one-line bug fix.
+/// scheduled as a notification -- it falls inside quiet hours (resolved via
+/// [bedtimeSchedule], or `[bedtime, wakeTime)`, or legacy `>= bedtime`) and
+/// this medication hasn't been given the after-bedtime override
+/// ([allowAfterBedtime]). Missing schedules, the override being on, or
+/// unparseable times all default to `true` (schedule it) -- the safer failure
+/// mode for a medication reminder is over-notifying, never silently dropping
+/// a dose reminder.
 bool shouldScheduleReminder({
   required String time,
-  required String? bedtime,
+  String? bedtime,
+  String? wakeTime,
+  BedtimeSchedule? bedtimeSchedule,
+  int? weekday,
   required bool allowAfterBedtime,
 }) {
-  if (allowAfterBedtime || bedtime == null) return true;
+  if (allowAfterBedtime) return true;
+  if (bedtimeSchedule != null) {
+    return !BedtimeQuietHours.isTimeSlotInQuietHours(
+      schedule: bedtimeSchedule,
+      timeSlot: time,
+      weekday: weekday ?? DateTime.now().weekday,
+    );
+  }
+  if (bedtime == null) return true;
   final reminderTod = parseTimeOfDayLabel(time);
   final bedtimeTod = parseTimeOfDayLabel(bedtime);
   if (reminderTod == null || bedtimeTod == null) return true;
+  if (wakeTime != null) {
+    final wakeTod = parseTimeOfDayLabel(wakeTime);
+    if (wakeTod != null) {
+      return !BedtimeQuietHours.isTimeOfDayInWindow(
+        time: reminderTod,
+        bedtime: bedtimeTod,
+        wakeTime: wakeTod,
+      );
+    }
+  }
   final reminderMinutes = reminderTod.hour * 60 + reminderTod.minute;
   final bedtimeMinutes = bedtimeTod.hour * 60 + bedtimeTod.minute;
   return reminderMinutes < bedtimeMinutes;
@@ -206,15 +218,18 @@ String batchIdForTimeSlot(String timeSlot) {
 /// Calculates the [DoseBatch] for all medications in [prescriptions] sharing
 /// the exact scheduled [timeSlot].
 ///
-/// When [profiles] is provided, medications suppressed by their assigned
-/// profile's bedtime cutoff (via [shouldScheduleReminder]) are excluded from
-/// the triggered batch so unscheduled reminders are never counted.
+/// When [bedtimeSchedule] is provided, medications suppressed by the
+/// device-level quiet hours schedule (via [shouldScheduleReminder]) are
+/// excluded. Otherwise, when [profiles] is provided, falls back to legacy
+/// per-profile bedtime cutoff.
 DoseBatch calculateDoseBatch(
   List<Prescription> prescriptions,
   String timeSlot, {
   List<Profile>? profiles,
   Set<String>? skippedSlotKeys,
   bool bypassBedtime = false,
+  BedtimeSchedule? bedtimeSchedule,
+  int? weekday,
 }) {
   final parsedSlot = parseTimeOfDayLabel(timeSlot);
   final canonicalSlot =
@@ -236,7 +251,15 @@ DoseBatch calculateDoseBatch(
     }
     if (matchingReminderTime == null) continue;
 
-    if (profileMap != null) {
+    if (bedtimeSchedule != null) {
+      final allowed = shouldScheduleReminder(
+        time: matchingReminderTime,
+        bedtimeSchedule: bedtimeSchedule,
+        weekday: weekday,
+        allowAfterBedtime: prescription.allowAfterBedtime || bypassBedtime,
+      );
+      if (!allowed) continue;
+    } else if (profileMap != null) {
       final profile = profileMap[prescription.profileId];
       final allowed = shouldScheduleReminder(
         time: matchingReminderTime,
@@ -324,9 +347,17 @@ DateTime? calculateBedtimeDateTime({
 int clampSnoozeDurationToBedtime({
   required DateTime now,
   required int requestedMinutes,
-  required String? bedtime,
+  String? bedtime,
+  BedtimeSchedule? bedtimeSchedule,
 }) {
   if (requestedMinutes <= 0) return 0;
+  if (bedtimeSchedule != null) {
+    return BedtimeQuietHours.clampSnoozeMinutes(
+      schedule: bedtimeSchedule,
+      now: now,
+      requestedMinutes: requestedMinutes,
+    );
+  }
   final targetBedtime = calculateBedtimeDateTime(now: now, bedtime: bedtime);
   if (targetBedtime == null) return requestedMinutes;
 
@@ -344,12 +375,16 @@ int clampSnoozeDurationToBedtime({
   return requestedMinutes;
 }
 
-/// Returns `true` if [dateTime] falls within the profile's bedtime blackout window
-/// (at or after the resolved [bedtime]).
+/// Returns `true` if [dateTime] falls within the quiet hours blackout window
+/// (evaluated via [bedtimeSchedule] when provided, or legacy [bedtime]).
 bool isAtOrPastBedtime({
   required DateTime dateTime,
-  required String? bedtime,
+  String? bedtime,
+  BedtimeSchedule? bedtimeSchedule,
 }) {
+  if (bedtimeSchedule != null) {
+    return BedtimeQuietHours.activeWindowAt(bedtimeSchedule, dateTime) != null;
+  }
   final target = calculateBedtimeDateTime(now: dateTime, bedtime: bedtime);
   if (target == null) return false;
   return !dateTime.isBefore(target);
@@ -442,6 +477,72 @@ int notificationIdForPreBedtime(String profileId) {
   return notificationIdFor(profileId, 'pre_bedtime_final_call');
 }
 
+/// Deterministic notification ID for the consolidated device-level Pre-Bedtime Final Call.
+/// Pass [weekday] (`DateTime.monday`..`DateTime.sunday`) when scheduling weekday-specific
+/// final calls; omit when uniform across all days.
+int notificationIdForDevicePreBedtime([int? weekday]) {
+  return notificationIdFor(
+    'device_pre_bedtime',
+    weekday == null ? 'daily' : 'weekday_$weekday',
+  );
+}
+
+/// Calculates untaken, unskipped doses across ALL profiles scheduled outside
+/// quiet hours on [weekday] under [bedtimeSchedule].
+int calculateDevicePendingDosesBeforeBedtime({
+  required List<Prescription> prescriptions,
+  required BedtimeSchedule bedtimeSchedule,
+  required int weekday,
+  Set<String>? skippedSlotKeys,
+}) {
+  var count = 0;
+  for (final prescription in prescriptions) {
+    for (final time in prescription.reminderTimes) {
+      final allowed = shouldScheduleReminder(
+        time: time,
+        bedtimeSchedule: bedtimeSchedule,
+        weekday: weekday,
+        allowAfterBedtime: prescription.allowAfterBedtime,
+      );
+      if (!allowed) continue;
+
+      final isSkipped = skippedSlotKeys != null &&
+          skippedSlotKeys.contains('${prescription.id}_$time');
+      final isTaken = prescription.takenTimes.any(
+        (t) => isSameTimeSlot(t, time),
+      );
+      if (!isTaken && !isSkipped) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/// Calculates total doses across ALL profiles scheduled outside quiet hours
+/// on [weekday] under [bedtimeSchedule].
+int calculateDeviceScheduledDosesBeforeBedtime({
+  required List<Prescription> prescriptions,
+  required BedtimeSchedule bedtimeSchedule,
+  required int weekday,
+}) {
+  var count = 0;
+  for (final prescription in prescriptions) {
+    for (final time in prescription.reminderTimes) {
+      final allowed = shouldScheduleReminder(
+        time: time,
+        bedtimeSchedule: bedtimeSchedule,
+        weekday: weekday,
+        allowAfterBedtime: prescription.allowAfterBedtime,
+      );
+      if (allowed) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
 /// Privacy-safe routine label derived purely from wall-clock time-of-day.
 String routineNameForTimeSlot(String timeSlot) {
   final tod = parseTimeOfDayLabel(timeSlot);
@@ -486,6 +587,8 @@ List<ConsolidatedSlotPlan> buildConsolidatedSlotPlans(
   List<Profile> profiles, {
   Set<String>? skippedSlotKeys,
   bool bypassBedtime = false,
+  BedtimeSchedule? bedtimeSchedule,
+  int? weekday,
 }) {
   final profileMap = {for (final p in profiles) p.id: p};
   final slotsByBatchId = <String, _MutableSlotPlan>{};
@@ -495,7 +598,9 @@ List<ConsolidatedSlotPlan> buildConsolidatedSlotPlans(
     for (final rawTime in prescription.reminderTimes) {
       final allowed = shouldScheduleReminder(
         time: rawTime,
-        bedtime: profile?.bedtime,
+        bedtime: bedtimeSchedule == null ? profile?.bedtime : null,
+        bedtimeSchedule: bedtimeSchedule,
+        weekday: weekday,
         allowAfterBedtime: prescription.allowAfterBedtime || bypassBedtime,
       );
       if (!allowed) continue;
@@ -537,7 +642,9 @@ List<ConsolidatedSlotPlan> buildConsolidatedSlotPlans(
       if (nudgeTod != null) {
         final nudgeAllowed = shouldScheduleReminder(
           time: formatTimeOfDayLabel(nudgeTod),
-          bedtime: profile?.bedtime,
+          bedtime: bedtimeSchedule == null ? profile?.bedtime : null,
+          bedtimeSchedule: bedtimeSchedule,
+          weekday: weekday,
           allowAfterBedtime: prescription.allowAfterBedtime || bypassBedtime,
         );
         if (nudgeAllowed) {
@@ -642,13 +749,16 @@ String formatFollowUpNudgeBody(
 }
 
 /// Deterministic notification ID for Touch 1 (consolidated routine alert).
-int notificationIdForTimeSlot(String timeSlot) {
-  return notificationIdFor('routine_slot', batchIdForTimeSlot(timeSlot));
+int notificationIdForTimeSlot(String timeSlot, {int? weekday}) {
+  final scope = weekday == null ? 'routine_slot' : 'routine_slot_wd$weekday';
+  return notificationIdFor(scope, batchIdForTimeSlot(timeSlot));
 }
 
 /// Deterministic notification ID for Touch 2 (1-hour follow-up nudge).
-int notificationIdForFollowUpNudge(String timeSlot) {
-  return notificationIdFor('followup_nudge', batchIdForTimeSlot(timeSlot));
+int notificationIdForFollowUpNudge(String timeSlot, {int? weekday}) {
+  final scope =
+      weekday == null ? 'followup_nudge' : 'followup_nudge_wd$weekday';
+  return notificationIdFor(scope, batchIdForTimeSlot(timeSlot));
 }
 
 /// Deterministic notification ID for a dedicated snooze-ended alert.
@@ -738,6 +848,8 @@ int calculateDuePendingDosesCount(
   List<Profile> profiles, {
   required DateTime now,
   Set<String>? skippedSlotKeys,
+  BedtimeSchedule? bedtimeSchedule,
+  bool bypassBedtime = false,
 }) {
   final profileMap = {for (final p in profiles) p.id: p};
   final nowMinutes = now.hour * 60 + now.minute;
@@ -748,8 +860,10 @@ int calculateDuePendingDosesCount(
     for (final rawTime in prescription.reminderTimes) {
       final allowed = shouldScheduleReminder(
         time: rawTime,
-        bedtime: profile?.bedtime,
-        allowAfterBedtime: prescription.allowAfterBedtime,
+        bedtime: bedtimeSchedule == null ? profile?.bedtime : null,
+        bedtimeSchedule: bedtimeSchedule,
+        weekday: now.weekday,
+        allowAfterBedtime: prescription.allowAfterBedtime || bypassBedtime,
       );
       if (!allowed) continue;
 

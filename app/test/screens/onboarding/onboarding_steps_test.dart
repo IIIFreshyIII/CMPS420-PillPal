@@ -11,6 +11,7 @@ import 'package:pillpal/screens/onboarding/steps/step3_name_morph.dart';
 import 'package:pillpal/screens/onboarding/steps/step4_permissions.dart';
 import 'package:pillpal/screens/onboarding/steps/step5_bedtime.dart';
 import 'package:pillpal/screens/onboarding/steps/step5_first_reminder.dart';
+import 'package:pillpal/services/bedtime_service.dart';
 
 class MockStorage extends Fake implements FlutterSecureStorage {
   final Map<String, String> _data = {};
@@ -225,48 +226,52 @@ void main() {
     expect(nextTapped, isTrue);
   });
 
-  testWidgets('Step 5 Bedtime displays default 10:00 PM and confirms bedtime',
+  testWidgets('Step 5 Bedtime displays default 10:00 PM / 7:00 AM and confirms schedule',
       (tester) async {
-    String? savedBedtime;
+    BedtimeSchedule? savedSchedule;
     var nextTapped = false;
 
     await tester.pumpWidget(wrap(Step5Bedtime(
-      onBedtimeConfirmed: (time) async {
-        savedBedtime = time;
+      onBedtimeConfirmed: (schedule) async {
+        savedSchedule = schedule;
       },
       onNext: () => nextTapped = true,
     )));
     await tester.pumpAndSettle();
 
-    expect(find.text('When do you head to bed?'), findsOneWidget);
+    expect(find.text('Set your sleep schedule'), findsOneWidget);
     expect(find.text('10:00 PM'), findsOneWidget);
+    expect(find.text('7:00 AM'), findsOneWidget);
 
     // Tap Save & Continue
     await tester.tap(find.text('Save & Continue'));
     await tester.pumpAndSettle();
 
-    expect(savedBedtime, '10:00 PM');
+    expect(savedSchedule, isNotNull);
+    expect(savedSchedule!.isEnabled, isTrue);
+    expect(savedSchedule!.windowForWeekday(DateTime.monday).bedtime, '10:00 PM');
+    expect(savedSchedule!.windowForWeekday(DateTime.monday).wakeTime, '7:00 AM');
     expect(nextTapped, isTrue);
   });
 
-  testWidgets('Step 5 Bedtime allows skipping with Set later in Account',
+  testWidgets('Step 5 Bedtime allows skipping with Set later in Settings',
       (tester) async {
-    String? savedBedtime = 'placeholder';
+    BedtimeSchedule? savedSchedule = BedtimeSchedule.everyDay();
     var nextTapped = false;
 
     await tester.pumpWidget(wrap(Step5Bedtime(
-      onBedtimeConfirmed: (time) async {
-        savedBedtime = time;
+      onBedtimeConfirmed: (schedule) async {
+        savedSchedule = schedule;
       },
       onNext: () => nextTapped = true,
     )));
     await tester.pumpAndSettle();
 
-    // Tap Set later in Account
-    await tester.tap(find.text('Set later in Account'));
+    // Tap Set later in Settings
+    await tester.tap(find.text('Set later in Settings'));
     await tester.pumpAndSettle();
 
-    expect(savedBedtime, isNull);
+    expect(savedSchedule, isNull);
     expect(nextTapped, isTrue);
   });
 

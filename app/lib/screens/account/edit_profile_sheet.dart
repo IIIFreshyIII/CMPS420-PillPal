@@ -2,15 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/pillpal_colors.dart';
-import '../../core/utils/date_formatter.dart';
 import '../../data/models/profile.dart';
-import '../confirm/widgets/rotary_time_picker.dart';
 
-/// Editing for an *existing* profile -- name, color, and Bedtime (the cutoff
-/// `core/scheduling/reminder_scheduler.dart` uses so a medication's computed
-/// reminders never land overnight) -- plus deleting the profile outright.
-/// [hasPrescriptions] and the primary-profile check together decide whether
-/// a delete action is even offered (see [_canDelete]).
+/// Editing for an *existing* profile -- name and color -- plus deleting the
+/// profile outright. [hasPrescriptions] and the primary-profile check together
+/// decide whether a delete action is offered.
 class EditProfileSheet extends StatefulWidget {
   const EditProfileSheet({
     super.key,
@@ -64,14 +60,12 @@ const presetColors = [
 class _EditProfileSheetState extends State<EditProfileSheet> {
   late final TextEditingController _name;
   late Color _color;
-  TimeOfDay? _bedtime;
 
   @override
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.profile.name);
     _color = widget.profile.color;
-    _bedtime = parseTimeOfDayLabel(widget.profile.bedtime);
   }
 
   @override
@@ -80,16 +74,10 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
     super.dispose();
   }
 
-  Future<void> _pickBedtime() async {
-    final picked = await showRotaryTimePicker(context, initialTime: _bedtime);
-    if (picked != null) setState(() => _bedtime = picked);
-  }
-
   void _save() {
     final updated = widget.profile.copyWith(
       name: _name.text.trim().isEmpty ? widget.profile.name : _name.text.trim(),
       color: _color,
-      bedtime: _bedtime != null ? formatTimeOfDayLabel(_bedtime!) : null,
     );
     widget.onUpdate(updated);
     Navigator.of(context).pop();
@@ -233,60 +221,6 @@ class _EditProfileSheetState extends State<EditProfileSheet> {
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 22),
-                    Text(
-                      'BEDTIME',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: c.inkMuted,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: c.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: c.borderLight),
-                      ),
-                      child: InkWell(
-                        key: const Key('field_bedtime'),
-                        onTap: _pickBedtime,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('No reminders after',
-                                style: TextStyle(
-                                    fontSize: 15, fontWeight: FontWeight.w600)),
-                            Row(
-                              children: [
-                                Text(
-                                  _bedtime != null
-                                      ? formatTimeOfDayLabel(_bedtime!)
-                                      : 'Not set',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: c.teal,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Icon(CupertinoIcons.chevron_right,
-                                    size: 14, color: c.inkMuted),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      "Medications computed from a label's frequency (e.g. \"every 4 hours\") "
-                      "stop generating reminders at this time.",
-                      style: TextStyle(fontSize: 11, color: c.inkMuted),
                     ),
                     if (!widget.profile.isPrimary) ...[
                       const SizedBox(height: 22),

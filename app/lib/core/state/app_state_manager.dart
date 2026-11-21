@@ -6,6 +6,7 @@ import '../theme/liquid_glass_mode.dart';
 import '../theme/theme_controller.dart';
 import '../../data/services/app_lock_service.dart';
 import '../../data/services/data_retention_service.dart';
+import '../../services/bedtime_service.dart';
 import '../../services/walkthrough_service.dart';
 
 /// Central observable state manager for persistent settings, onboarding lifecycle,
@@ -18,6 +19,7 @@ class AppStateManager extends ChangeNotifier {
     DataRetentionService? retentionService,
     AppLockService? appLockService,
     WalkthroughService? walkthroughService,
+    BedtimeService? bedtimeService,
   })  : _storage = storage ??
             const FlutterSecureStorage(
               iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
@@ -40,7 +42,8 @@ class AppStateManager extends ChangeNotifier {
                     iOptions: IOSOptions(
                         accessibility: KeychainAccessibility.first_unlock),
                   ),
-            ) {
+            ),
+        _bedtimeService = bedtimeService ?? BedtimeService() {
     _walkthroughService.addListener(notifyListeners);
   }
 
@@ -50,6 +53,7 @@ class AppStateManager extends ChangeNotifier {
   final DataRetentionService? _retentionService;
   final AppLockService? _appLockService;
   final WalkthroughService _walkthroughService;
+  final BedtimeService _bedtimeService;
 
   // Storage Keys
   static const _keyOnboardingCompleted = 'has_completed_onboarding';
@@ -84,6 +88,7 @@ class AppStateManager extends ChangeNotifier {
   String get userName => _userName;
   bool get isSeededTestingMode => _isSeededTestingMode;
   WalkthroughService get walkthroughService => _walkthroughService;
+  BedtimeService get bedtimeService => _bedtimeService;
 
   ThemeMode get appearanceMode => _themeController?.value ?? _appearanceMode;
   bool get liquidGlassEnabled =>
@@ -101,6 +106,7 @@ class AppStateManager extends ChangeNotifier {
         await _appLockService.load();
       }
       await _walkthroughService.load();
+      await _bedtimeService.load();
       _hasCompletedOnboarding =
           (await _storage.read(key: _keyOnboardingCompleted)) == 'true';
       _hasSeenScheduleTour =
@@ -151,6 +157,7 @@ class AppStateManager extends ChangeNotifier {
         await _retentionService?.setRetentionDays(
           DataRetentionService.defaultRetentionDays,
         );
+        await _bedtimeService.reset();
       }
     } catch (_) {
       // Best effort on test or restricted platforms
@@ -274,6 +281,7 @@ class AppStateManager extends ChangeNotifier {
     await _retentionService?.setRetentionDays(
       DataRetentionService.defaultRetentionDays,
     );
+    await _bedtimeService.reset();
 
     notifyListeners();
   }

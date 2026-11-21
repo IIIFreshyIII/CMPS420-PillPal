@@ -619,4 +619,261 @@ void main() {
     expect(find.byType(CupertinoActivityIndicator), findsNothing);
     expect(find.text('Add Meds'), findsOneWidget);
   });
+
+  testWidgets(
+      'iOS profile filter switching (All -> Mom -> Me -> All -> Mom) with firstMedCardKey animates cleanly with zero render/semantics errors',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    try {
+      const me =
+          Profile(id: '1', name: 'Me', color: Colors.blue, isPrimary: true);
+      const mom = Profile(id: '2', name: 'Mom', color: Colors.purple);
+      final seededPrescriptions = [
+        const Prescription(
+          id: '1',
+          name: 'Allegra',
+          dosage: '10mg',
+          reminderTimes: ['8:00 AM'],
+          daysSupply: 14,
+          remaining: 14,
+          profileId: '1',
+        ),
+        const Prescription(
+          id: '2',
+          name: 'Lisinopril',
+          dosage: '20mg',
+          reminderTimes: ['8:00 AM'],
+          daysSupply: 4,
+          remaining: 4,
+          profileId: '2',
+        ),
+        const Prescription(
+          id: '3',
+          name: 'Metformin',
+          dosage: '500mg',
+          reminderTimes: ['12:00 PM'],
+          daysSupply: 28,
+          remaining: 28,
+          profileId: '2',
+        ),
+      ];
+
+      final firstMedCardKey = GlobalKey(debugLabel: 'test_first_med_card');
+      final semanticsHandle = tester.ensureSemantics();
+
+      try {
+        String selected = 'all';
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: AppTheme.lightTheme.copyWith(platform: TargetPlatform.iOS),
+            home: StatefulBuilder(
+              builder: (context, setState) => Scaffold(
+                body: ScheduleScreen(
+                  prescriptions: seededPrescriptions,
+                  profiles: const [me, mom],
+                  selectedProfileId: selected,
+                  onSelectProfile: (id) => setState(() => selected = id),
+                  onTakeDose: (_, __) {},
+                  onSnoozeDose: (_, __) {},
+                  onSkipDose: (_, __) {},
+                  onViewMedication: (_) {},
+                  onEditMedication: (_) {},
+                  onDeleteMedication: (_) {},
+                  onToggleAllCompleted: (_, __) {},
+                  onOpenScan: () {},
+                  isScanning: false,
+                  firstMedCardKey: firstMedCardKey,
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Allegra'), findsOneWidget);
+        expect(find.text('Lisinopril'), findsOneWidget);
+        expect(find.text('Metformin'), findsOneWidget);
+
+        // Tap Mom chip (exact trigger of the prior duplicate GlobalKey / semantics crash)
+        await tester.tap(find.text('Mom').first);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 80));
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Allegra'), findsNothing);
+        expect(find.text('Lisinopril'), findsOneWidget);
+        expect(find.text('Metformin'), findsOneWidget);
+
+        // Rapid mid-animation switches: All -> Mom -> Me -> All -> Mom
+        await tester.tap(find.text('All').first);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(find.text('Mom').first);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(find.text('Me (Me)').first);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(find.text('All').first);
+        await tester.pump(const Duration(milliseconds: 60));
+        await tester.tap(find.text('Mom').first);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Allegra'), findsNothing);
+        expect(find.text('Lisinopril'), findsOneWidget);
+        expect(find.text('Metformin'), findsOneWidget);
+      } finally {
+        semanticsHandle.dispose();
+      }
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets(
+      'iOS disjoint profile swaps anchor overlapping card slots in place and scale cleanly across multiple profiles and disjoint sections',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final semantics = tester.ensureSemantics();
+    try {
+      const me =
+          Profile(id: '1', name: 'Me', color: Colors.blue, isPrimary: true);
+      const mom = Profile(id: '2', name: 'Mom', color: Colors.purple);
+      const dad = Profile(id: '3', name: 'Dad', color: Colors.green);
+
+      final prescriptions = [
+        const Prescription(
+          id: 'rx_me_1',
+          name: 'Allegra',
+          dosage: '10mg',
+          reminderTimes: ['8:00 AM'],
+          daysSupply: 14,
+          remaining: 14,
+          profileId: '1',
+        ),
+        const Prescription(
+          id: 'rx_mom_1',
+          name: 'Lisinopril',
+          dosage: '20mg',
+          reminderTimes: ['8:00 AM'],
+          daysSupply: 14,
+          remaining: 14,
+          profileId: '2',
+        ),
+        const Prescription(
+          id: 'rx_mom_2',
+          name: 'Metformin',
+          dosage: '500mg',
+          reminderTimes: ['12:00 PM'],
+          daysSupply: 28,
+          remaining: 28,
+          profileId: '2',
+        ),
+        const Prescription(
+          id: 'rx_dad_1',
+          name: 'Atorvastatin',
+          dosage: '40mg',
+          reminderTimes: ['8:00 AM'],
+          daysSupply: 30,
+          remaining: 30,
+          profileId: '3',
+        ),
+        const Prescription(
+          id: 'rx_dad_2',
+          name: 'Aspirin',
+          dosage: '81mg',
+          reminderTimes: ['8:30 AM'],
+          daysSupply: 30,
+          remaining: 30,
+          profileId: '3',
+        ),
+        const Prescription(
+          id: 'rx_dad_3',
+          name: 'Vitamin D',
+          dosage: '1000IU',
+          reminderTimes: ['9:00 AM'],
+          daysSupply: 30,
+          remaining: 30,
+          profileId: '3',
+        ),
+      ];
+
+      String selected = '1'; // Start on Me (1 Morning card)
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.lightTheme.copyWith(platform: TargetPlatform.iOS),
+          home: StatefulBuilder(
+            builder: (context, setState) => Scaffold(
+              body: ScheduleScreen(
+                prescriptions: prescriptions,
+                profiles: const [me, mom, dad],
+                selectedProfileId: selected,
+                onSelectProfile: (id) => setState(() => selected = id),
+                onTakeDose: (_, __) {},
+                onSnoozeDose: (_, __) {},
+                onSkipDose: (_, __) {},
+                onViewMedication: (_) {},
+                onEditMedication: (_) {},
+                onDeleteMedication: (_) {},
+                onToggleAllCompleted: (_, __) {},
+                onOpenScan: () {},
+                isScanning: false,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Allegra'), findsOneWidget);
+
+      // Swap Me (1 Morning) -> Mom (1 Morning + 1 Afternoon)
+      await tester.tap(find.text('Mom').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 90));
+      // Morning slot 0 stays anchored at full height (never collapses to 0)
+      final slot0Align = tester.widget<Align>(
+        find
+            .descendant(
+              of: find.byKey(const ValueKey('ios_pos_slot_MORNING_0')),
+              matching: find.byType(Align),
+            )
+            .first,
+      );
+      expect(slot0Align.heightFactor, 1.0);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Lisinopril'), findsOneWidget);
+      expect(find.text('Metformin'), findsOneWidget);
+      expect(find.text('Allegra'), findsNothing);
+
+      // Swap Mom (1 Morning + 1 Afternoon) -> Dad (3 Morning, 0 Afternoon)
+      await tester.tap(find.text('Dad').first);
+      await tester.pump(const Duration(milliseconds: 90));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Atorvastatin'), findsOneWidget);
+      expect(find.text('Aspirin'), findsOneWidget);
+      expect(find.text('Vitamin D'), findsOneWidget);
+      expect(find.text('Metformin'), findsNothing);
+
+      // Swap Dad (3 Morning) -> Me (1 Morning) -> All (all 6)
+      await tester.tap(find.text('Me (Me)').first);
+      await tester.pump(const Duration(milliseconds: 90));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Allegra'), findsOneWidget);
+      expect(find.text('Aspirin'), findsNothing);
+
+      await tester.tap(find.text('All').first);
+      await tester.pump(const Duration(milliseconds: 90));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Allegra'), findsOneWidget);
+      expect(find.text('Lisinopril'), findsOneWidget);
+      expect(find.text('Atorvastatin'), findsOneWidget);
+      expect(find.text('Metformin'), findsOneWidget);
+    } finally {
+      semantics.dispose();
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 }

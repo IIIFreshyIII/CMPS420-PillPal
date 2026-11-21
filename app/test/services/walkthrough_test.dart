@@ -15,6 +15,7 @@ import 'package:pillpal/screens/home/home_scaffold.dart';
 import 'package:pillpal/screens/profiles/profiles_screen.dart';
 import 'package:pillpal/services/walkthrough_service.dart';
 import 'package:pillpal/ui/widgets/walkthrough_overlay.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FakeSecureStorage extends Fake implements FlutterSecureStorage {
   final Map<String, String> _store = {};
@@ -64,6 +65,10 @@ class FakeSecureStorage extends Fake implements FlutterSecureStorage {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   group('WalkthroughService Unit Tests', () {
     late FakeSecureStorage storage;
     late WalkthroughService service;
@@ -516,8 +521,8 @@ void main() {
 
       expect(find.text('Adherence & Consistency'), findsNothing);
 
-      // 3. Switch to Profile tab
-      await tester.tap(find.text('Profile'));
+      // 3. Switch to Settings tab
+      await tester.tap(find.text('Settings'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 

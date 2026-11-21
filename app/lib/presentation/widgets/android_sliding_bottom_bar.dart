@@ -25,9 +25,9 @@ class AndroidSlidingBottomBar extends StatelessWidget {
       label: 'Meds',
     ),
     _TabItem(
-      icon: Icons.person_outline_rounded,
-      activeIcon: Icons.person_rounded,
-      label: 'Profile',
+      icon: Icons.settings_outlined,
+      activeIcon: Icons.settings_rounded,
+      label: 'Settings',
     ),
   ];
 

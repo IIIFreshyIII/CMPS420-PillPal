@@ -9,6 +9,7 @@ import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../data/services/extractor.dart';
 import '../../data/services/notification_service.dart';
+import '../../services/bedtime_service.dart';
 import '../scan/upload_scan_screen.dart';
 import 'steps/step1_splash.dart';
 import 'steps/step2_legal.dart';
@@ -62,7 +63,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   bool _includeScannerStep = true;
   bool _isProcessingPhoto = false;
   Extraction? _scannedExtraction;
-  String? _configuredBedtime;
+  BedtimeSchedule? _configuredBedtimeSchedule;
 
   static const _transitionDuration = Duration(milliseconds: 340);
   static const _transitionCurve = Curves.easeOutCubic;
@@ -84,29 +85,20 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   Future<void> _handleNameConfirmed(String name) async {
     await widget.appStateManager.setUserName(name);
 
-    final existing = await widget.database.getProfileById('1');
     final primaryProfile = Profile(
       id: '1',
       name: name,
       color: const Color(0xFF168B87), // PillPal teal
       isPrimary: true,
-      bedtime: existing?.bedtime ?? _configuredBedtime,
     );
     await widget.database.upsertProfile(primaryProfile);
   }
 
-  Future<void> _handleBedtimeConfirmed(String? bedtime) async {
-    _configuredBedtime = bedtime;
-    final existing = await widget.database.getProfileById('1');
-    final name = widget.appStateManager.userName;
-    final primaryProfile = Profile(
-      id: '1',
-      name: existing?.name ?? (name.isEmpty ? 'You' : name),
-      color: const Color(0xFF168B87),
-      isPrimary: true,
-      bedtime: bedtime,
+  Future<void> _handleBedtimeConfirmed(BedtimeSchedule? schedule) async {
+    _configuredBedtimeSchedule = schedule;
+    await widget.appStateManager.bedtimeService.updateSchedule(
+      schedule ?? BedtimeSchedule.disabled(),
     );
-    await widget.database.upsertProfile(primaryProfile);
   }
 
   void _openVerificationWithoutScanner(Extraction extraction) {
@@ -254,7 +246,7 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
               Step5Bedtime(
                 onBedtimeConfirmed: _handleBedtimeConfirmed,
                 onNext: _nextPage,
-                initialBedtime: _configuredBedtime,
+                initialSchedule: _configuredBedtimeSchedule,
               ),
 
               // Step 6: First Medication Setup Prompt (Page 5)

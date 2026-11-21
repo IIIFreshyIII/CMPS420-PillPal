@@ -7,42 +7,51 @@ import 'package:flutter/services.dart';
 import '../../core/scheduling/reminder_scheduler.dart';
 import '../../core/theme/pillpal_colors.dart';
 import '../../core/utils/date_formatter.dart';
+import '../../services/bedtime_service.dart';
 import 'widgets/rotary_time_picker.dart';
 
 /// Step 2 of the scan-to-save flow: once the medication's identity is
 /// confirmed (`ConfirmScreen`), this works out *when* to be reminded --
 /// a single start time, expanded into a full day's worth of reminders when
 /// the label's frequency describes a fixed interval (e.g. "every 4 hours"),
-/// capped at the assigned profile's bedtime so nothing is scheduled
-/// overnight. See `core/scheduling/reminder_scheduler.dart` for the
-/// parsing/calculation logic this screen is a thin UI over.
+/// capped at the device's bedtime so nothing is scheduled overnight.
 ///
 /// Pops with the final ordered list of formatted reminder-time strings
 /// (`["8:00 AM", "12:00 PM", ...]`), or `null` if the user backs out --
 /// `ConfirmScreen` is the one that turns that into a saved [Prescription].
 class ReminderScheduleSheet extends StatefulWidget {
-  const ReminderScheduleSheet(
-      {super.key, required this.frequency, required this.bedtime});
+  const ReminderScheduleSheet({
+    super.key,
+    required this.frequency,
+    this.bedtime,
+    this.bedtimeService,
+  });
 
   /// Raw OCR frequency text (e.g. "every 4 hours"), or null if none was read.
   final String? frequency;
 
-  /// The assigned profile's bedtime, formatted like `formatTimeOfDayLabel`
-  /// produces (e.g. "10:00 PM"), or null if they haven't set one.
+  /// Explicit bedtime label (e.g. "10:00 PM"), or null to read from [bedtimeService].
   final String? bedtime;
+
+  /// Device-level bedtime service used when [bedtime] is not explicitly passed.
+  final BedtimeService? bedtimeService;
 
   static Future<List<String>?> show(
     BuildContext context, {
     required String? frequency,
-    required String? bedtime,
+    String? bedtime,
+    BedtimeService? bedtimeService,
   }) {
     return showModalBottomSheet<List<String>>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) =>
-          ReminderScheduleSheet(frequency: frequency, bedtime: bedtime),
+      builder: (ctx) => ReminderScheduleSheet(
+        frequency: frequency,
+        bedtime: bedtime,
+        bedtimeService: bedtimeService,
+      ),
     );
   }
 
@@ -65,13 +74,16 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
   String _intervalLabel(int hours) =>
       hours == 24 ? 'Once a day' : 'Every $hours hours';
 
+  String? get _effectiveBedtime =>
+      widget.bedtime ?? widget.bedtimeService?.todayBedtimeLabel();
+
   void _save() {
     HapticFeedback.lightImpact();
     final start = _startTime!;
     final times = buildReminderTimes(
       startTime: start,
       intervalHours: _intervalHours,
-      bedtime: parseTimeOfDayLabel(widget.bedtime),
+      bedtime: parseTimeOfDayLabel(_effectiveBedtime),
     );
     Navigator.of(context).pop(times.map(formatTimeOfDayLabel).toList());
   }
@@ -138,12 +150,13 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final interval = _intervalHours;
+    final effectiveBedtime = _effectiveBedtime;
     final computedTimes = _startTime == null || interval == null
         ? const <TimeOfDay>[]
         : buildReminderTimes(
             startTime: _startTime!,
             intervalHours: interval,
-            bedtime: parseTimeOfDayLabel(widget.bedtime),
+            bedtime: parseTimeOfDayLabel(effectiveBedtime),
           );
 
     return Container(
@@ -311,9 +324,9 @@ class _ReminderScheduleSheetState extends State<ReminderScheduleSheet> {
                               if (computedTimes.length > 1) ...[
                                 const SizedBox(height: 8),
                                 Text(
-                                  widget.bedtime != null
-                                      ? 'Stops before your ${widget.bedtime} bedtime.'
-                                      : 'No bedtime set for this profile yet -- stops at end of day.',
+                                  effectiveBedtime != null
+                                      ? 'Stops before your $effectiveBedtime bedtime.'
+                                      : 'No bedtime set yet -- stops at end of day.',
                                   style: TextStyle(
                                       fontSize: 11, color: c.inkMuted),
                                 ),

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../core/scheduling/reminder_scheduler.dart';
 import '../data/models/prescription.dart';
 import '../data/models/profile.dart';
+import 'bedtime_service.dart';
 import 'snooze_settings_service.dart';
 
 export '../core/scheduling/reminder_scheduler.dart'
@@ -72,9 +73,11 @@ class LiveReminderService {
   LiveReminderService({
     MethodChannel? channel,
     SnoozeSettingsService? snoozeSettings,
+    BedtimeService? bedtimeService,
     DateTime Function()? clock,
   })  : _channel = channel ?? const MethodChannel(channelName),
         _snoozeSettings = snoozeSettings,
+        _bedtimeService = bedtimeService,
         _clock = clock ?? DateTime.now;
 
   static const String channelName = 'com.pillpal.app/live_reminders';
@@ -83,6 +86,7 @@ class LiveReminderService {
 
   final MethodChannel _channel;
   final SnoozeSettingsService? _snoozeSettings;
+  final BedtimeService? _bedtimeService;
   final DateTime Function() _clock;
   final Map<String, Timer> _bedtimeTimers = {};
   final Map<String, DateTime> _activeSnoozeEnds = {};
@@ -270,8 +274,11 @@ class LiveReminderService {
     bool bypassBedtime = false,
   }) async {
     final now = _clock();
-    final effectiveBypass =
-        bypassBedtime || (_snoozeSettings?.isBedtimeBypassed(now: now) ?? false);
+    final bedtimeService = _bedtimeService;
+    final effectiveBypass = bypassBedtime ||
+        (bedtimeService != null
+            ? bedtimeService.isPausedAt(now)
+            : (_snoozeSettings?.isBedtimeBypassed(now: now) ?? false));
 
     final batch = calculateDoseBatch(
       prescriptions,
@@ -279,6 +286,8 @@ class LiveReminderService {
       profiles: profiles,
       skippedSlotKeys: skippedSlotKeys,
       bypassBedtime: effectiveBypass,
+      bedtimeSchedule: bedtimeService?.schedule,
+      weekday: now.weekday,
     );
 
     if (batch.remainingDosesCount <= 0) {
@@ -299,17 +308,33 @@ class LiveReminderService {
       duration = settings.snoozeDurationMinutes;
     }
 
-    final profileBedtime = effectiveBypass
-        ? null
-        : resolveBedtimeForBatch(batch: batch, profiles: profiles);
-
-    final clampedDuration = effectiveBypass
-        ? duration
-        : clampSnoozeDurationToBedtime(
-            now: now,
-            requestedMinutes: duration,
-            bedtime: profileBedtime,
-          );
+    final int clampedDuration;
+    DateTime? targetBedtime;
+    if (bedtimeService != null) {
+      clampedDuration = bedtimeService.clampSnoozeMinutes(
+        now: now,
+        requestedMinutes: duration,
+        bypassBedtime: effectiveBypass,
+      );
+      if (!effectiveBypass && bedtimeService.isEnabled) {
+        targetBedtime = bedtimeService.nextQuietWindow(now: now)?.start;
+      }
+    } else {
+      final profileBedtime = effectiveBypass
+          ? null
+          : resolveBedtimeForBatch(batch: batch, profiles: profiles);
+      clampedDuration = effectiveBypass
+          ? duration
+          : clampSnoozeDurationToBedtime(
+              now: now,
+              requestedMinutes: duration,
+              bedtime: profileBedtime,
+            );
+      if (profileBedtime != null) {
+        targetBedtime =
+            calculateBedtimeDateTime(now: now, bedtime: profileBedtime);
+      }
+    }
 
     if (clampedDuration <= 0) {
       await dismissActivity(batchId: batch.batchId);
@@ -322,15 +347,11 @@ class LiveReminderService {
 
     int? endTimestampMs;
     var wasClamped = false;
-    if (profileBedtime != null) {
-      final targetBedtime =
-          calculateBedtimeDateTime(now: now, bedtime: profileBedtime);
-      if (targetBedtime != null) {
-        final requestedEnd = now.add(Duration(minutes: duration));
-        if (requestedEnd.isAfter(targetBedtime)) {
-          endTimestampMs = targetBedtime.millisecondsSinceEpoch;
-          wasClamped = true;
-        }
+    if (targetBedtime != null) {
+      final requestedEnd = now.add(Duration(minutes: duration));
+      if (requestedEnd.isAfter(targetBedtime)) {
+        endTimestampMs = targetBedtime.millisecondsSinceEpoch;
+        wasClamped = true;
       }
     }
 
@@ -344,18 +365,14 @@ class LiveReminderService {
       clampedToBedtime: wasClamped,
     );
 
-    if (profileBedtime != null) {
-      final targetBedtime =
-          calculateBedtimeDateTime(now: now, bedtime: profileBedtime);
-      if (targetBedtime != null) {
-        final diffMs = targetBedtime.difference(now).inMilliseconds;
-        _bedtimeTimers[batch.batchId]?.cancel();
-        if (diffMs > 0) {
-          _bedtimeTimers[batch.batchId] =
-              Timer(Duration(milliseconds: diffMs), () {
-            dismissActivity(batchId: batch.batchId);
-          });
-        }
+    if (targetBedtime != null) {
+      final diffMs = targetBedtime.difference(now).inMilliseconds;
+      _bedtimeTimers[batch.batchId]?.cancel();
+      if (diffMs > 0) {
+        _bedtimeTimers[batch.batchId] =
+            Timer(Duration(milliseconds: diffMs), () {
+          dismissActivity(batchId: batch.batchId);
+        });
       }
     }
 
@@ -372,14 +389,20 @@ class LiveReminderService {
     Set<String>? skippedSlotKeys,
     bool bypassBedtime = false,
   }) async {
+    final now = _clock();
+    final bedtimeService = _bedtimeService;
     final effectiveBypass = bypassBedtime ||
-        (_snoozeSettings?.isBedtimeBypassed(now: _clock()) ?? false);
+        (bedtimeService != null
+            ? bedtimeService.isPausedAt(now)
+            : (_snoozeSettings?.isBedtimeBypassed(now: now) ?? false));
     final batch = calculateDoseBatch(
       prescriptions,
       timeSlot,
       profiles: profiles,
       skippedSlotKeys: skippedSlotKeys,
       bypassBedtime: effectiveBypass,
+      bedtimeSchedule: bedtimeService?.schedule,
+      weekday: now.weekday,
     );
 
     if (batch.remainingDosesCount <= 0) {

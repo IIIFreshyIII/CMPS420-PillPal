@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import '../../core/theme/pillpal_colors.dart';
 import '../../presentation/widgets/pressable.dart';
 import '../../presentation/widgets/profile_chip.dart';
@@ -11,6 +13,7 @@ import '../../core/utils/date_formatter.dart';
 import '../../data/models/prescription.dart';
 import '../../data/models/profile.dart';
 import '../../ui/widgets/walkthrough_overlay.dart';
+import '../account/widgets/bedtime_schedule_editor.dart' show kAppleSpring;
 import 'widgets/medication_card.dart';
 
 /// One reminder-time instance of a prescription -- a prescription with
@@ -304,79 +307,26 @@ class ScheduleScreen extends StatelessWidget {
     return _buildAndroidScheduleContent(context, sections, allSlots);
   }
 
-  bool _isSlotVisible(ScheduleSlot slot) =>
-      selectedProfileId == 'all' ||
-      slot.prescription.profileId == selectedProfileId;
-
-  /// iOS: mirrors how UITableView / SwiftUI `List` animate row insertions and
-  /// deletions (e.g. the device list in Settings > Bluetooth). Every section
-  /// and row stays in a persistent slot; rows that remain visible are never
-  /// touched -- they simply glide to their new position as neighbours open or
-  /// close. A whole section appearing/disappearing animates as one block, and
-  /// individual rows inside a section that stays on screen animate on their own.
   Widget _buildIOSScheduleContent(
     BuildContext context,
     List<({String title, List<ScheduleSlot> slots})> sections,
     List<ScheduleSlot> allSlots,
   ) {
-    final hasAnyVisible = allSlots.any(_isSlotVisible);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (var idx = 0; idx < sections.length; idx++)
-          IOSListRowReveal(
-            key: ValueKey('ios_sec_${sections[idx].title}'),
-            visible: sections[idx].slots.any(_isSlotVisible),
-            child: _buildIOSSection(context, sections[idx], isFirst: idx == 0),
-          ),
-        IOSListRowReveal(
-          key: const ValueKey('ios_empty_schedule'),
-          visible: !hasAnyVisible,
-          child: KeyedSubtree(
-            key: emptyScheduleKey,
-            child: _EmptySchedule(
-              hasAnyPrescriptions: prescriptions.isNotEmpty,
-            ),
-          ),
-        ),
-        const SizedBox(height: 120),
-      ],
-    );
-  }
-
-  Widget _buildIOSSection(
-    BuildContext context,
-    ({String title, List<ScheduleSlot> slots}) section, {
-    required bool isFirst,
-  }) {
-    final visibleSlots = section.slots.where(_isSlotVisible).toList();
-    final firstVisibleSlot = visibleSlots.isNotEmpty ? visibleSlots.first : null;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildSectionHeader(context, section, isFirst: isFirst),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            children: [
-              for (final slot in section.slots)
-                IOSListRowReveal(
-                  key: ValueKey('ios_slot_${slot.prescription.id}_${slot.time}'),
-                  visible: _isSlotVisible(slot),
-                  child: _slotCard(
-                    slot,
-                    isTargetCard: isFirst &&
-                        firstVisibleSlot != null &&
-                        slot.prescription.id == firstVisibleSlot.prescription.id &&
-                        slot.time == firstVisibleSlot.time,
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
+    return _IOSScheduleContent(
+      sections: sections,
+      allSlots: allSlots,
+      selectedProfileId: selectedProfileId,
+      hasAnyPrescriptions: prescriptions.isNotEmpty,
+      emptyScheduleKey: emptyScheduleKey,
+      buildSectionHeader: (ctx, section,
+              {required bool isFirst, List<ScheduleSlot>? visibleSlotsOverride}) =>
+          _buildSectionHeader(
+        ctx,
+        section,
+        isFirst: isFirst,
+        visibleSlotsOverride: visibleSlotsOverride,
+      ),
+      buildSlotCard: _slotCard,
     );
   }
 
@@ -426,7 +376,7 @@ class ScheduleScreen extends StatelessWidget {
             s.prescription.profileId == selectedProfileId)
         .toList();
     final isSectionVisible = visibleSlots.isNotEmpty;
-    final firstVisibleSlot = visibleSlots.isNotEmpty ? visibleSlots.first : null;
+    final firstSlot = section.slots.isNotEmpty ? section.slots.first : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -448,9 +398,10 @@ class ScheduleScreen extends StatelessWidget {
                   child: _slotCard(
                     slot,
                     isTargetCard: isFirst &&
-                        firstVisibleSlot != null &&
-                        slot.prescription.id == firstVisibleSlot.prescription.id &&
-                        slot.time == firstVisibleSlot.time,
+                        selectedProfileId == 'all' &&
+                        firstSlot != null &&
+                        slot.prescription.id == firstSlot.prescription.id &&
+                        slot.time == firstSlot.time,
                   ),
                 ),
             ],
@@ -464,13 +415,15 @@ class ScheduleScreen extends StatelessWidget {
     BuildContext context,
     ({String title, List<ScheduleSlot> slots}) section, {
     required bool isFirst,
+    List<ScheduleSlot>? visibleSlotsOverride,
   }) {
     final c = context.colors;
-    final visibleSlots = section.slots
-        .where((s) =>
-            selectedProfileId == 'all' ||
-            s.prescription.profileId == selectedProfileId)
-        .toList();
+    final visibleSlots = visibleSlotsOverride ??
+        section.slots
+            .where((s) =>
+                selectedProfileId == 'all' ||
+                s.prescription.profileId == selectedProfileId)
+            .toList();
     final sectionTotal = visibleSlots.length;
     final sectionTaken = visibleSlots
         .where((s) => s.prescription.takenTimes.contains(s.time))
@@ -508,17 +461,13 @@ class ScheduleScreen extends StatelessWidget {
                   color: c.tint,
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    '$sectionTaken of $sectionTotal',
-                    key: ValueKey('$sectionTaken of $sectionTotal'),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: c.tealDeep,
-                      letterSpacing: -0.2,
-                    ),
+                child: Text(
+                  '$sectionTaken of $sectionTotal',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: c.tealDeep,
+                    letterSpacing: -0.2,
                   ),
                 ),
               ),
@@ -541,30 +490,26 @@ class ScheduleScreen extends StatelessWidget {
                     color: sectionAllDone ? c.neutralChip : c.tealDeep,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: Row(
-                      key: ValueKey(sectionAllDone),
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          sectionAllDone
-                              ? CupertinoIcons.arrow_counterclockwise
-                              : CupertinoIcons.checkmark_alt,
-                          size: 13,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        sectionAllDone
+                            ? CupertinoIcons.arrow_counterclockwise
+                            : CupertinoIcons.checkmark_alt,
+                        size: 13,
+                        color: sectionAllDone ? c.neutralInk : c.onTeal,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        sectionAllDone ? 'Reset' : 'Mark All',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
                           color: sectionAllDone ? c.neutralInk : c.onTeal,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          sectionAllDone ? 'Reset' : 'Mark All',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: sectionAllDone ? c.neutralInk : c.onTeal,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -607,29 +552,593 @@ class ScheduleScreen extends StatelessWidget {
   }
 }
 
+/// iOS Schedule list coordinator supporting two complementary native motion
+/// patterns (scalable to any number of profiles, medications, and sections):
+///
+/// 1. **Subset / superset transitions (`All ↔ Profile`)**: Uses real slot
+///    identities so cards shared with `All` stay untouched and glide smoothly
+///    up or down while non-matching cards/sections spring open or closed.
+/// 2. **Disjoint profile swaps (`Profile A ↔ Profile B`)**: Pairs overlapping
+///    card slots by position (`0 → 0`, `1 → 1`, …) so overlapping cards stay
+///    anchored and cross-dissolve cleanly in place (never collapsing the list
+///    to empty and re-spawning), while only the length difference springs open
+///    or closed underneath.
+class _IOSScheduleContent extends StatefulWidget {
+  const _IOSScheduleContent({
+    required this.sections,
+    required this.allSlots,
+    required this.selectedProfileId,
+    required this.hasAnyPrescriptions,
+    required this.emptyScheduleKey,
+    required this.buildSectionHeader,
+    required this.buildSlotCard,
+  });
+
+  final List<({String title, List<ScheduleSlot> slots})> sections;
+  final List<ScheduleSlot> allSlots;
+  final String selectedProfileId;
+  final bool hasAnyPrescriptions;
+  final GlobalKey? emptyScheduleKey;
+  final Widget Function(
+    BuildContext context,
+    ({String title, List<ScheduleSlot> slots}) section, {
+    required bool isFirst,
+    List<ScheduleSlot>? visibleSlotsOverride,
+  }) buildSectionHeader;
+  final Widget Function(ScheduleSlot slot, {bool isTargetCard}) buildSlotCard;
+
+  @override
+  State<_IOSScheduleContent> createState() => _IOSScheduleContentState();
+}
+
+class _IOSScheduleContentState extends State<_IOSScheduleContent> {
+  late String _previousProfileId;
+  bool _positionalMode = false;
+  bool _justEnteredPositional = false;
+  bool _justExitedPositional = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _previousProfileId = widget.selectedProfileId;
+  }
+
+  @override
+  void didUpdateWidget(covariant _IOSScheduleContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.selectedProfileId != oldWidget.selectedProfileId) {
+      _previousProfileId = oldWidget.selectedProfileId;
+      final isDisjointSwap =
+          oldWidget.selectedProfileId != 'all' &&
+          widget.selectedProfileId != 'all';
+      if (isDisjointSwap) {
+        _justEnteredPositional = !_positionalMode;
+        _justExitedPositional = false;
+        _positionalMode = true;
+      } else {
+        _justExitedPositional = _positionalMode;
+        _justEnteredPositional = false;
+        _positionalMode = false;
+      }
+    } else {
+      _justEnteredPositional = false;
+      _justExitedPositional = false;
+    }
+  }
+
+  bool _matchesProfile(ScheduleSlot slot, String profileId) =>
+      profileId == 'all' || slot.prescription.profileId == profileId;
+
+  String _slotId(ScheduleSlot slot) => '${slot.prescription.id}_${slot.time}';
+
+  int _maxSingleProfileCount(List<ScheduleSlot> slots) {
+    final counts = <String, int>{};
+    var maxCount = 0;
+    for (final s in slots) {
+      final next = (counts[s.prescription.profileId] ?? 0) + 1;
+      counts[s.prescription.profileId] = next;
+      if (next > maxCount) maxCount = next;
+    }
+    return maxCount;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAnyVisible = widget.allSlots
+        .any((s) => _matchesProfile(s, widget.selectedProfileId));
+    final prevHadAny = widget.allSlots
+        .any((s) => _matchesProfile(s, _previousProfileId));
+
+    if (!_positionalMode) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var idx = 0; idx < widget.sections.length; idx++)
+            _buildIdentitySection(context, widget.sections[idx], isFirst: idx == 0),
+          IOSListRowReveal(
+            key: const ValueKey('ios_empty_schedule'),
+            initialVisible: _justExitedPositional ? !prevHadAny : !hasAnyVisible,
+            visible: !hasAnyVisible,
+            child: KeyedSubtree(
+              key: widget.emptyScheduleKey,
+              child: _EmptySchedule(
+                hasAnyPrescriptions: widget.hasAnyPrescriptions,
+              ),
+            ),
+          ),
+          const SizedBox(height: 120),
+        ],
+      );
+    }
+
+    return _buildPositionalSchedule(
+      context,
+      hasAnyVisible: hasAnyVisible,
+      prevHadAny: prevHadAny,
+    );
+  }
+
+  Widget _buildIdentitySection(
+    BuildContext context,
+    ({String title, List<ScheduleSlot> slots}) section, {
+    required bool isFirst,
+  }) {
+    final isSectionVisible =
+        section.slots.any((s) => _matchesProfile(s, widget.selectedProfileId));
+    final wasSectionVisible = _justExitedPositional
+        ? section.slots.any((s) => _matchesProfile(s, _previousProfileId))
+        : isSectionVisible;
+    final firstSlot = section.slots.isNotEmpty ? section.slots.first : null;
+
+    return IOSListRowReveal(
+      key: ValueKey('ios_sec_${section.title}'),
+      initialVisible: wasSectionVisible,
+      visible: isSectionVisible,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          widget.buildSectionHeader(context, section, isFirst: isFirst),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              children: [
+                for (final slot in section.slots)
+                  IOSListRowReveal(
+                    key: ValueKey('ios_slot_${_slotId(slot)}'),
+                    initialVisible: _justExitedPositional
+                        ? _matchesProfile(slot, _previousProfileId)
+                        : (!isSectionVisible ||
+                            _matchesProfile(slot, widget.selectedProfileId)),
+                    visible: !isSectionVisible ||
+                        _matchesProfile(slot, widget.selectedProfileId),
+                    child: widget.buildSlotCard(
+                      slot,
+                      isTargetCard: isFirst &&
+                          widget.selectedProfileId == 'all' &&
+                          firstSlot != null &&
+                          slot.prescription.id == firstSlot.prescription.id &&
+                          slot.time == firstSlot.time,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPositionalSchedule(
+    BuildContext context, {
+    required bool hasAnyVisible,
+    required bool prevHadAny,
+  }) {
+    final currActiveSections = [
+      for (final s in widget.sections)
+        if (s.slots.any((slot) => _matchesProfile(slot, widget.selectedProfileId)))
+          (
+            title: s.title,
+            slots: s.slots
+                .where((slot) => _matchesProfile(slot, widget.selectedProfileId))
+                .toList(),
+            sourceSection: s,
+          ),
+    ];
+    final prevActiveSections = [
+      for (final s in widget.sections)
+        if (s.slots.any((slot) => _matchesProfile(slot, _previousProfileId)))
+          (
+            title: s.title,
+            slots: s.slots
+                .where((slot) => _matchesProfile(slot, _previousProfileId))
+                .toList(),
+            sourceSection: s,
+          ),
+    ];
+
+    final currTitles = currActiveSections.map((s) => s.title).toSet();
+    final prevTitles = prevActiveSections.map((s) => s.title).toSet();
+    final hasOverlappingSection = currTitles.intersection(prevTitles).isNotEmpty;
+
+    // When both profiles have meds but share zero time-of-day sections (e.g.,
+    // Me only has Evening while Mom only has Morning), anchor section slot 0
+    // and cross-dissolve in place so the list never collapses to empty.
+    if (!hasOverlappingSection && hasAnyVisible && prevHadAny) {
+      final totalSectionSlots =
+          math.max(currActiveSections.length, prevActiveSections.length);
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var secIdx = 0; secIdx < totalSectionSlots; secIdx++)
+            _buildPairedDisjointSection(
+              context,
+              sectionIndex: secIdx,
+              curr: secIdx < currActiveSections.length
+                  ? currActiveSections[secIdx]
+                  : null,
+              prev: secIdx < prevActiveSections.length
+                  ? prevActiveSections[secIdx]
+                  : null,
+            ),
+          IOSListRowReveal(
+            key: const ValueKey('ios_empty_schedule'),
+            initialVisible: false,
+            visible: false,
+            child: KeyedSubtree(
+              key: widget.emptyScheduleKey,
+              child: _EmptySchedule(
+                hasAnyPrescriptions: widget.hasAnyPrescriptions,
+              ),
+            ),
+          ),
+          const SizedBox(height: 120),
+        ],
+      );
+    }
+
+    // Standard positional mode: shared section headers stay rock-steady,
+    // overlapping card indices cross-dissolve in place, and extra cards or
+    // sections spring smoothly open/closed.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var idx = 0; idx < widget.sections.length; idx++)
+          _buildPositionalNamedSection(
+            context,
+            widget.sections[idx],
+            isFirst: idx == 0,
+          ),
+        IOSListRowReveal(
+          key: const ValueKey('ios_empty_schedule'),
+          initialVisible: _justEnteredPositional ? !prevHadAny : !hasAnyVisible,
+          visible: !hasAnyVisible,
+          child: KeyedSubtree(
+            key: widget.emptyScheduleKey,
+            child: _EmptySchedule(
+              hasAnyPrescriptions: widget.hasAnyPrescriptions,
+            ),
+          ),
+        ),
+        const SizedBox(height: 120),
+      ],
+    );
+  }
+
+  Widget _buildPositionalNamedSection(
+    BuildContext context,
+    ({String title, List<ScheduleSlot> slots}) section, {
+    required bool isFirst,
+  }) {
+    final currSlots = section.slots
+        .where((s) => _matchesProfile(s, widget.selectedProfileId))
+        .toList();
+    final prevSlots = section.slots
+        .where((s) => _matchesProfile(s, _previousProfileId))
+        .toList();
+
+    final isSectionVisible = currSlots.isNotEmpty;
+    final wasSectionVisible =
+        _justEnteredPositional ? prevSlots.isNotEmpty : isSectionVisible;
+
+    final maxSlots = math.max(
+      _maxSingleProfileCount(section.slots),
+      math.max(currSlots.length, prevSlots.length),
+    );
+    final headerSlots = isSectionVisible ? currSlots : prevSlots;
+
+    return IOSListRowReveal(
+      key: ValueKey('ios_pos_sec_${section.title}'),
+      initialVisible: wasSectionVisible,
+      visible: isSectionVisible,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          widget.buildSectionHeader(
+            context,
+            section,
+            isFirst: isFirst,
+            visibleSlotsOverride: headerSlots,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              children: [
+                for (var i = 0; i < maxSlots; i++)
+                  _buildPositionalSlotRow(
+                    sectionKey: section.title,
+                    slotIndex: i,
+                    isSectionVisible: isSectionVisible,
+                    currSlot: i < currSlots.length ? currSlots[i] : null,
+                    prevSlot: i < prevSlots.length ? prevSlots[i] : null,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPairedDisjointSection(
+    BuildContext context, {
+    required int sectionIndex,
+    required ({
+      String title,
+      List<ScheduleSlot> slots,
+      ({String title, List<ScheduleSlot> slots}) sourceSection,
+    })? curr,
+    required ({
+      String title,
+      List<ScheduleSlot> slots,
+      ({String title, List<ScheduleSlot> slots}) sourceSection,
+    })? prev,
+  }) {
+    final currSlots = curr?.slots ?? const <ScheduleSlot>[];
+    final prevSlots = prev?.slots ?? const <ScheduleSlot>[];
+    final isSectionVisible = curr != null;
+    final wasSectionVisible = prev != null;
+    final maxSlots = math.max(currSlots.length, prevSlots.length);
+
+    final activeHeader = curr != null
+        ? widget.buildSectionHeader(
+            context,
+            curr.sourceSection,
+            isFirst: sectionIndex == 0,
+            visibleSlotsOverride: curr.slots,
+          )
+        : widget.buildSectionHeader(
+            context,
+            prev!.sourceSection,
+            isFirst: sectionIndex == 0,
+            visibleSlotsOverride: prev.slots,
+          );
+    final prevHeader = (curr != null && prev != null && curr.title != prev.title)
+        ? widget.buildSectionHeader(
+            context,
+            prev.sourceSection,
+            isFirst: sectionIndex == 0,
+            visibleSlotsOverride: prev.slots,
+          )
+        : null;
+
+    return IOSListRowReveal(
+      key: ValueKey('ios_disjoint_sec_$sectionIndex'),
+      initialVisible: wasSectionVisible,
+      visible: isSectionVisible,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _InPlaceCardSwap(
+            key: ValueKey('ios_disjoint_hdr_$sectionIndex'),
+            contentId: curr?.title ?? prev?.title ?? '',
+            initialOutgoingChild: _justEnteredPositional ? prevHeader : null,
+            child: activeHeader,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              children: [
+                for (var i = 0; i < maxSlots; i++)
+                  _buildPositionalSlotRow(
+                    sectionKey: 'disjoint_$sectionIndex',
+                    slotIndex: i,
+                    isSectionVisible: isSectionVisible,
+                    currSlot: i < currSlots.length ? currSlots[i] : null,
+                    prevSlot: i < prevSlots.length ? prevSlots[i] : null,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPositionalSlotRow({
+    required String sectionKey,
+    required int slotIndex,
+    required bool isSectionVisible,
+    required ScheduleSlot? currSlot,
+    required ScheduleSlot? prevSlot,
+  }) {
+    final displaySlot = currSlot ?? prevSlot;
+    if (displaySlot == null) {
+      return SizedBox(
+        key: ValueKey('ios_pos_slot_${sectionKey}_$slotIndex'),
+        width: double.infinity,
+        height: 0,
+      );
+    }
+
+    // If the entire section is collapsing, keep inner slots open so the outer
+    // section reveal glides the whole section away as one solid piece.
+    final slotVisible = !isSectionVisible || currSlot != null;
+    final slotInitialVisible = _justEnteredPositional
+        ? (!isSectionVisible || prevSlot != null)
+        : slotVisible;
+
+    final shouldCrossDissolveOnMount = _justEnteredPositional &&
+        currSlot != null &&
+        prevSlot != null &&
+        _slotId(currSlot) != _slotId(prevSlot);
+
+    return IOSListRowReveal(
+      key: ValueKey('ios_pos_slot_${sectionKey}_$slotIndex'),
+      initialVisible: slotInitialVisible,
+      visible: slotVisible,
+      child: _InPlaceCardSwap(
+        key: ValueKey('ios_pos_swap_${sectionKey}_$slotIndex'),
+        contentId: _slotId(displaySlot),
+        initialOutgoingChild: shouldCrossDissolveOnMount
+            ? widget.buildSlotCard(prevSlot, isTargetCard: false)
+            : null,
+        child: widget.buildSlotCard(displaySlot, isTargetCard: false),
+      ),
+    );
+  }
+}
+
+/// Clean, single-controller in-place cross-dissolve for overlapping card slots
+/// during a disjoint profile swap (`Profile A ↔ Profile B`).
+///
+/// Holds at most 2 children (outgoing + incoming) with monotonically sequenced
+/// keys so rapid mid-flight taps can never produce duplicate keys, and wraps
+/// the outgoing child in [ExcludeSemantics] + [IgnorePointer].
+class _InPlaceCardSwap extends StatefulWidget {
+  const _InPlaceCardSwap({
+    super.key,
+    required this.contentId,
+    required this.child,
+    this.initialOutgoingChild,
+  });
+
+  final String contentId;
+  final Widget child;
+  final Widget? initialOutgoingChild;
+
+  @override
+  State<_InPlaceCardSwap> createState() => _InPlaceCardSwapState();
+}
+
+class _InPlaceCardSwapState extends State<_InPlaceCardSwap>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  Widget? _outgoingChild;
+  int _swapSeq = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+      value: 1.0,
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed &&
+            _outgoingChild != null &&
+            mounted) {
+          setState(() => _outgoingChild = null);
+        }
+      });
+
+    if (widget.initialOutgoingChild != null) {
+      _outgoingChild = widget.initialOutgoingChild;
+      _swapSeq++;
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _InPlaceCardSwap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.contentId != oldWidget.contentId) {
+      final disableAnim =
+          MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+      if (disableAnim) {
+        _outgoingChild = null;
+        _controller.value = 1.0;
+      } else {
+        _outgoingChild = oldWidget.child;
+        _swapSeq++;
+        _controller.forward(from: 0.0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final outgoing = _outgoingChild;
+    if (outgoing == null) {
+      return widget.child;
+    }
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final t = _controller.value.clamp(0.0, 1.0);
+        // Fast sequential-leaning dissolve so text from the two cards doesn't
+        // muddy together while the card frame stays anchored in place.
+        final outOpacity =
+            1.0 - Curves.easeIn.transform((t / 0.50).clamp(0.0, 1.0));
+        final inOpacity =
+            Curves.easeOut.transform(((t - 0.30) / 0.70).clamp(0.0, 1.0));
+        return Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            ExcludeSemantics(
+              child: IgnorePointer(
+                child: Opacity(
+                  opacity: outOpacity,
+                  child: KeyedSubtree(
+                    key: ValueKey('swap_out_$_swapSeq'),
+                    child: outgoing,
+                  ),
+                ),
+              ),
+            ),
+            Opacity(
+              opacity: inOpacity,
+              child: KeyedSubtree(
+                key: ValueKey('swap_in_$_swapSeq'),
+                child: widget.child,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 /// iOS-only row insertion/deletion animation, modelled on UITableView /
-/// SwiftUI `List` row updates (e.g. Settings > Bluetooth when toggled):
+/// SwiftUI `List` row updates and matching `AppleDisclosureReveal` on the
+/// Bedtime screen:
 ///
-/// * **Insert** -- the row's height opens from 0 while its content, pinned to
-///   the bottom edge and clipped at the top, slides down out from "under" the
-///   row above and fades in. Everything below is pushed down in lock-step.
-/// * **Delete** -- the reverse: the content fades out quickly while sliding
-///   back up underneath the row above, and the rows below glide up to close
-///   the gap.
+/// * **Insert** -- driven by an interruptible critically damped iOS spring
+///   ([kAppleSpring]), the row's height opens from 0 while its content, pinned
+///   to the bottom edge and clipped only at the top, descends out from under
+///   the row above and fades in.
+/// * **Delete** -- the reverse: the content fades out slightly ahead of
+///   collapse while ascending smoothly behind the row above, and the rows
+///   below glide up in lock-step.
 ///
-/// While a row is closing it keeps rendering the last content it was given,
-/// so nothing inside it changes mid-exit. Once fully closed the child is
-/// unmounted (no hit-testing, no semantics, no stale state).
+/// Once fully collapsed the child is unmounted (no hit-testing, no semantics).
 class IOSListRowReveal extends StatefulWidget {
   final bool visible;
+  final bool? initialVisible;
   final Widget child;
-  final Duration duration;
 
   const IOSListRowReveal({
     super.key,
     required this.visible,
+    this.initialVisible,
     required this.child,
-    this.duration = const Duration(milliseconds: 350),
   });
 
   @override
@@ -638,94 +1147,118 @@ class IOSListRowReveal extends StatefulWidget {
 
 class _IOSListRowRevealState extends State<IOSListRowReveal>
     with SingleTickerProviderStateMixin {
-  // UIKit's default UIView animation curve (kCAMediaTimingFunctionEaseInEaseOut),
-  // which is what table row updates ride on. Symmetric, so it feels identical
-  // whether a row is opening or closing.
-  static const Curve _sizeCurve = Cubic(0.42, 0.0, 0.58, 1.0);
+  static const Tolerance _springTolerance = Tolerance(
+    distance: 0.001,
+    velocity: 0.001,
+  );
 
   late final AnimationController _controller;
-  late final CurvedAnimation _size;
-  late final CurvedAnimation _opacity;
-  late Widget _lastVisibleChild;
+  late bool _isOpening;
+  bool _hasStartedInitialTransition = false;
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    final startVisible = widget.initialVisible ?? widget.visible;
+    _isOpening = widget.visible;
+    _controller = AnimationController.unbounded(
       vsync: this,
-      duration: widget.duration,
-      value: widget.visible ? 1.0 : 0.0,
-    )..addStatusListener(_onStatus);
-    _size = CurvedAnimation(parent: _controller, curve: _sizeCurve);
-    _opacity = CurvedAnimation(
-      parent: _controller,
-      // Entering: let the row open a touch before the content fades up.
-      curve: const Interval(0.15, 1.0, curve: Curves.easeOut),
-      // Leaving: content is fully faded by ~60% of the collapse, so it reads
-      // as fading away as it tucks back up rather than being clipped.
-      reverseCurve: const Interval(0.4, 1.0, curve: Curves.easeIn),
+      value: startVisible ? 1.0 : 0.0,
     );
-    _lastVisibleChild = widget.child;
   }
 
-  void _onStatus(AnimationStatus status) {
-    // Rebuild once fully collapsed so the child gets unmounted.
-    if (status == AnimationStatus.dismissed && mounted) setState(() {});
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_hasStartedInitialTransition) {
+      _hasStartedInitialTransition = true;
+      final startVisible = widget.initialVisible ?? widget.visible;
+      if (startVisible != widget.visible) {
+        _animateTo(widget.visible ? 1.0 : 0.0);
+      }
+    }
+  }
+
+  void _animateTo(double target) {
+    final disableAnimations =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    if (disableAnimations) {
+      _controller.value = target;
+      if (!widget.visible && mounted) setState(() {});
+      return;
+    }
+    final sim = SpringSimulation(
+      kAppleSpring,
+      _controller.value,
+      target,
+      _controller.velocity,
+      tolerance: _springTolerance,
+    );
+    _controller.animateWith(sim).whenComplete(() {
+      if (!mounted) return;
+      if (!_controller.isAnimating && widget.visible == (target == 1.0)) {
+        _controller.value = target;
+        setState(() {});
+      }
+    });
   }
 
   @override
   void didUpdateWidget(covariant IOSListRowReveal oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.duration != oldWidget.duration) {
-      _controller.duration = widget.duration;
-    }
-    if (widget.visible) _lastVisibleChild = widget.child;
     if (widget.visible != oldWidget.visible) {
-      if (widget.visible) {
-        _controller.forward();
-      } else {
-        _controller.reverse();
-      }
+      _isOpening = widget.visible;
+      _animateTo(widget.visible ? 1.0 : 0.0);
     }
   }
 
   @override
   void dispose() {
-    _size.dispose();
-    _opacity.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.visible && _controller.isDismissed) {
+    final current = _controller.value.clamp(0.0, 1.0);
+    if (!widget.visible && !_controller.isAnimating && current <= 0.001) {
       return const SizedBox(width: double.infinity, height: 0);
     }
 
-    // Tree shape stays constant across animating/resting so child state
-    // (swipe actions, pressed states) is never torn down mid-flight.
-    return IgnorePointer(
-      ignoring: !widget.visible,
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (context, child) {
-          final heightFactor = _size.value.clamp(0.0, 1.0);
-          final animating = heightFactor < 1.0;
-          return Opacity(
-            opacity: _opacity.value.clamp(0.0, 1.0),
-            child: ClipRect(
-              clipper: const _TopEdgeClipper(),
-              clipBehavior: animating ? Clip.hardEdge : Clip.none,
-              child: Align(
-                alignment: Alignment.bottomCenter,
-                heightFactor: heightFactor,
-                child: child,
+    return ExcludeSemantics(
+      excluding: !widget.visible,
+      child: IgnorePointer(
+        ignoring: !widget.visible,
+        child: AnimatedBuilder(
+          animation: _controller,
+          builder: (context, child) {
+            final v = _controller.value.clamp(0.0, 1.0);
+            if (!widget.visible && !_controller.isAnimating && v <= 0.001) {
+              return const SizedBox(width: double.infinity, height: 0);
+            }
+            final double opacity;
+            if (_isOpening) {
+              opacity =
+                  Curves.easeOut.transform(((v - 0.10) / 0.90).clamp(0.0, 1.0));
+            } else {
+              opacity =
+                  Curves.easeIn.transform(((v - 0.22) / 0.78).clamp(0.0, 1.0));
+            }
+            return Opacity(
+              opacity: opacity,
+              child: ClipRect(
+                clipper: const _TopEdgeClipper(),
+                clipBehavior: v < 0.999 ? Clip.hardEdge : Clip.none,
+                child: Align(
+                  alignment: Alignment.bottomCenter,
+                  heightFactor: v,
+                  child: child,
+                ),
               ),
-            ),
-          );
-        },
-        child: widget.visible ? widget.child : _lastVisibleChild,
+            );
+          },
+          child: widget.child,
+        ),
       ),
     );
   }

@@ -1,6 +1,8 @@
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:pillpal/core/ner/refill_math.dart';
 import 'package:pillpal/core/theme/app_theme.dart';
@@ -73,6 +75,63 @@ void main() {
     // zero-duration Timer never actually fires -- an explicit (even zero)
     // duration is required to flush it.
     await tester.pump(Duration.zero);
+  });
+
+  testWidgets(
+      'HomeScaffold on iOS switches All -> Mom -> Me -> Settings -> Schedule -> Mom with zero exceptions',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final semantics = tester.ensureSemantics();
+    final db = AppDatabase(NativeDatabase.memory());
+    try {
+      await tester.pumpWidget(MaterialApp(
+        theme: AppTheme.lightTheme.copyWith(platform: TargetPlatform.iOS),
+        home: HomeScaffold(database: db),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Allegra'), findsOneWidget);
+      expect(find.text('Lisinopril'), findsOneWidget);
+      expect(find.text('Metformin'), findsOneWidget);
+
+      await tester.tap(find.text('Mom').first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Allegra'), findsNothing);
+      expect(find.text('Lisinopril'), findsOneWidget);
+      expect(find.text('Metformin'), findsOneWidget);
+
+      await tester.tap(find.text('Me (Me)').first);
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Allegra'), findsOneWidget);
+      expect(find.text('Lisinopril'), findsNothing);
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      if (find.byKey(const Key('walkthrough_skip_button')).evaluate().isNotEmpty) {
+        await tester.tap(find.byKey(const Key('walkthrough_skip_button')));
+        await tester.pumpAndSettle();
+      }
+
+      await tester.tap(find.text('Schedule'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Mom').first);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump(Duration.zero);
+    } finally {
+      semantics.dispose();
+      debugDefaultTargetPlatformOverride = null;
+      await db.close();
+    }
   });
 
   testWidgets('ConfirmScreen maps a confirmed Extraction into a real Prescription',

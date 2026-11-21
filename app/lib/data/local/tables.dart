@@ -29,6 +29,7 @@ class Profiles extends Table {
   TextColumn get name => text()();
   IntColumn get colorValue => integer()(); // Color.toARGB32()
   BoolColumn get isPrimary => boolean().withDefault(const Constant(false))();
+  // Legacy column retained for one-time migration into device-level BedtimeService.
   TextColumn get bedtime => text().nullable()(); // formatted like "10:00 PM"
 
   @override

@@ -28,18 +28,18 @@ import '../../data/services/data_retention_service.dart';
 import '../../presentation/widgets/android_sliding_bottom_bar.dart';
 import '../../presentation/widgets/classic_ios_tab_bar.dart';
 import '../../presentation/widgets/keep_alive_tab_stack.dart';
-import '../../core/scheduling/reminder_scheduler.dart';
 import '../../core/services/ios_accessibility_service.dart';
 import '../../core/state/app_state_manager.dart';
 import '../../core/theme/liquid_glass_controller.dart';
 import '../../core/utils/ios_design_era.dart';
+import '../../services/bedtime_service.dart';
 import '../../services/live_reminder_service.dart';
 import '../../services/walkthrough_service.dart';
 import '../../ui/widgets/walkthrough_overlay.dart';
 
 enum _AddMedsMode { live, upload, manual }
 
-enum _BedtimeSnoozeChoice { cancel, clampToBedtime, pauseUntilMorning }
+enum _BedtimeSnoozeChoice { cancel, clampToBedtime, pauseTonight }
 
 class HomeScaffold extends StatefulWidget {
   const HomeScaffold({
@@ -51,6 +51,7 @@ class HomeScaffold extends StatefulWidget {
     this.appStateManager,
     this.walkthroughService,
     this.snoozeSettingsService,
+    this.bedtimeService,
     this.liveReminderService,
     this.initialTab = AppTab.schedule,
   });
@@ -64,6 +65,7 @@ class HomeScaffold extends StatefulWidget {
   final AppStateManager? appStateManager;
   final WalkthroughService? walkthroughService;
   final SnoozeSettingsService? snoozeSettingsService;
+  final BedtimeService? bedtimeService;
   final LiveReminderService? liveReminderService;
   final AppTab initialTab;
 
@@ -100,6 +102,8 @@ class _HomeScaffoldState extends State<HomeScaffold>
   late final LiquidGlassController _liquidGlassController;
   late final WalkthroughService _walkthroughService;
   late final SnoozeSettingsService _snoozeSettingsService;
+  late final BedtimeService _bedtimeService;
+  late final bool _ownsBedtimeService;
   late final LiveReminderService _liveReminderService;
   bool _notificationPermissionsRequested = false;
   bool _hasReceivedPrescriptionStream = false;
@@ -212,10 +216,20 @@ class _HomeScaffoldState extends State<HomeScaffold>
     _snoozeSettingsService =
         widget.snoozeSettingsService ?? SnoozeSettingsService();
     _snoozeSettingsService.addListener(_onSnoozeSettingsChanged);
+    _ownsBedtimeService =
+        widget.bedtimeService == null && widget.appStateManager == null;
+    _bedtimeService = widget.bedtimeService ??
+        widget.appStateManager?.bedtimeService ??
+        BedtimeService();
+    _bedtimeService.addListener(_onBedtimeSettingsChanged);
     _liveReminderService = widget.liveReminderService ??
-        LiveReminderService(snoozeSettings: _snoozeSettingsService);
+        LiveReminderService(
+          snoozeSettings: _snoozeSettingsService,
+          bedtimeService: _bedtimeService,
+        );
     _notifications = NotificationService(
       liveReminderService: _liveReminderService,
+      bedtimeService: _bedtimeService,
     );
     _liveReminderService.onNativeAction = _handleNativeReminderAction;
     _liveReminderService.registerNativeCallbackHandler();
@@ -225,6 +239,9 @@ class _HomeScaffoldState extends State<HomeScaffold>
     }
     if (!_snoozeSettingsService.isLoaded) {
       unawaited(_snoozeSettingsService.load());
+    }
+    if (!_bedtimeService.isLoaded) {
+      unawaited(_bedtimeService.load());
     }
     WidgetsBinding.instance.addObserver(this);
     unawaited(_retentionService.load());
@@ -255,10 +272,12 @@ class _HomeScaffoldState extends State<HomeScaffold>
     }
 
     _profilesSub = _db.watchProfiles().listen((rows) {
+      final filtered = _applySeedFilterProfiles(rows);
       if (mounted) {
-        setState(() => _profiles = _applySeedFilterProfiles(rows));
+        setState(() => _profiles = filtered);
         _maybeLaunchPostOnboardingWalkthrough();
       }
+      unawaited(_bedtimeService.migrateFromProfilesIfNeeded(filtered));
       _syncNotifications();
     }, onError: (e) {
       debugPrint('Error watching profiles: $e');
@@ -363,7 +382,8 @@ class _HomeScaffoldState extends State<HomeScaffold>
         _profiles,
         skippedSlotKeys: _skippedSlotKeys,
         activeSnoozeEnds: _liveReminderService.activeSnoozeEnds,
-        bypassBedtime: _snoozeSettingsService.isBedtimeBypassed(),
+        bypassBedtime: _bedtimeService.isPausedAt(),
+        bedtimeSchedule: _bedtimeService.schedule,
       );
     } catch (e) {
       debugPrint('Notification sync failed: $e');
@@ -388,7 +408,7 @@ class _HomeScaffoldState extends State<HomeScaffold>
           prescriptions: _prescriptions,
           profiles: _profiles,
           snoozeDurationMinutes: _snoozeSettingsService.snoozeDurationMinutes,
-          bypassBedtime: _snoozeSettingsService.isBedtimeBypassed(),
+          bypassBedtime: _bedtimeService.isPausedAt(),
         );
         unawaited(_syncNotifications());
       }
@@ -397,14 +417,11 @@ class _HomeScaffoldState extends State<HomeScaffold>
 
   Future<void> _handleLogAllTakenForTimeSlot(String timeSlot) async {
     if (!mounted) return;
-    final profileMap = {for (final p in _profiles) p.id: p};
     for (final prescription in _prescriptions) {
-      final profile = profileMap[prescription.profileId];
       for (final candidate in prescription.reminderTimes) {
         if (!isSameTimeSlot(candidate, timeSlot)) continue;
-        final allowed = shouldScheduleReminder(
-          time: candidate,
-          bedtime: profile?.bedtime,
+        final allowed = _bedtimeService.shouldScheduleReminder(
+          timeSlot: candidate,
           allowAfterBedtime: prescription.allowAfterBedtime,
         );
         if (!allowed) continue;
@@ -425,6 +442,11 @@ class _HomeScaffoldState extends State<HomeScaffold>
   }
 
   void _onSnoozeSettingsChanged() {
+    if (!mounted) return;
+    unawaited(_syncNotifications());
+  }
+
+  void _onBedtimeSettingsChanged() {
     if (!mounted) return;
     unawaited(_syncNotifications());
   }
@@ -522,7 +544,7 @@ class _HomeScaffoldState extends State<HomeScaffold>
         prescriptions: _prescriptions,
         profiles: _profiles,
         snoozeDurationMinutes: _snoozeSettingsService.snoozeDurationMinutes,
-        bypassBedtime: _snoozeSettingsService.isBedtimeBypassed(),
+        bypassBedtime: _bedtimeService.isPausedAt(),
       );
       unawaited(_syncNotifications());
     }
@@ -548,6 +570,7 @@ class _HomeScaffoldState extends State<HomeScaffold>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _rolloverSkippedIfNewDay();
+      unawaited(_bedtimeService.clearExpiredPause());
       unawaited(_snoozeSettingsService.clearExpiredBedtimeBypass());
     }
   }
@@ -782,55 +805,49 @@ class _HomeScaffoldState extends State<HomeScaffold>
       if (proceed != true || !mounted) return;
     }
 
-    // 2. Contextual bedtime quiet-hours prompt when snoozing near or after bedtime.
-    var bypassForThisSnooze = _snoozeSettingsService.isBedtimeBypassed(now: now);
-    final previewBatch = calculateDoseBatch(
-      _prescriptions,
-      time,
-      profiles: _profiles,
-      skippedSlotKeys: _skippedSlotKeys,
-      bypassBedtime: true,
-    );
-    final profileBedtime = LiveReminderService.resolveBedtimeForBatch(
-      batch: previewBatch,
-      profiles: _profiles,
-    );
+    // 2. Contextual bedtime quiet-hours prompt when snoozing near or during quiet hours.
+    var bypassForThisSnooze = _bedtimeService.isPausedAt(now);
+    final activeQuietWindow = _bedtimeService.activeQuietWindow(now: now);
+    final nextQuietWindow = _bedtimeService.nextQuietWindow(now: now);
+    final bedtimeLabel =
+        activeQuietWindow?.window.bedtime ?? nextQuietWindow?.window.bedtime;
 
-    if (!bypassForThisSnooze && profileBedtime != null) {
-      final clamped = clampSnoozeDurationToBedtime(
+    if (!bypassForThisSnooze && _bedtimeService.isEnabled) {
+      final clamped = _bedtimeService.clampSnoozeMinutes(
         now: now,
         requestedMinutes: mins,
-        bedtime: profileBedtime,
       );
       if (clamped <= 0) {
         final pauseTonight = await _showPlatformActionDialog<bool>(
           key: const Key('bedtime_snooze_dialog'),
-          title: 'Past Bedtime Quiet Hours',
-          content: 'Your $profileBedtime bedtime has passed. Pause bedtime '
-              'quiet hours until 6:00 AM to start a $mins-minute snooze?',
+          title: 'Bedtime Quiet Hours Active',
+          content:
+              'Bedtime quiet hours are active right now. Pause quiet hours for '
+              'tonight (auto-resumes at your next bedtime) to start a '
+              '$mins-minute snooze?',
           actions: [
             (label: 'Cancel', value: false, isDefault: false),
-            (label: 'Pause Until 6:00 AM', value: true, isDefault: true),
+            (label: 'Pause Tonight', value: true, isDefault: true),
           ],
         );
         if (pauseTonight != true || !mounted) return;
-        await _snoozeSettingsService.pauseBedtimeUntilMorning(now: now);
+        await _bedtimeService.pauseTonight(now: now);
         bypassForThisSnooze = true;
-      } else if (clamped < mins) {
+      } else if (clamped < mins && bedtimeLabel != null) {
         final choice = await _showPlatformActionDialog<_BedtimeSnoozeChoice>(
           key: const Key('bedtime_snooze_dialog'),
-          title: 'Reaches Bedtime ($profileBedtime)',
-          content: 'A $mins-minute snooze goes past your $profileBedtime '
+          title: 'Reaches Bedtime ($bedtimeLabel)',
+          content: 'A $mins-minute snooze goes past your $bedtimeLabel '
               'bedtime. You can end the timer at bedtime (when Final Call '
-              'takes over) or pause quiet hours until 6:00 AM.',
+              'takes over) or pause quiet hours for tonight.',
           actions: [
             (
-              label: 'Pause Until 6:00 AM',
-              value: _BedtimeSnoozeChoice.pauseUntilMorning,
+              label: 'Pause Tonight',
+              value: _BedtimeSnoozeChoice.pauseTonight,
               isDefault: true,
             ),
             (
-              label: 'End at $profileBedtime (${clamped}m)',
+              label: 'End at $bedtimeLabel (${clamped}m)',
               value: _BedtimeSnoozeChoice.clampToBedtime,
               isDefault: false,
             ),
@@ -846,8 +863,8 @@ class _HomeScaffoldState extends State<HomeScaffold>
             !mounted) {
           return;
         }
-        if (choice == _BedtimeSnoozeChoice.pauseUntilMorning) {
-          await _snoozeSettingsService.pauseBedtimeUntilMorning(now: now);
+        if (choice == _BedtimeSnoozeChoice.pauseTonight) {
+          await _bedtimeService.pauseTonight(now: now);
           bypassForThisSnooze = true;
         }
       }
@@ -899,8 +916,8 @@ class _HomeScaffoldState extends State<HomeScaffold>
         message = 'All doses for $time are already handled.';
       case SnoozeStartStatus.started:
       case null:
-        message = (outcome?.clampedToBedtime ?? false) && profileBedtime != null
-            ? 'Snoozed $time reminder until $profileBedtime'
+        message = (outcome?.clampedToBedtime ?? false) && bedtimeLabel != null
+            ? 'Snoozed $time reminder until $bedtimeLabel'
             : 'Snoozed $time reminder for $effectiveMins $unit';
     }
 
@@ -1480,6 +1497,7 @@ class _HomeScaffoldState extends State<HomeScaffold>
         doseEvents: _doseEvents,
         retentionService: _retentionService,
         snoozeSettingsService: _snoozeSettingsService,
+        bedtimeService: _bedtimeService,
         database: _db,
         walkthroughService: _walkthroughService,
       ),
@@ -1495,6 +1513,10 @@ class _HomeScaffoldState extends State<HomeScaffold>
     _walkthroughOverlayEntry = null;
     _walkthroughService.removeListener(_onWalkthroughStateChanged);
     _snoozeSettingsService.removeListener(_onSnoozeSettingsChanged);
+    _bedtimeService.removeListener(_onBedtimeSettingsChanged);
+    if (_ownsBedtimeService) {
+      _bedtimeService.dispose();
+    }
     widget.appStateManager?.removeListener(_onAppStateChanged);
     if (NotificationService.onLogAllTaken == _handleLogAllTakenForTimeSlot) {
       NotificationService.onLogAllTaken = null;

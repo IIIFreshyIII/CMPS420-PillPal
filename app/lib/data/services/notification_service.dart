@@ -9,6 +9,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../../core/scheduling/reminder_scheduler.dart';
 import '../../core/utils/date_formatter.dart';
+import '../../services/bedtime_service.dart';
 import '../../services/live_reminder_service.dart';
 import '../models/prescription.dart';
 import '../models/profile.dart';
@@ -38,13 +39,17 @@ Future<void> notificationTapBackground(NotificationResponse response) async {
 /// Strict privacy outside the app: zero medication names or dosages are ever
 /// placed in notification titles, bodies, or payloads.
 class NotificationService {
-  NotificationService({LiveReminderService? liveReminderService})
-      : _plugin = FlutterLocalNotificationsPlugin(),
+  NotificationService({
+    LiveReminderService? liveReminderService,
+    BedtimeService? bedtimeService,
+  })  : _plugin = FlutterLocalNotificationsPlugin(),
         _liveReminderService =
-            liveReminderService ?? LiveReminderService.instance;
+            liveReminderService ?? LiveReminderService.instance,
+        _bedtimeService = bedtimeService;
 
   final FlutterLocalNotificationsPlugin _plugin;
   final LiveReminderService _liveReminderService;
+  final BedtimeService? _bedtimeService;
   bool _initialized = false;
   List<Prescription> _currentPrescriptions = const [];
   List<Profile> _currentProfiles = const [];
@@ -327,7 +332,8 @@ class NotificationService {
   /// Reconciles all 3 touches of PillPal's consolidated notification engine:
   /// - Touch 1: 1 consolidated alert per routine time slot (zero drug names).
   /// - Touch 2: 1-hour follow-up nudge if pending doses remain before bedtime.
-  /// - Touch 3: Pre-bedtime final call 10 minutes before each profile's bedtime.
+  /// - Touch 3: 1 consolidated device-level Pre-Bedtime Final Call 10 minutes
+  ///   before bedtime (adapting per weekday when the 7-day schedule varies).
   /// Also updates the iOS app icon red badge count to reflect currently due
   /// pending doses.
   Future<void> syncAll(
@@ -336,6 +342,7 @@ class NotificationService {
     Set<String> skippedSlotKeys = const {},
     Map<String, DateTime> activeSnoozeEnds = const {},
     bool bypassBedtime = false,
+    BedtimeSchedule? bedtimeSchedule,
   }) async {
     _currentPrescriptions = List.unmodifiable(prescriptions);
     _currentProfiles = List.unmodifiable(profiles);
@@ -344,21 +351,19 @@ class NotificationService {
     await _plugin.cancelAll();
 
     final now = tz.TZDateTime.now(tz.local);
+    final effectiveSchedule = bedtimeSchedule ?? _bedtimeService?.schedule;
+    final effectiveBypass =
+        bypassBedtime || (_bedtimeService?.isPausedAt(now) ?? false);
+
     final duePendingCount = calculateDuePendingDosesCount(
       prescriptions,
       profiles,
       now: now,
       skippedSlotKeys: skippedSlotKeys,
+      bedtimeSchedule: effectiveSchedule,
+      bypassBedtime: effectiveBypass,
     );
     await _updateAppBadgeCount(duePendingCount);
-
-    final plans = buildConsolidatedSlotPlans(
-      prescriptions,
-      profiles,
-      skippedSlotKeys: skippedSlotKeys,
-      bypassBedtime: bypassBedtime,
-    );
-    final plansByBatchId = {for (final p in plans) p.batchId: p};
 
     const routineActions = <AndroidNotificationAction>[
       AndroidNotificationAction(
@@ -373,25 +378,39 @@ class NotificationService {
       ),
     ];
 
-    for (final plan in plans) {
-      // Touch 1: Initial Consolidated Routine Alert
-      var scheduledDate = _nextInstanceOf(plan.timeSlot);
-      if (scheduledDate == null) continue;
+    final todayPlans = buildConsolidatedSlotPlans(
+      prescriptions,
+      profiles,
+      skippedSlotKeys: skippedSlotKeys,
+      bypassBedtime: effectiveBypass,
+      bedtimeSchedule: effectiveSchedule,
+      weekday: now.weekday,
+    );
+    final plansByBatchId = {for (final p in todayPlans) p.batchId: p};
+
+    Future<void> scheduleSlotPlan(
+      ConsolidatedSlotPlan plan, {
+      int? weekday,
+    }) async {
+      var scheduledDate = weekday == null
+          ? _nextInstanceOf(plan.timeSlot)
+          : _nextInstanceOfWeekday(plan.timeSlot, weekday);
+      if (scheduledDate == null) return;
 
       final isScheduledToday = scheduledDate.year == now.year &&
           scheduledDate.month == now.month &&
           scheduledDate.day == now.day;
       if (isScheduledToday && plan.remainingCount == 0) {
-        // Today's doses for this slot are already taken or skipped;
-        // start daily repeat tomorrow instead of nagging today.
-        scheduledDate = scheduledDate.add(const Duration(days: 1));
+        scheduledDate = scheduledDate.add(
+          Duration(days: weekday == null ? 1 : 7),
+        );
       }
 
       final projectedBadge = duePendingCount +
           (plan.remainingCount > 0 ? plan.remainingCount : plan.scheduledCount);
 
       await _plugin.zonedSchedule(
-        notificationIdForTimeSlot(plan.timeSlot),
+        notificationIdForTimeSlot(plan.timeSlot, weekday: weekday),
         formatRoutineNotificationTitle(plan),
         formatRoutineNotificationBody(
           plan,
@@ -413,7 +432,9 @@ class NotificationService {
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
+        matchDateTimeComponents: weekday == null
+            ? DateTimeComponents.time
+            : DateTimeComponents.dayOfWeekAndTime,
         payload: plan.timeSlot,
       );
 
@@ -421,7 +442,10 @@ class NotificationService {
       if (plan.allowFollowUpNudge) {
         final nudgeTod = calculateFollowUpNudgeTime(plan.timeSlot);
         if (nudgeTod != null) {
-          var nudgeDate = _nextInstanceOf(formatTimeOfDayLabel(nudgeTod));
+          final nudgeLabel = formatTimeOfDayLabel(nudgeTod);
+          var nudgeDate = weekday == null
+              ? _nextInstanceOf(nudgeLabel)
+              : _nextInstanceOfWeekday(nudgeLabel, weekday);
           if (nudgeDate != null) {
             final nudgeIsToday = nudgeDate.year == now.year &&
                 nudgeDate.month == now.month &&
@@ -433,12 +457,15 @@ class NotificationService {
                   nudgeTime: nudgeDate,
                   activeSnoozeEnd: activeSnoozeEnd,
                 );
-            if (nudgeIsToday && (plan.remainingCount == 0 || suppressForSnooze)) {
-              nudgeDate = nudgeDate.add(const Duration(days: 1));
+            if (nudgeIsToday &&
+                (plan.remainingCount == 0 || suppressForSnooze)) {
+              nudgeDate = nudgeDate.add(
+                Duration(days: weekday == null ? 1 : 7),
+              );
             }
 
             await _plugin.zonedSchedule(
-              notificationIdForFollowUpNudge(plan.timeSlot),
+              notificationIdForFollowUpNudge(plan.timeSlot, weekday: weekday),
               formatFollowUpNudgeTitle(plan),
               formatFollowUpNudgeBody(
                 plan,
@@ -460,7 +487,9 @@ class NotificationService {
               androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
               uiLocalNotificationDateInterpretation:
                   UILocalNotificationDateInterpretation.absoluteTime,
-              matchDateTimeComponents: DateTimeComponents.time,
+              matchDateTimeComponents: weekday == null
+                  ? DateTimeComponents.time
+                  : DateTimeComponents.dayOfWeekAndTime,
               payload: plan.timeSlot,
             );
           }
@@ -468,66 +497,264 @@ class NotificationService {
       }
     }
 
-    // Touch 3: Pre-Bedtime Final Call per profile with configured bedtime
-    for (final profile in profiles) {
-      final bedtime = profile.bedtime;
-      if (bedtime == null) continue;
+    final needsWeekdaySplit = effectiveSchedule != null &&
+        effectiveSchedule.isEnabled &&
+        !effectiveBypass &&
+        !effectiveSchedule.isUniform;
 
-      final scheduledCount = calculateScheduledDosesBeforeBedtime(
-        profile: profile,
-        prescriptions: prescriptions,
-      );
-      if (scheduledCount <= 0) continue;
-
-      final pendingCount = calculatePendingDosesBeforeBedtime(
-        profile: profile,
-        prescriptions: prescriptions,
-        skippedSlotKeys: skippedSlotKeys,
-      );
-
-      final triggerTod = calculatePreBedtimeNotificationTime(bedtime: bedtime);
-      if (triggerTod == null) continue;
-
-      var triggerDate = _nextInstanceOf(formatTimeOfDayLabel(triggerTod));
-      if (triggerDate == null) continue;
-
-      final isToday = triggerDate.year == now.year &&
-          triggerDate.month == now.month &&
-          triggerDate.day == now.day;
-      if (isToday && pendingCount == 0) {
-        triggerDate = triggerDate.add(const Duration(days: 1));
+    if (needsWeekdaySplit) {
+      final weekdayPlans = <int, Map<String, ConsolidatedSlotPlan>>{};
+      final allBatchIds = <String>{};
+      for (var wd = DateTime.monday; wd <= DateTime.sunday; wd++) {
+        final plans = buildConsolidatedSlotPlans(
+          prescriptions,
+          profiles,
+          skippedSlotKeys: skippedSlotKeys,
+          bypassBedtime: false,
+          bedtimeSchedule: effectiveSchedule,
+          weekday: wd,
+        );
+        weekdayPlans[wd] = {for (final p in plans) p.batchId: p};
+        allBatchIds.addAll(weekdayPlans[wd]!.keys);
       }
 
-      final displayCount = isToday && pendingCount > 0 ? pendingCount : scheduledCount;
-      final message = formatPreBedtimeFinalCallMessage(
-        pendingDosesCount: displayCount,
-        bedtime: bedtime,
-      );
+      for (final batchId in allBatchIds) {
+        final mondayPlan = weekdayPlans[DateTime.monday]![batchId];
+        final identicalAllWeek = mondayPlan != null &&
+            [
+              for (var wd = DateTime.tuesday; wd <= DateTime.sunday; wd++)
+                weekdayPlans[wd]![batchId],
+            ].every(
+              (p) =>
+                  p != null &&
+                  p.scheduledCount == mondayPlan.scheduledCount &&
+                  p.allowFollowUpNudge == mondayPlan.allowFollowUpNudge,
+            );
 
-      await _plugin.zonedSchedule(
-        notificationIdForPreBedtime(profile.id),
-        'Bedtime Final Call',
-        message,
-        triggerDate,
-        NotificationDetails(
-          android: const AndroidNotificationDetails(
-            _finalCallChannelId,
-            _finalCallChannelName,
-            channelDescription: _finalCallChannelDescription,
-            importance: Importance.max,
-            priority: Priority.high,
+        if (identicalAllWeek) {
+          final todayPlan = plansByBatchId[batchId] ?? mondayPlan;
+          await scheduleSlotPlan(todayPlan);
+        } else {
+          for (var wd = DateTime.monday; wd <= DateTime.sunday; wd++) {
+            final plan = weekdayPlans[wd]![batchId];
+            if (plan != null) {
+              await scheduleSlotPlan(plan, weekday: wd);
+            }
+          }
+        }
+      }
+    } else {
+      for (final plan in todayPlans) {
+        await scheduleSlotPlan(plan);
+      }
+    }
+
+    // Touch 3: Consolidated Device-Level Pre-Bedtime Final Call
+    if (effectiveSchedule != null) {
+      if (effectiveSchedule.isEnabled && effectiveSchedule.hasAnyActiveDay) {
+        if (effectiveSchedule.isUniform) {
+          final window = effectiveSchedule.windowForWeekday(DateTime.monday);
+          if (window.enabled) {
+            final scheduledCount = calculateDeviceScheduledDosesBeforeBedtime(
+              prescriptions: prescriptions,
+              bedtimeSchedule: effectiveSchedule,
+              weekday: now.weekday,
+            );
+            if (scheduledCount > 0) {
+              final pendingCount = calculateDevicePendingDosesBeforeBedtime(
+                prescriptions: prescriptions,
+                bedtimeSchedule: effectiveSchedule,
+                weekday: now.weekday,
+                skippedSlotKeys: skippedSlotKeys,
+              );
+              final triggerTod =
+                  calculatePreBedtimeNotificationTime(bedtime: window.bedtime);
+              if (triggerTod != null) {
+                var triggerDate =
+                    _nextInstanceOf(formatTimeOfDayLabel(triggerTod));
+                if (triggerDate != null) {
+                  final isToday = triggerDate.year == now.year &&
+                      triggerDate.month == now.month &&
+                      triggerDate.day == now.day;
+                  if (isToday && (pendingCount == 0 || effectiveBypass)) {
+                    triggerDate = triggerDate.add(const Duration(days: 1));
+                  }
+                  final displayCount =
+                      isToday && pendingCount > 0 ? pendingCount : scheduledCount;
+                  final message = formatPreBedtimeFinalCallMessage(
+                    pendingDosesCount: displayCount,
+                    bedtime: window.bedtime,
+                  );
+
+                  await _plugin.zonedSchedule(
+                    notificationIdForDevicePreBedtime(),
+                    'Bedtime Final Call',
+                    message,
+                    triggerDate,
+                    NotificationDetails(
+                      android: const AndroidNotificationDetails(
+                        _finalCallChannelId,
+                        _finalCallChannelName,
+                        channelDescription: _finalCallChannelDescription,
+                        importance: Importance.max,
+                        priority: Priority.high,
+                      ),
+                      iOS: DarwinNotificationDetails(
+                        interruptionLevel: InterruptionLevel.timeSensitive,
+                        badgeNumber:
+                            duePendingCount > 0 ? duePendingCount : displayCount,
+                      ),
+                    ),
+                    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+                    uiLocalNotificationDateInterpretation:
+                        UILocalNotificationDateInterpretation.absoluteTime,
+                    matchDateTimeComponents: DateTimeComponents.time,
+                    payload: 'pre_bedtime:device',
+                  );
+                }
+              }
+            }
+          }
+        } else {
+          for (var wd = DateTime.monday; wd <= DateTime.sunday; wd++) {
+            final window = effectiveSchedule.windowForWeekday(wd);
+            if (!window.enabled) continue;
+
+            final scheduledCount = calculateDeviceScheduledDosesBeforeBedtime(
+              prescriptions: prescriptions,
+              bedtimeSchedule: effectiveSchedule,
+              weekday: wd,
+            );
+            if (scheduledCount <= 0) continue;
+
+            final triggerTod =
+                calculatePreBedtimeNotificationTime(bedtime: window.bedtime);
+            if (triggerTod == null) continue;
+
+            // If bedtime is e.g. 12:05 AM, 10 minutes earlier wraps onto the
+            // previous weekday at 11:55 PM.
+            final bedMin = window.bedtimeMinutes;
+            final triggerWeekday = (bedMin != null && bedMin < 10)
+                ? (wd == DateTime.monday ? DateTime.sunday : wd - 1)
+                : wd;
+
+            var triggerDate = _nextInstanceOfWeekday(
+              formatTimeOfDayLabel(triggerTod),
+              triggerWeekday,
+            );
+            if (triggerDate == null) continue;
+
+            final pendingCount = calculateDevicePendingDosesBeforeBedtime(
+              prescriptions: prescriptions,
+              bedtimeSchedule: effectiveSchedule,
+              weekday: wd,
+              skippedSlotKeys: skippedSlotKeys,
+            );
+            final isToday = triggerDate.year == now.year &&
+                triggerDate.month == now.month &&
+                triggerDate.day == now.day;
+            if (isToday && (pendingCount == 0 || effectiveBypass)) {
+              triggerDate = triggerDate.add(const Duration(days: 7));
+            }
+
+            final displayCount =
+                isToday && pendingCount > 0 ? pendingCount : scheduledCount;
+            final message = formatPreBedtimeFinalCallMessage(
+              pendingDosesCount: displayCount,
+              bedtime: window.bedtime,
+            );
+
+            await _plugin.zonedSchedule(
+              notificationIdForDevicePreBedtime(wd),
+              'Bedtime Final Call',
+              message,
+              triggerDate,
+              NotificationDetails(
+                android: const AndroidNotificationDetails(
+                  _finalCallChannelId,
+                  _finalCallChannelName,
+                  channelDescription: _finalCallChannelDescription,
+                  importance: Importance.max,
+                  priority: Priority.high,
+                ),
+                iOS: DarwinNotificationDetails(
+                  interruptionLevel: InterruptionLevel.timeSensitive,
+                  badgeNumber:
+                      duePendingCount > 0 ? duePendingCount : displayCount,
+                ),
+              ),
+              androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+              uiLocalNotificationDateInterpretation:
+                  UILocalNotificationDateInterpretation.absoluteTime,
+              matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+              payload: 'pre_bedtime:device',
+            );
+          }
+        }
+      }
+    } else {
+      // Legacy fallback when called without a BedtimeSchedule
+      for (final profile in profiles) {
+        final bedtime = profile.bedtime;
+        if (bedtime == null) continue;
+
+        final scheduledCount = calculateScheduledDosesBeforeBedtime(
+          profile: profile,
+          prescriptions: prescriptions,
+        );
+        if (scheduledCount <= 0) continue;
+
+        final pendingCount = calculatePendingDosesBeforeBedtime(
+          profile: profile,
+          prescriptions: prescriptions,
+          skippedSlotKeys: skippedSlotKeys,
+        );
+
+        final triggerTod = calculatePreBedtimeNotificationTime(bedtime: bedtime);
+        if (triggerTod == null) continue;
+
+        var triggerDate = _nextInstanceOf(formatTimeOfDayLabel(triggerTod));
+        if (triggerDate == null) continue;
+
+        final isToday = triggerDate.year == now.year &&
+            triggerDate.month == now.month &&
+            triggerDate.day == now.day;
+        if (isToday && pendingCount == 0) {
+          triggerDate = triggerDate.add(const Duration(days: 1));
+        }
+
+        final displayCount =
+            isToday && pendingCount > 0 ? pendingCount : scheduledCount;
+        final message = formatPreBedtimeFinalCallMessage(
+          pendingDosesCount: displayCount,
+          bedtime: bedtime,
+        );
+
+        await _plugin.zonedSchedule(
+          notificationIdForPreBedtime(profile.id),
+          'Bedtime Final Call',
+          message,
+          triggerDate,
+          NotificationDetails(
+            android: const AndroidNotificationDetails(
+              _finalCallChannelId,
+              _finalCallChannelName,
+              channelDescription: _finalCallChannelDescription,
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(
+              interruptionLevel: InterruptionLevel.timeSensitive,
+              badgeNumber: duePendingCount > 0 ? duePendingCount : displayCount,
+            ),
           ),
-          iOS: DarwinNotificationDetails(
-            interruptionLevel: InterruptionLevel.timeSensitive,
-            badgeNumber: duePendingCount > 0 ? duePendingCount : displayCount,
-          ),
-        ),
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: 'pre_bedtime:${profile.id}',
-      );
+          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.time,
+          payload: 'pre_bedtime:${profile.id}',
+        );
+      }
     }
 
     // Re-schedule any still-pending, still-future snooze alerts after cancelAll()
@@ -576,6 +803,28 @@ class NotificationService {
     );
     if (scheduled.isBefore(now)) {
       scheduled = scheduled.add(const Duration(days: 1));
+    }
+    return scheduled;
+  }
+
+  tz.TZDateTime? _nextInstanceOfWeekday(String time, int weekday) {
+    final parsed = parseTimeOfDayLabel(time);
+    if (parsed == null) return null;
+
+    final now = tz.TZDateTime.now(tz.local);
+    var daysUntil = (weekday - now.weekday) % 7;
+    if (daysUntil < 0) daysUntil += 7;
+
+    var scheduled = tz.TZDateTime(
+      tz.local,
+      now.year,
+      now.month,
+      now.day + daysUntil,
+      parsed.hour,
+      parsed.minute,
+    );
+    if (scheduled.isBefore(now)) {
+      scheduled = scheduled.add(const Duration(days: 7));
     }
     return scheduled;
   }

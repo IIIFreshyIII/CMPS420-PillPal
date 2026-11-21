@@ -52,7 +52,7 @@ void main() {
     expect(barHeight(tester), ClassicIOSTabBar.regularHeight);
     expect(find.text('Schedule'), findsOneWidget);
     expect(find.text('Meds'), findsOneWidget);
-    expect(find.text('Profile'), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
 
     // Stacked: glyph sits above its label.
     final icon = tester.getCenter(find.byIcon(CupertinoIcons.capsule));
@@ -102,7 +102,7 @@ void main() {
     await pumpBar(tester,
         size: const Size(375, 667), onTap: (t) => tapped = t);
 
-    await tester.tap(find.text('Profile'));
+    await tester.tap(find.text('Settings'));
     expect(tapped, AppTab.profile);
   });
 

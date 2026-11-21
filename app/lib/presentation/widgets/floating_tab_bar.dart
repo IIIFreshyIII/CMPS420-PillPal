@@ -232,9 +232,9 @@ class _FloatingTabBarState extends State<FloatingTabBar> {
                       disableAnimations: style.disableAnimations,
                     ),
                     _buildTabItem(
-                      label: 'Profile',
-                      icon: CupertinoIcons.person_crop_circle,
-                      activeIcon: CupertinoIcons.person_crop_circle_fill,
+                      label: 'Settings',
+                      icon: CupertinoIcons.gear,
+                      activeIcon: CupertinoIcons.gear_solid,
                       isActive: activeIndex == 2,
                       isDark: isDark,
                       disableAnimations: style.disableAnimations,

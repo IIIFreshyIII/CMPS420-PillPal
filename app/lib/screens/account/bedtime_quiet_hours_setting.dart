@@ -1,38 +1,56 @@
 import 'package:flutter/cupertino.dart';
 
 import '../../core/theme/pillpal_colors.dart';
-import '../../data/models/profile.dart';
-import '../../presentation/widgets/platform_controls.dart';
-import '../../services/snooze_settings_service.dart';
+import '../../services/bedtime_service.dart';
+import 'bedtime_screen.dart';
 
-/// Account → Preferences & Storage → Bedtime Quiet Hours.
-/// Lets the user temporarily pause bedtime quiet hours until 6:00 AM (e.g.,
-/// for a late night) without permanently changing any profile's bedtime.
-class BedtimeQuietHoursSetting extends StatefulWidget {
-  const BedtimeQuietHoursSetting({
+/// Settings → Reminders & Sleep → Bedtime row.
+/// Displays a concise live preview of the device-level Bedtime Quiet Hours
+/// status (Off, Paused tonight, or active schedule summary) and pushes the
+/// dedicated [BedtimeScreen] via a right-to-left [CupertinoPageRoute].
+class BedtimeSettingRow extends StatefulWidget {
+  const BedtimeSettingRow({
     super.key,
     this.service,
-    required this.profiles,
   });
 
-  final SnoozeSettingsService? service;
-  final List<Profile> profiles;
+  final BedtimeService? service;
 
   @override
-  State<BedtimeQuietHoursSetting> createState() =>
-      _BedtimeQuietHoursSettingState();
+  State<BedtimeSettingRow> createState() => _BedtimeSettingRowState();
 }
 
-class _BedtimeQuietHoursSettingState extends State<BedtimeQuietHoursSetting> {
-  late final SnoozeSettingsService _service;
-  late final bool _ownsService;
+class _BedtimeSettingRowState extends State<BedtimeSettingRow> {
+  late BedtimeService _service;
+  bool _ownsService = false;
 
   @override
   void initState() {
     super.initState();
-    _ownsService = widget.service == null;
-    _service = widget.service ?? SnoozeSettingsService();
-    if (!_service.isLoaded) {
+    _bindService(widget.service);
+  }
+
+  @override
+  void didUpdateWidget(covariant BedtimeSettingRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.service != oldWidget.service) {
+      if (_ownsService) {
+        _service.dispose();
+        _ownsService = false;
+      }
+      _bindService(widget.service);
+    }
+  }
+
+  void _bindService(BedtimeService? provided) {
+    if (provided != null) {
+      _service = provided;
+      if (!_service.isLoaded) {
+        _service.load();
+      }
+    } else {
+      _service = BedtimeService();
+      _ownsService = true;
       _service.load();
     }
   }
@@ -45,97 +63,86 @@ class _BedtimeQuietHoursSettingState extends State<BedtimeQuietHoursSetting> {
     super.dispose();
   }
 
-  String? _primaryBedtime() {
-    if (widget.profiles.isEmpty) return null;
-    final primary = widget.profiles.firstWhere(
-      (p) => p.isPrimary,
-      orElse: () => widget.profiles.first,
-    );
-    if (primary.bedtime != null && primary.bedtime!.trim().isNotEmpty) {
-      return primary.bedtime!.trim();
-    }
-    for (final p in widget.profiles) {
-      if (p.bedtime != null && p.bedtime!.trim().isNotEmpty) {
-        return p.bedtime!.trim();
-      }
-    }
-    return null;
-  }
-
-  Future<void> _onToggle(bool active) async {
-    if (active) {
-      await _service.resumeBedtimeQuietHours();
-    } else {
-      await _service.pauseBedtimeUntilMorning();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final bedtime = _primaryBedtime();
-    final hasBedtime = bedtime != null;
 
     return ListenableBuilder(
       listenable: _service,
       builder: (context, _) {
-        final isPaused = hasBedtime && _service.isBedtimeBypassed();
-        final subtitle = !hasBedtime
-            ? 'Set a bedtime on a profile to enable quiet hours.'
-            : isPaused
-                ? 'Paused until 6:00 AM — reminders & snoozes allowed tonight.'
-                : 'Active — pauses reminders after $bedtime.';
+        final isEnabled = _service.isEnabled && _service.schedule.hasAnyActiveDay;
+        final isPaused = isEnabled && _service.isPausedAt();
+        final summary = _service.summaryLabel();
 
-        return Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 10, 10),
-          decoration: BoxDecoration(
-            color: c.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: c.borderLight),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                isPaused ? CupertinoIcons.moon_zzz : CupertinoIcons.moon_stars,
-                size: 20,
-                color: isPaused ? const Color(0xFFF59E0B) : c.ink,
+        return GestureDetector(
+          key: const Key('bedtime_settings_row'),
+          onTap: () => BedtimeScreen.push(context, service: _service),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isPaused
+                  ? const Color(0xFFF59E0B).withValues(alpha: 0.08)
+                  : c.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isPaused
+                    ? const Color(0xFFF59E0B).withValues(alpha: 0.45)
+                    : c.borderLight,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Bedtime Quiet Hours',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        color: c.ink,
-                        letterSpacing: -0.2,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      key: const ValueKey('bedtime_quiet_hours_subtitle'),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: isPaused ? const Color(0xFFD97706) : c.inkMuted,
-                        fontWeight:
-                            isPaused ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
-                  ],
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  isPaused
+                      ? CupertinoIcons.moon_zzz
+                      : (isEnabled
+                          ? CupertinoIcons.moon_stars_fill
+                          : CupertinoIcons.moon_stars),
+                  size: 20,
+                  color: isPaused
+                      ? const Color(0xFFD97706)
+                      : (isEnabled ? c.teal : c.ink),
                 ),
-              ),
-              PlatformSwitch(
-                key: const Key('bedtime_quiet_hours_switch'),
-                value: hasBedtime && !isPaused,
-                activeThumbColor: c.onTeal,
-                activeTrackColor: c.teal,
-                onChanged: hasBedtime ? _onToggle : null,
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Bedtime',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: c.ink,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        summary,
+                        key: const ValueKey('bedtime_settings_subtitle'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: isPaused
+                              ? const Color(0xFFD97706)
+                              : c.inkMuted,
+                          fontWeight:
+                              isPaused ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(
+                  CupertinoIcons.chevron_right,
+                  size: 16,
+                  color: isPaused ? const Color(0xFFD97706) : c.inkMuted,
+                ),
+              ],
+            ),
           ),
         );
       },

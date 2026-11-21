@@ -15,6 +15,7 @@ import 'package:pillpal/screens/onboarding/steps/step6_scan.dart';
 import 'package:pillpal/screens/onboarding/steps/step7_verification.dart';
 import 'package:pillpal/screens/onboarding/widgets/onboarding_progress_bar.dart';
 import 'package:pillpal/screens/onboarding/widgets/prescription_scan_guide_animation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MockStorage extends Fake implements FlutterSecureStorage {
   final Map<String, String> _data = {};
@@ -71,6 +72,10 @@ class FakeNotificationService extends NotificationService {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   Widget wrap(Widget child) {
     return MaterialApp(
       theme: AppTheme.lightTheme,
@@ -357,7 +362,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
 
       // Step 5: Bedtime Setup -> Save & Continue
-      expect(find.text('When do you head to bed?'), findsOneWidget);
+      expect(find.text('Set your sleep schedule'), findsOneWidget);
       final bedtimeBtn = find.text('Save & Continue');
       expect(bedtimeBtn, findsOneWidget);
       await tester.tap(bedtimeBtn);
@@ -409,7 +414,19 @@ void main() {
 
       final profileRows = await db.select(db.profiles).get();
       expect(profileRows.length, 1);
-      expect(profileRows.first.bedtime, '10:00 PM');
+      expect(appStateManager.bedtimeService.isEnabled, isTrue);
+      expect(
+        appStateManager.bedtimeService.schedule
+            .windowForWeekday(DateTime.monday)
+            .bedtime,
+        '10:00 PM',
+      );
+      expect(
+        appStateManager.bedtimeService.schedule
+            .windowForWeekday(DateTime.monday)
+            .wakeTime,
+        '7:00 AM',
+      );
 
       // Unmount tree cleanly to stop all tickers and active controllers
       await tester.pumpWidget(const SizedBox());
