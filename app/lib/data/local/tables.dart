@@ -43,12 +43,19 @@ class Prescriptions extends Table {
   TextColumn get profileId => text().references(Profiles, #id)();
   TextColumn get name => text()();
   TextColumn get dosage => text()();
+  TextColumn get strength => text().nullable()();
+  TextColumn get doseAmount => text().nullable()();
+  IntColumn get doseQuantity => integer().withDefault(const Constant(1))();
+  TextColumn get form => text().nullable()();
+  TextColumn get foodInstruction => text().nullable()();
   TextColumn get reminderTimes => text().map(const StringListConverter())();
   TextColumn get takenTimes => text().map(const StringListConverter())();
   IntColumn get remaining => integer()();
   IntColumn get daysSupply => integer()();
   IntColumn get refillsRemaining => integer().withDefault(const Constant(0))();
   BoolColumn get allowAfterBedtime => boolean().withDefault(const Constant(false))();
+  BoolColumn get isAsNeeded => boolean().withDefault(const Constant(false))();
+  IntColumn get cooldownMinutes => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};

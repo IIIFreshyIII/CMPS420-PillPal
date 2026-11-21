@@ -81,6 +81,7 @@ class _HomeScaffoldState extends State<HomeScaffold>
   bool _isScanning = false;
   bool _isProcessingPhoto = false;
   bool _isShowingWalkthrough = false;
+  bool _isQuickViewOpen = false;
   OverlayEntry? _walkthroughOverlayEntry;
 
   final GlobalKey _firstMedCardKey =
@@ -105,6 +106,7 @@ class _HomeScaffoldState extends State<HomeScaffold>
   late final BedtimeService _bedtimeService;
   late final bool _ownsBedtimeService;
   late final LiveReminderService _liveReminderService;
+  late final bool _ownsLiveReminderService;
   bool _notificationPermissionsRequested = false;
   bool _hasReceivedPrescriptionStream = false;
   StreamSubscription<List<Profile>>? _profilesSub;
@@ -222,11 +224,13 @@ class _HomeScaffoldState extends State<HomeScaffold>
         widget.appStateManager?.bedtimeService ??
         BedtimeService();
     _bedtimeService.addListener(_onBedtimeSettingsChanged);
+    _ownsLiveReminderService = widget.liveReminderService == null;
     _liveReminderService = widget.liveReminderService ??
         LiveReminderService(
           snoozeSettings: _snoozeSettingsService,
           bedtimeService: _bedtimeService,
         );
+    _liveReminderService.addListener(_onLiveReminderChanged);
     _notifications = NotificationService(
       liveReminderService: _liveReminderService,
       bedtimeService: _bedtimeService,
@@ -451,6 +455,46 @@ class _HomeScaffoldState extends State<HomeScaffold>
     unawaited(_syncNotifications());
   }
 
+  void _onLiveReminderChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  bool _batchHasUntakenUnskipped(String timeSlot) {
+    for (final p in _prescriptions) {
+      for (final t in p.reminderTimes) {
+        if (!isSameTimeSlot(t, timeSlot)) continue;
+        final taken = p.takenTimes.any((tk) => isSameTimeSlot(tk, t));
+        final skipped = _skippedSlotKeys.contains('${p.id}_$t');
+        if (!taken && !skipped) return true;
+      }
+    }
+    return false;
+  }
+
+  Future<void> _syncActiveSnoozesOnResume() async {
+    final removedBatchIds =
+        await _liveReminderService.syncActiveSnoozesFromNative();
+    if (!mounted) return;
+    if (removedBatchIds.isNotEmpty) {
+      final cancelledSlots = <String>{};
+      for (final p in _prescriptions) {
+        for (final t in p.reminderTimes) {
+          if (removedBatchIds.contains(batchIdForTimeSlot(t))) {
+            cancelledSlots.add(t);
+          }
+        }
+      }
+      for (final slot in cancelledSlots) {
+        await _notifications.cancelSnoozeNotification(slot);
+      }
+      unawaited(_syncNotifications());
+    }
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<void> _syncTimeSlotLiveReminder(
     String timeSlot,
     List<Prescription> prescriptions,
@@ -572,6 +616,7 @@ class _HomeScaffoldState extends State<HomeScaffold>
       _rolloverSkippedIfNewDay();
       unawaited(_bedtimeService.clearExpiredPause());
       unawaited(_snoozeSettingsService.clearExpiredBedtimeBypass());
+      unawaited(_syncActiveSnoozesOnResume());
     }
   }
 
@@ -615,24 +660,33 @@ class _HomeScaffoldState extends State<HomeScaffold>
 
     final item = _prescriptions.firstWhere((p) => p.id == id);
     final willBeTaken = !item.takenTimes.contains(time);
+    final qtyStep = item.effectiveDoseQuantity;
 
     final Prescription updated;
     if (willBeTaken) {
-      final newRemaining = (item.remaining - 1).clamp(0, 9999);
-      final newDays = (item.daysSupply - 1).clamp(0, 9999);
+      final newRemaining = (item.remaining - qtyStep).clamp(0, 9999);
+      final newDays = item.adjustedDaysSupply(
+        newRemaining: newRemaining,
+        deltaDoses: -1,
+      );
       updated = item.copyWith(
         takenTimes: {...item.takenTimes, time},
         remaining: newRemaining,
         daysSupply: newDays,
       );
-      if (newRemaining <= 1) {
+      if (item.remaining > 0 && newRemaining <= 1) {
         _showRefillDialog(item.name);
       }
     } else {
+      final newRemaining = (item.remaining + qtyStep).clamp(0, 9999);
+      final newDays = item.adjustedDaysSupply(
+        newRemaining: newRemaining,
+        deltaDoses: 1,
+      );
       updated = item.copyWith(
         takenTimes: item.takenTimes.difference({time}),
-        remaining: (item.remaining + 1).clamp(0, 9999),
-        daysSupply: (item.daysSupply + 1).clamp(0, 9999),
+        remaining: newRemaining,
+        daysSupply: newDays,
       );
     }
 
@@ -675,6 +729,11 @@ class _HomeScaffoldState extends State<HomeScaffold>
     final item = _prescriptions.firstWhere((p) => p.id == id);
     final slotKey = '${id}_$time';
     final wasSkipped = _skippedSlotKeys.contains(slotKey);
+
+    // Guard: cards already marked as taken cannot be skipped directly.
+    if (!wasSkipped && item.takenTimes.contains(time)) {
+      return;
+    }
 
     if (wasSkipped) {
       setState(() {
@@ -783,7 +842,37 @@ class _HomeScaffoldState extends State<HomeScaffold>
     );
   }
 
+  Future<void> _handleCancelSnooze(String timeSlot) async {
+    HapticFeedback.lightImpact();
+    await _liveReminderService.dismissActivity(
+      batchId: batchIdForTimeSlot(timeSlot),
+    );
+    await _notifications.cancelSnoozeNotification(timeSlot);
+    unawaited(_syncNotifications());
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Snooze cancelled for $timeSlot'),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _handleSnoozeDose(String id, String time) async {
+    final matching = _prescriptions.where((p) => p.id == id).toList();
+    if (matching.isNotEmpty && matching.first.takenTimes.contains(time)) {
+      // Guard: taken cards cannot be snoozed.
+      return;
+    }
+
+    // Double-snooze guard: if a snooze is already active for this timeSlot
+    // batch (`now.isBefore(endTime)`), do not start a second timer.
+    if (_liveReminderService.isSnoozeActiveForTimeSlot(time)) {
+      return;
+    }
+
     HapticFeedback.lightImpact();
     final now = DateTime.now();
     final mins = _snoozeSettingsService.snoozeDurationMinutes;
@@ -914,6 +1003,8 @@ class _HomeScaffoldState extends State<HomeScaffold>
             'Past bedtime quiet hours — Final Call handles evening reminders.';
       case SnoozeStartStatus.noPendingDoses:
         message = 'All doses for $time are already handled.';
+      case SnoozeStartStatus.alreadyActive:
+        message = 'A snooze for $time is already running.';
       case SnoozeStartStatus.started:
       case null:
         message = (outcome?.clampedToBedtime ?? false) && bedtimeLabel != null
@@ -978,6 +1069,18 @@ class _HomeScaffoldState extends State<HomeScaffold>
   /// several reminder times can have some targeted and others left alone.
   void _handleToggleAllCompleted(
       List<(String, String)> targets, bool shouldMarkTaken) {
+    // Clear any skipped state on targeted slots when marking taken or resetting.
+    var skippedChanged = false;
+    for (final target in targets) {
+      if (_skippedSlotKeys.remove('${target.$1}_${target.$2}')) {
+        skippedChanged = true;
+      }
+    }
+    if (skippedChanged) {
+      setState(() {});
+      unawaited(_persistSkippedSlotKeys());
+    }
+
     for (final item in _prescriptions) {
       final times =
           targets.where((t) => t.$1 == item.id).map((t) => t.$2).toSet();
@@ -988,9 +1091,14 @@ class _HomeScaffoldState extends State<HomeScaffold>
           : times.intersection(item.takenTimes);
       if (toMark.isEmpty) continue;
 
+      final qtyStep = item.effectiveDoseQuantity;
       if (shouldMarkTaken) {
-        final newRemaining = (item.remaining - toMark.length).clamp(0, 9999);
-        final newDays = (item.daysSupply - toMark.length).clamp(0, 9999);
+        final newRemaining =
+            (item.remaining - (toMark.length * qtyStep)).clamp(0, 9999);
+        final newDays = item.adjustedDaysSupply(
+          newRemaining: newRemaining,
+          deltaDoses: -toMark.length,
+        );
         _db.upsertPrescription(item.copyWith(
           takenTimes: {...item.takenTimes, ...toMark},
           remaining: newRemaining,
@@ -1023,10 +1131,16 @@ class _HomeScaffoldState extends State<HomeScaffold>
           }
         }
       } else {
+        final newRemaining =
+            (item.remaining + (toMark.length * qtyStep)).clamp(0, 9999);
+        final newDays = item.adjustedDaysSupply(
+          newRemaining: newRemaining,
+          deltaDoses: toMark.length,
+        );
         _db.upsertPrescription(item.copyWith(
           takenTimes: item.takenTimes.difference(toMark),
-          remaining: (item.remaining + toMark.length).clamp(0, 9999),
-          daysSupply: (item.daysSupply + toMark.length).clamp(0, 9999),
+          remaining: newRemaining,
+          daysSupply: newDays,
         ));
       }
     }
@@ -1045,6 +1159,64 @@ class _HomeScaffoldState extends State<HomeScaffold>
     for (final slot in affectedTimeSlots) {
       unawaited(_syncTimeSlotLiveReminder(slot, updatedPrescriptions));
     }
+    if (skippedChanged) {
+      unawaited(_syncNotifications());
+    }
+  }
+
+  /// Marks every untaken target slot in a schedule section as skipped (invoked
+  /// from the Mark All press-and-hold submenu).
+  Future<void> _handleSkipAllInSection(List<(String, String)> targets) async {
+    if (targets.isEmpty) return;
+    HapticFeedback.lightImpact();
+    _rolloverSkippedIfNewDay();
+
+    var newlySkippedCount = 0;
+    final affectedTimeSlots = <String>{};
+    final now = DateTime.now();
+
+    for (final target in targets) {
+      final matches = _prescriptions.where((p) => p.id == target.$1).toList();
+      if (matches.isEmpty) continue;
+      final item = matches.first;
+      final time = target.$2;
+      if (item.takenTimes.contains(time)) continue;
+      final slotKey = '${item.id}_$time';
+      if (_skippedSlotKeys.add(slotKey)) {
+        newlySkippedCount++;
+        affectedTimeSlots.add(time);
+        if (_retentionService.retentionDays > 0) {
+          await _db.insertDoseEvent(DoseEvent(
+            id: '${item.id}_${time}_${now.microsecondsSinceEpoch}_skip',
+            prescriptionId: item.id,
+            profileId: item.profileId,
+            occurredAt: now,
+            action: DoseAction.skipped,
+          ));
+        }
+      }
+    }
+
+    if (newlySkippedCount == 0) return;
+    setState(() {});
+    await _persistSkippedSlotKeys();
+    for (final slot in affectedTimeSlots) {
+      unawaited(_syncTimeSlotLiveReminder(slot, _prescriptions));
+    }
+    unawaited(_syncNotifications());
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          newlySkippedCount == 1
+              ? 'Skipped 1 dose'
+              : 'Skipped $newlySkippedCount doses',
+        ),
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   Future<void> _openScan() async {
@@ -1306,28 +1478,47 @@ class _HomeScaffoldState extends State<HomeScaffold>
   /// Schedule-tab tap target: a low, read-only quick look, not the full
   /// editable sheet -- its own edit button hands off to
   /// [_handleEditMedication] for that.
-  void _handleViewMedication(Prescription prescription) {
-    MedicationQuickViewSheet.show(
-      context,
-      prescription: prescription,
-      profiles: _profiles,
-      onEdit: () => _handleEditMedication(prescription),
-    );
+  Future<void> _handleViewMedication(Prescription prescription) async {
+    if (_isQuickViewOpen) return;
+    _isQuickViewOpen = true;
+    try {
+      await MedicationQuickViewSheet.show(
+        context,
+        prescription: prescription,
+        profiles: _profiles,
+        onEdit: () => _handleEditMedication(prescription),
+      );
+    } finally {
+      _isQuickViewOpen = false;
+    }
   }
 
-  void _handleViewMedicationSlot(Prescription prescription, String time) {
-    final slotKey = '${prescription.id}_$time';
-    MedicationQuickViewSheet.show(
-      context,
-      prescription: prescription,
-      profiles: _profiles,
-      timeSlot: time,
-      isTaken: prescription.takenTimes.contains(time),
-      isSkipped: _skippedSlotKeys.contains(slotKey),
-      onEdit: () => _handleEditMedication(prescription),
-      onSnooze: () => _handleSnoozeDose(prescription.id, time),
-      onSkip: () => _handleSkipDose(prescription.id, time),
-    );
+  Future<void> _handleViewMedicationSlot(
+      Prescription prescription, String time) async {
+    if (_isQuickViewOpen) return;
+    _isQuickViewOpen = true;
+    try {
+      final slotKey = '${prescription.id}_$time';
+      final snoozeEnd = _liveReminderService.activeSnoozeEndForTimeSlot(time);
+      final isSnoozeActive =
+          snoozeEnd != null && _batchHasUntakenUnskipped(time);
+      await MedicationQuickViewSheet.show(
+        context,
+        prescription: prescription,
+        profiles: _profiles,
+        timeSlot: time,
+        isTaken: prescription.takenTimes.contains(time),
+        isSkipped: _skippedSlotKeys.contains(slotKey),
+        isSnoozeActive: isSnoozeActive,
+        snoozeEndTime: isSnoozeActive ? snoozeEnd : null,
+        onEdit: () => _handleEditMedication(prescription),
+        onSnooze: () => _handleSnoozeDose(prescription.id, time),
+        onCancelSnooze: () => _handleCancelSnooze(time),
+        onSkip: () => _handleSkipDose(prescription.id, time),
+      );
+    } finally {
+      _isQuickViewOpen = false;
+    }
   }
 
   void _onWalkthroughStateChanged() {
@@ -1452,8 +1643,11 @@ class _HomeScaffoldState extends State<HomeScaffold>
         onSelectProfile: (id) => setState(() => _selectedProfileId = id),
         onTakeDose: _handleTakeDose,
         onSnoozeDose: _handleSnoozeDose,
+        onCancelSnooze: _handleCancelSnooze,
         onSkipDose: _handleSkipDose,
+        onSkipAllInSection: _handleSkipAllInSection,
         skippedSlotKeys: _skippedSlotKeys,
+        activeSnoozeEnds: _liveReminderService.activeSnoozeEnds,
         onViewMedication: _handleViewMedication,
         onViewSlot: _handleViewMedicationSlot,
         onEditMedication: _handleEditMedication,
@@ -1514,8 +1708,12 @@ class _HomeScaffoldState extends State<HomeScaffold>
     _walkthroughService.removeListener(_onWalkthroughStateChanged);
     _snoozeSettingsService.removeListener(_onSnoozeSettingsChanged);
     _bedtimeService.removeListener(_onBedtimeSettingsChanged);
+    _liveReminderService.removeListener(_onLiveReminderChanged);
     if (_ownsBedtimeService) {
       _bedtimeService.dispose();
+    }
+    if (_ownsLiveReminderService) {
+      _liveReminderService.dispose();
     }
     widget.appStateManager?.removeListener(_onAppStateChanged);
     if (NotificationService.onLogAllTaken == _handleLogAllTakenForTimeSlot) {

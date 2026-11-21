@@ -136,6 +136,9 @@ class MainActivity : FlutterFragmentActivity() {
                     LiveReminderManager.dismiss(this, batchId)
                     result.success(null)
                 }
+                "getActiveSnoozes" -> {
+                    result.success(LiveReminderManager.getActiveSnoozes())
+                }
                 else -> result.notImplemented()
             }
         }

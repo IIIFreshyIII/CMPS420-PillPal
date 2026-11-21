@@ -34,6 +34,7 @@ export 'snooze_settings_service.dart';
 /// Outcome of attempting to start a native snooze countdown / Live Activity.
 enum SnoozeStartStatus {
   started,
+  alreadyActive,
   blockedByBedtime,
   noPendingDoses,
   liveActivitiesDisabled,
@@ -69,7 +70,7 @@ class SnoozeStartOutcome {
 /// target epoch millisecond timestamp (`snoozeEndTimestampMs`) and passes it
 /// over the dedicated `com.pillpal.app/live_reminders` [MethodChannel] so the
 /// native system compositors render decrementing countdowns autonomously.
-class LiveReminderService {
+class LiveReminderService extends ChangeNotifier {
   LiveReminderService({
     MethodChannel? channel,
     SnoozeSettingsService? snoozeSettings,
@@ -95,13 +96,103 @@ class LiveReminderService {
   /// Outcome of the most recent [startSnoozeActivity] or [startSnoozeForTimeSlot] call.
   SnoozeStartOutcome? get lastStartOutcome => _lastStartOutcome;
 
-  /// Active snooze end timestamps keyed by `batchId`.
-  Map<String, DateTime> get activeSnoozeEnds =>
-      Map.unmodifiable(_activeSnoozeEnds);
+  /// Active (non-expired) snooze end timestamps keyed by `batchId`.
+  Map<String, DateTime> get activeSnoozeEnds {
+    final now = _clock();
+    return Map.unmodifiable({
+      for (final entry in _activeSnoozeEnds.entries)
+        if (now.isBefore(entry.value)) entry.key: entry.value,
+    });
+  }
 
-  /// Active snooze end timestamp for [timeSlot], if any.
-  DateTime? activeSnoozeEndForTimeSlot(String timeSlot) =>
-      _activeSnoozeEnds[batchIdForTimeSlot(timeSlot)];
+  /// Active snooze end timestamp for [timeSlot], or `null` if none is running
+  /// or if the previously recorded countdown has already expired.
+  DateTime? activeSnoozeEndForTimeSlot(String timeSlot) {
+    final end = _activeSnoozeEnds[batchIdForTimeSlot(timeSlot)];
+    if (end == null) return null;
+    return _clock().isBefore(end) ? end : null;
+  }
+
+  /// True when a snooze countdown for [timeSlot]'s batch is currently active
+  /// (`now.isBefore(endTime)`).
+  bool isSnoozeActiveForTimeSlot(String timeSlot) =>
+      activeSnoozeEndForTimeSlot(timeSlot) != null;
+
+  /// Removes any locally expired snoozes and returns their `batchId`s.
+  Set<String> pruneExpiredSnoozes() {
+    final now = _clock();
+    final expired = <String>{};
+    _activeSnoozeEnds.removeWhere((batchId, endTime) {
+      final isExpired = !now.isBefore(endTime);
+      if (isExpired) {
+        expired.add(batchId);
+        _bedtimeTimers.remove(batchId)?.cancel();
+      }
+      return isExpired;
+    });
+    if (expired.isNotEmpty) {
+      notifyListeners();
+    }
+    return expired;
+  }
+
+  /// Queries the native host (iOS ActivityKit + pending snooze notifications,
+  /// or Android `LiveReminderManager`) on app resume so native cancellations
+  /// made from the Lock Screen / Dynamic Island / notification shade stay in
+  /// sync with Flutter UI state.
+  ///
+  /// Returns the set of `batchId`s that were previously active locally and are
+  /// no longer active natively.
+  Future<Set<String>> syncActiveSnoozesFromNative() async {
+    final now = _clock();
+    try {
+      final raw = await _channel.invokeMethod<dynamic>('getActiveSnoozes');
+      if (raw is! Map) {
+        return pruneExpiredSnoozes();
+      }
+
+      final nativeActive = <String, DateTime>{};
+      for (final entry in raw.entries) {
+        final batchId = entry.key?.toString().trim() ?? '';
+        final endMs = (entry.value is num) ? (entry.value as num).toInt() : null;
+        if (batchId.isEmpty || endMs == null) continue;
+        final endTime = DateTime.fromMillisecondsSinceEpoch(endMs);
+        if (now.isBefore(endTime)) {
+          nativeActive[batchId] = endTime;
+        }
+      }
+
+      final removed = <String>{};
+      var changed = false;
+      for (final existingBatchId in _activeSnoozeEnds.keys.toList()) {
+        if (!nativeActive.containsKey(existingBatchId)) {
+          removed.add(existingBatchId);
+          _activeSnoozeEnds.remove(existingBatchId);
+          _bedtimeTimers.remove(existingBatchId)?.cancel();
+          changed = true;
+        }
+      }
+
+      for (final entry in nativeActive.entries) {
+        final prev = _activeSnoozeEnds[entry.key];
+        if (prev == null ||
+            prev.millisecondsSinceEpoch != entry.value.millisecondsSinceEpoch) {
+          _activeSnoozeEnds[entry.key] = entry.value;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        notifyListeners();
+      }
+      return removed;
+    } on MissingPluginException {
+      return pruneExpiredSnoozes();
+    } on PlatformException catch (e) {
+      debugPrint('LiveReminderService.syncActiveSnoozesFromNative failed: ${e.message}');
+      return pruneExpiredSnoozes();
+    }
+  }
 
   /// Optional callback invoked when the native iOS Live Activity or Android
   /// Ongoing Notification triggers an action back into Flutter.
@@ -163,6 +254,7 @@ class LiveReminderService {
         effectiveDurationMinutes: snoozeDurationMinutes,
         clampedToBedtime: clampedToBedtime,
       );
+      notifyListeners();
     } on MissingPluginException {
       // Safe no-op in unit/widget test environments without a native host.
       _activeSnoozeEnds[batchId] = snoozeEnd;
@@ -173,11 +265,15 @@ class LiveReminderService {
         effectiveDurationMinutes: snoozeDurationMinutes,
         clampedToBedtime: clampedToBedtime,
       );
+      notifyListeners();
     } on PlatformException catch (e) {
       debugPrint('LiveReminderService.startSnoozeActivity failed: ${e.message}');
       final status = e.code == 'LIVE_ACTIVITIES_DISABLED'
           ? SnoozeStartStatus.liveActivitiesDisabled
           : SnoozeStartStatus.failed;
+      // Notification-only snooze still runs when Live Activities are disabled
+      // or unavailable, so track the active end time for the double-snooze guard.
+      _activeSnoozeEnds[batchId] = snoozeEnd;
       _lastStartOutcome = SnoozeStartOutcome(
         status: status,
         batchId: batchId,
@@ -186,6 +282,7 @@ class LiveReminderService {
         clampedToBedtime: clampedToBedtime,
         errorMessage: e.message ?? e.code,
       );
+      notifyListeners();
     }
   }
 
@@ -219,7 +316,7 @@ class LiveReminderService {
   }) async {
     _bedtimeTimers[batchId]?.cancel();
     _bedtimeTimers.remove(batchId);
-    _activeSnoozeEnds.remove(batchId);
+    final removed = _activeSnoozeEnds.remove(batchId) != null;
 
     try {
       await _channel.invokeMethod<void>('dismissActivity', <String, dynamic>{
@@ -229,6 +326,9 @@ class LiveReminderService {
       // Safe no-op in unit/widget test environments without a native host.
     } on PlatformException catch (e) {
       debugPrint('LiveReminderService.dismissActivity failed: ${e.message}');
+    }
+    if (removed) {
+      notifyListeners();
     }
   }
 
@@ -299,6 +399,21 @@ class LiveReminderService {
       return batch;
     }
 
+    // Double-snooze guard: if a snooze countdown for this batch is already
+    // actively running (`now.isBefore(endTime)`), leave it undisturbed rather
+    // than starting a duplicate timer.
+    final existingEnd = _activeSnoozeEnds[batch.batchId];
+    if (existingEnd != null && now.isBefore(existingEnd)) {
+      final remainingMins = existingEnd.difference(now).inMinutes.clamp(1, 999);
+      _lastStartOutcome = SnoozeStartOutcome(
+        status: SnoozeStartStatus.alreadyActive,
+        batchId: batch.batchId,
+        snoozeEndTime: existingEnd,
+        effectiveDurationMinutes: remainingMins,
+      );
+      return batch;
+    }
+
     int duration = snoozeDurationMinutes ??
         _snoozeSettings?.snoozeDurationMinutes ??
         SnoozeSettingsService.defaultSnoozeDurationMinutes;
@@ -362,6 +477,7 @@ class LiveReminderService {
       medicationNames: batch.medicationNames,
       profileName: batch.profileName,
       snoozeEndTimestampMs: endTimestampMs,
+      snoozeNotificationId: notificationIdForSnooze(timeSlot),
       clampedToBedtime: wasClamped,
     );
 

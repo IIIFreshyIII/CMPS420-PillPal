@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import '../../core/scheduling/reminder_scheduler.dart'
+    show batchIdForTimeSlot, isSameTimeSlot;
 import '../../core/theme/pillpal_colors.dart';
 import '../../presentation/widgets/pressable.dart';
 import '../../presentation/widgets/profile_chip.dart';
@@ -28,8 +31,11 @@ class ScheduleScreen extends StatelessWidget {
   final ValueChanged<String> onSelectProfile;
   final void Function(String prescriptionId, String time) onTakeDose;
   final void Function(String prescriptionId, String time)? onSnoozeDose;
+  final ValueChanged<String>? onCancelSnooze;
   final void Function(String prescriptionId, String time)? onSkipDose;
+  final void Function(List<(String, String)> targets)? onSkipAllInSection;
   final Set<String> skippedSlotKeys;
+  final Map<String, DateTime> activeSnoozeEnds;
   final ValueChanged<Prescription> onViewMedication;
   final void Function(Prescription prescription, String time)? onViewSlot;
   final ValueChanged<Prescription>? onEditMedication;
@@ -53,8 +59,11 @@ class ScheduleScreen extends StatelessWidget {
     required this.onSelectProfile,
     required this.onTakeDose,
     this.onSnoozeDose,
+    this.onCancelSnooze,
     this.onSkipDose,
+    this.onSkipAllInSection,
     this.skippedSlotKeys = const {},
+    this.activeSnoozeEnds = const {},
     required this.onViewMedication,
     this.onViewSlot,
     this.onEditMedication,
@@ -472,46 +481,37 @@ class ScheduleScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Pressable(
+              _MarkAllSectionButton(
                 key: ValueKey('mark_all_${section.title.toLowerCase()}'),
-                scale: 0.94,
+                sectionTitle: section.title,
+                sectionAllDone: sectionAllDone,
+                hasAnyResolved: sectionResolved > 0,
                 onTap: () {
                   final targets = visibleSlots
                       .map((s) => (s.prescription.id, s.time))
                       .toList();
                   onToggleAllCompleted(targets, !sectionAllDone);
                 },
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  curve: Curves.easeInOutCubic,
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: sectionAllDone ? c.neutralChip : c.tealDeep,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        sectionAllDone
-                            ? CupertinoIcons.arrow_counterclockwise
-                            : CupertinoIcons.checkmark_alt,
-                        size: 13,
-                        color: sectionAllDone ? c.neutralInk : c.onTeal,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        sectionAllDone ? 'Reset' : 'Mark All',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: sectionAllDone ? c.neutralInk : c.onTeal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                onMarkAllTaken: () {
+                  final targets = visibleSlots
+                      .map((s) => (s.prescription.id, s.time))
+                      .toList();
+                  onToggleAllCompleted(targets, true);
+                },
+                onMarkAllSkipped: onSkipAllInSection != null
+                    ? () {
+                        final targets = visibleSlots
+                            .map((s) => (s.prescription.id, s.time))
+                            .toList();
+                        onSkipAllInSection!(targets);
+                      }
+                    : null,
+                onResetAll: () {
+                  final targets = visibleSlots
+                      .map((s) => (s.prescription.id, s.time))
+                      .toList();
+                  onToggleAllCompleted(targets, false);
+                },
               ),
             ],
           ),
@@ -520,9 +520,27 @@ class ScheduleScreen extends StatelessWidget {
     );
   }
 
+  bool _batchHasUntakenUnskipped(String timeSlot) {
+    for (final p in prescriptions) {
+      for (final t in p.reminderTimes) {
+        if (!isSameTimeSlot(t, timeSlot)) continue;
+        final taken = p.takenTimes.any((tk) => isSameTimeSlot(tk, t));
+        final skipped = skippedSlotKeys.contains('${p.id}_$t');
+        if (!taken && !skipped) return true;
+      }
+    }
+    return false;
+  }
+
   Widget _slotCard(ScheduleSlot slot, {bool isTargetCard = false}) {
     final slotKey = '${slot.prescription.id}_${slot.time}';
     final isSkipped = skippedSlotKeys.contains(slotKey);
+    final batchId = batchIdForTimeSlot(slot.time);
+    final rawSnoozeEnd = activeSnoozeEnds[batchId];
+    final isSnoozeActive = rawSnoozeEnd != null &&
+        DateTime.now().isBefore(rawSnoozeEnd) &&
+        _batchHasUntakenUnskipped(slot.time);
+
     return MedicationCard(
       key: ValueKey('med_${slot.prescription.id}_${slot.time}'),
       targetKey: isTargetCard ? firstMedCardKey : null,
@@ -530,6 +548,8 @@ class ScheduleScreen extends StatelessWidget {
       time: slot.time,
       isTaken: slot.prescription.takenTimes.contains(slot.time),
       isSkipped: isSkipped,
+      isSnoozeActive: isSnoozeActive,
+      snoozeEndTime: isSnoozeActive ? rawSnoozeEnd : null,
       profile: profiles.length > 1
           ? profiles.cast<Profile?>().firstWhere(
                 (p) => p?.id == slot.prescription.profileId,
@@ -540,6 +560,9 @@ class ScheduleScreen extends StatelessWidget {
       onSnooze: onSnoozeDose != null
           ? () => onSnoozeDose!(slot.prescription.id, slot.time)
           : null,
+      onCancelSnooze: onCancelSnooze != null
+          ? () => onCancelSnooze!(slot.time)
+          : null,
       onSkip: onSkipDose != null
           ? () => onSkipDose!(slot.prescription.id, slot.time)
           : null,
@@ -548,6 +571,254 @@ class ScheduleScreen extends StatelessWidget {
           : onViewMedication(slot.prescription),
       onEdit: onEditMedication != null ? () => onEditMedication!(slot.prescription) : null,
       onDelete: onDeleteMedication != null ? () => onDeleteMedication!(slot.prescription.id) : null,
+    );
+  }
+}
+
+enum _MarkAllMenuAction { markAllTaken, markAllSkipped, resetAll }
+
+/// Section-level `Mark All` / `Reset` pill button.
+/// - Quick tap toggles Mark All Taken / Reset as before.
+/// - Press-and-hold (~375ms) opens a frosted iOS-style popover submenu offering
+///   **Mark All Taken**, **Mark All Skipped**, and (when applicable) **Reset All**.
+class _MarkAllSectionButton extends StatelessWidget {
+  const _MarkAllSectionButton({
+    super.key,
+    required this.sectionTitle,
+    required this.sectionAllDone,
+    required this.hasAnyResolved,
+    required this.onTap,
+    required this.onMarkAllTaken,
+    this.onMarkAllSkipped,
+    required this.onResetAll,
+  });
+
+  final String sectionTitle;
+  final bool sectionAllDone;
+  final bool hasAnyResolved;
+  final VoidCallback onTap;
+  final VoidCallback onMarkAllTaken;
+  final VoidCallback? onMarkAllSkipped;
+  final VoidCallback onResetAll;
+
+  Future<void> _showSubmenu(BuildContext context) async {
+    final renderBox = context.findRenderObject() as RenderBox?;
+    final buttonOffset = renderBox?.localToGlobal(Offset.zero);
+    final buttonSize = renderBox?.size;
+
+    final action = await showGeneralDialog<_MarkAllMenuAction>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss $sectionTitle actions',
+      barrierColor: Colors.black.withValues(alpha: 0.12),
+      transitionDuration: const Duration(milliseconds: 180),
+      pageBuilder: (dialogCtx, _, __) {
+        final c = context.colors;
+        final screenSize = MediaQuery.of(dialogCtx).size;
+        final double top = buttonOffset != null
+            ? (buttonOffset.dy + (buttonSize?.height ?? 28) + 8)
+                .clamp(60.0, screenSize.height - 200.0)
+            : 180.0;
+        final double right = buttonOffset != null
+            ? (screenSize.width -
+                    (buttonOffset.dx + (buttonSize?.width ?? 88)))
+                .clamp(16.0, screenSize.width - 236.0)
+            : 20.0;
+
+        return Stack(
+          children: [
+            Positioned(
+              top: top,
+              right: right,
+              child: Material(
+                color: Colors.transparent,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(14),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 25, sigmaY: 25),
+                    child: Container(
+                      key: Key('mark_all_submenu_${sectionTitle.toLowerCase()}'),
+                      width: 220,
+                      decoration: BoxDecoration(
+                        color: c.surface.withValues(alpha: 0.90),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: c.borderLight.withValues(alpha: 0.6),
+                          width: 0.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.14),
+                            blurRadius: 24,
+                            spreadRadius: -2,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _submenuRow(
+                            key: const Key('mark_all_menu_taken'),
+                            label: 'Mark All Taken',
+                            icon: CupertinoIcons.checkmark_circle_fill,
+                            iconColor: c.teal,
+                            c: c,
+                            onTap: () => Navigator.pop(
+                              dialogCtx,
+                              _MarkAllMenuAction.markAllTaken,
+                            ),
+                          ),
+                          if (onMarkAllSkipped != null) ...[
+                            Divider(
+                              height: 0.5,
+                              thickness: 0.5,
+                              color: c.borderLight.withValues(alpha: 0.6),
+                            ),
+                            _submenuRow(
+                              key: const Key('mark_all_menu_skipped'),
+                              label: 'Mark All Skipped',
+                              icon: CupertinoIcons.forward_fill,
+                              iconColor: c.inkMuted,
+                              c: c,
+                              onTap: () => Navigator.pop(
+                                dialogCtx,
+                                _MarkAllMenuAction.markAllSkipped,
+                              ),
+                            ),
+                          ],
+                          if (hasAnyResolved) ...[
+                            Divider(
+                              height: 0.5,
+                              thickness: 0.5,
+                              color: c.borderLight.withValues(alpha: 0.6),
+                            ),
+                            _submenuRow(
+                              key: const Key('mark_all_menu_reset'),
+                              label: 'Reset All',
+                              icon: CupertinoIcons.arrow_counterclockwise,
+                              iconColor: c.ink,
+                              c: c,
+                              onTap: () => Navigator.pop(
+                                dialogCtx,
+                                _MarkAllMenuAction.resetAll,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      transitionBuilder: (ctx, animation, _, child) {
+        final curved = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeOutCubic,
+        );
+        return FadeTransition(
+          opacity: curved,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
+            alignment: Alignment.topRight,
+            child: child,
+          ),
+        );
+      },
+    );
+
+    if (action == null) return;
+    switch (action) {
+      case _MarkAllMenuAction.markAllTaken:
+        onMarkAllTaken();
+      case _MarkAllMenuAction.markAllSkipped:
+        onMarkAllSkipped?.call();
+      case _MarkAllMenuAction.resetAll:
+        onResetAll();
+    }
+  }
+
+  Widget _submenuRow({
+    Key? key,
+    required String label,
+    required IconData icon,
+    required Color iconColor,
+    required PillPalColors c,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      key: key,
+      onTap: onTap,
+      splashColor: Colors.transparent,
+      highlightColor: c.ink.withValues(alpha: 0.06),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 44),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: c.ink,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(icon, size: 18, color: iconColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Pressable(
+      scale: 0.94,
+      onTap: onTap,
+      onHold: () => _showSubmenu(context),
+      holdDuration: const Duration(milliseconds: 375),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOutCubic,
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+        decoration: BoxDecoration(
+          color: sectionAllDone ? c.neutralChip : c.tealDeep,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              sectionAllDone
+                  ? CupertinoIcons.arrow_counterclockwise
+                  : CupertinoIcons.checkmark_alt,
+              size: 13,
+              color: sectionAllDone ? c.neutralInk : c.onTeal,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              sectionAllDone ? 'Reset' : 'Mark All',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: sectionAllDone ? c.neutralInk : c.onTeal,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

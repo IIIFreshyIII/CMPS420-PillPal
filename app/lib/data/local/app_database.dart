@@ -17,7 +17,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? openConnection());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -37,6 +37,15 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 3) {
             await m.addColumn(prescriptions, prescriptions.refillsRemaining);
+          }
+          if (from < 4) {
+            await m.addColumn(prescriptions, prescriptions.strength);
+            await m.addColumn(prescriptions, prescriptions.doseAmount);
+            await m.addColumn(prescriptions, prescriptions.doseQuantity);
+            await m.addColumn(prescriptions, prescriptions.form);
+            await m.addColumn(prescriptions, prescriptions.foodInstruction);
+            await m.addColumn(prescriptions, prescriptions.isAsNeeded);
+            await m.addColumn(prescriptions, prescriptions.cooldownMinutes);
           }
         },
       );
@@ -76,12 +85,19 @@ class AppDatabase extends _$AppDatabase {
       profileId: prescription.profileId,
       name: prescription.name,
       dosage: prescription.dosage,
+      strength: Value(prescription.strength),
+      doseAmount: Value(prescription.doseAmount),
+      doseQuantity: Value(prescription.effectiveDoseQuantity),
+      form: Value(prescription.form),
+      foodInstruction: Value(prescription.foodInstruction),
       reminderTimes: prescription.reminderTimes,
       takenTimes: prescription.takenTimes.toList(),
       remaining: prescription.remaining,
       daysSupply: prescription.daysSupply,
       refillsRemaining: Value(prescription.refillsRemaining),
       allowAfterBedtime: Value(prescription.allowAfterBedtime),
+      isAsNeeded: Value(prescription.isAsNeeded),
+      cooldownMinutes: Value(prescription.cooldownMinutes),
     ));
   }
 
@@ -159,12 +175,19 @@ class AppDatabase extends _$AppDatabase {
                 profileId: m.profileId,
                 name: m.name,
                 dosage: m.dosage,
+                strength: Value(m.strength),
+                doseAmount: Value(m.doseAmount),
+                doseQuantity: Value(m.effectiveDoseQuantity),
+                form: Value(m.form),
+                foodInstruction: Value(m.foodInstruction),
                 reminderTimes: m.reminderTimes,
                 takenTimes: m.takenTimes.toList(),
                 remaining: m.remaining,
                 daysSupply: m.daysSupply,
                 refillsRemaining: Value(m.refillsRemaining),
                 allowAfterBedtime: Value(m.allowAfterBedtime),
+                isAsNeeded: Value(m.isAsNeeded),
+                cooldownMinutes: Value(m.cooldownMinutes),
               )),
         );
       }
@@ -201,12 +224,19 @@ class AppDatabase extends _$AppDatabase {
       profileId: row.profileId,
       name: row.name,
       dosage: row.dosage,
+      strength: row.strength,
+      doseAmount: row.doseAmount,
+      doseQuantity: row.doseQuantity,
+      form: row.form,
+      foodInstruction: row.foodInstruction,
       reminderTimes: row.reminderTimes,
       takenTimes: row.takenTimes.toSet(),
       remaining: row.remaining,
       daysSupply: row.daysSupply,
       refillsRemaining: row.refillsRemaining,
       allowAfterBedtime: row.allowAfterBedtime,
+      isAsNeeded: row.isAsNeeded,
+      cooldownMinutes: row.cooldownMinutes,
     );
   }
 

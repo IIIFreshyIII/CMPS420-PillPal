@@ -163,6 +163,7 @@ void main() {
         'remainingDoseCount': 2,
         'medicationNames': ['Allegra', 'Lisinopril'],
         'profileName': 'Leo',
+        'snoozeNotificationId': notificationIdForSnooze('8:00 AM'),
       },
     );
   });
@@ -536,5 +537,108 @@ void main() {
       liveService.lastStartOutcome?.status,
       SnoozeStartStatus.blockedByBedtime,
     );
+  });
+
+  test('double-snooze guard prevents restarting an already-active snooze batch', () async {
+    var currentTime = DateTime(2026, 10, 26, 8, 5);
+    final guardedService = LiveReminderService(
+      channel: channel,
+      clock: () => currentTime,
+    );
+    const prescriptions = [
+      Prescription(
+        id: '1',
+        profileId: 'p1',
+        name: 'Allegra',
+        dosage: '10mg',
+        reminderTimes: ['8:00 AM'],
+        remaining: 10,
+        daysSupply: 10,
+      ),
+    ];
+
+    await guardedService.startSnoozeForTimeSlot(
+      timeSlot: '8:00 AM',
+      prescriptions: prescriptions,
+      snoozeDurationMinutes: 15,
+    );
+    expect(guardedService.lastStartOutcome?.status, SnoozeStartStatus.started);
+    expect(guardedService.isSnoozeActiveForTimeSlot('8:00 AM'), isTrue);
+    expect(recordedCalls, hasLength(1));
+
+    // 5 minutes later (still before 8:20 AM): second snooze call is guarded
+    currentTime = DateTime(2026, 10, 26, 8, 10);
+    await guardedService.startSnoozeForTimeSlot(
+      timeSlot: '8:00 AM',
+      prescriptions: prescriptions,
+      snoozeDurationMinutes: 15,
+    );
+    expect(
+      guardedService.lastStartOutcome?.status,
+      SnoozeStartStatus.alreadyActive,
+    );
+    // No duplicate native startSnoozeActivity call was sent.
+    expect(recordedCalls, hasLength(1));
+
+    // Once past endTime (8:21 AM), snooze is no longer active and can start fresh.
+    currentTime = DateTime(2026, 10, 26, 8, 21);
+    expect(guardedService.isSnoozeActiveForTimeSlot('8:00 AM'), isFalse);
+    await guardedService.startSnoozeForTimeSlot(
+      timeSlot: '8:00 AM',
+      prescriptions: prescriptions,
+      snoozeDurationMinutes: 15,
+    );
+    expect(guardedService.lastStartOutcome?.status, SnoozeStartStatus.started);
+    expect(recordedCalls, hasLength(2));
+  });
+
+  test('syncActiveSnoozesFromNative reconciles native cancellations on app resume',
+      () async {
+    final now = DateTime(2026, 10, 26, 8, 5);
+    final morningEnd = now.add(const Duration(minutes: 15));
+    final noonEnd = now.add(const Duration(minutes: 30));
+
+    var nativeMap = <String, int>{
+      'batch_08_00': morningEnd.millisecondsSinceEpoch,
+      'batch_12_00': noonEnd.millisecondsSinceEpoch,
+    };
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (MethodCall call) async {
+      recordedCalls.add(call);
+      if (call.method == 'getActiveSnoozes') {
+        return nativeMap;
+      }
+      return null;
+    });
+
+    final resumeService = LiveReminderService(
+      channel: channel,
+      clock: () => now,
+    );
+    var notifyCount = 0;
+    resumeService.addListener(() => notifyCount++);
+
+    await resumeService.startSnoozeActivity(
+      batchId: 'batch_08_00',
+      snoozeDurationMinutes: 15,
+      remainingCount: 2,
+    );
+    await resumeService.startSnoozeActivity(
+      batchId: 'batch_12_00',
+      snoozeDurationMinutes: 30,
+      remainingCount: 1,
+    );
+    expect(resumeService.isSnoozeActiveForTimeSlot('8:00 AM'), isTrue);
+    expect(resumeService.isSnoozeActiveForTimeSlot('12:00 PM'), isTrue);
+
+    // Simulate user cancelling 8:00 AM snooze from iOS Lock Screen Live Activity
+    nativeMap = {'batch_12_00': noonEnd.millisecondsSinceEpoch};
+    final removed = await resumeService.syncActiveSnoozesFromNative();
+
+    expect(removed, {'batch_08_00'});
+    expect(resumeService.isSnoozeActiveForTimeSlot('8:00 AM'), isFalse);
+    expect(resumeService.isSnoozeActiveForTimeSlot('12:00 PM'), isTrue);
+    expect(notifyCount, greaterThanOrEqualTo(3));
   });
 }

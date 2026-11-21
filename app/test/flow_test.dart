@@ -183,7 +183,11 @@ void main() {
 
     expect(result, isNotNull);
     expect(result!.name, 'Metformin HCl');
-    expect(result!.dosage, '500 mg, 1 tablet, tablet');
+    expect(result!.strength, '500 mg');
+    expect(result!.doseAmount, '1 tablet');
+    expect(result!.doseQuantity, 1);
+    expect(result!.form, 'tablet');
+    expect(result!.dosage, '500 mg, 1 tablet');
     // "twice daily" is periodic (12h interval) -- at least the picked start
     // time is always included; exact count depends on the real wall clock
     // the rotary picker defaulted to (TimeOfDay.now()), so only the format
@@ -193,7 +197,8 @@ void main() {
       expect(time, matches(RegExp(r'^\d{1,2}:\d{2} (AM|PM)$')));
     }
     expect(result!.daysSupply, 30);
-    expect(result!.remaining, 30);
+    // Twice daily * 1 tablet/dose * 30 days = 60 tablets in the bottle.
+    expect(result!.remaining, 60);
     expect(result!.profileId, '1');
   });
 }

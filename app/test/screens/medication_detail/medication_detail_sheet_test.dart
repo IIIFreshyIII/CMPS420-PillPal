@@ -124,4 +124,136 @@ void main() {
     await tester.pumpAndSettle();
     expect(skipped, isTrue);
   });
+
+  testWidgets('MedicationQuickViewSheet flips Snooze to Cancel Snooze when active and hides actions when taken',
+      (tester) async {
+    var cancelSnoozeCalled = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Column(
+          children: [
+            ElevatedButton(
+              onPressed: () => MedicationQuickViewSheet.show(
+                context,
+                prescription: prescription,
+                profiles: profiles,
+                timeSlot: '8:00 AM',
+                isSnoozeActive: true,
+                snoozeEndTime: DateTime(2026, 10, 26, 8, 15),
+                onEdit: () {},
+                onSnooze: () {},
+                onCancelSnooze: () => cancelSnoozeCalled = true,
+                onSkip: () {},
+              ),
+              child: const Text('open_snoozed'),
+            ),
+            ElevatedButton(
+              onPressed: () => MedicationQuickViewSheet.show(
+                context,
+                prescription: prescription,
+                profiles: profiles,
+                timeSlot: '8:00 AM',
+                isTaken: true,
+                onEdit: () {},
+                onSnooze: () {},
+                onSkip: () {},
+              ),
+              child: const Text('open_taken'),
+            ),
+          ],
+        ),
+      ),
+    ));
+
+    // Active snooze flips button to Cancel Snooze and shows status banner
+    await tester.tap(find.text('open_snoozed'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('quick_view_snooze_button')), findsNothing);
+    expect(find.byKey(const Key('quick_view_cancel_snooze_button')), findsOneWidget);
+    expect(find.byKey(const Key('quick_view_snooze_banner')), findsOneWidget);
+    expect(find.text('Snoozed until 8:15 AM'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('quick_view_cancel_snooze_button')));
+    await tester.pumpAndSettle();
+    expect(cancelSnoozeCalled, isTrue);
+
+    // Taken card hides Snooze and Skip actions completely
+    await tester.tap(find.text('open_taken'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('quick_view_snooze_button')), findsNothing);
+    expect(find.byKey(const Key('quick_view_cancel_snooze_button')), findsNothing);
+    expect(find.byKey(const Key('quick_view_skip_button')), findsNothing);
+  });
+
+  testWidgets('MedicationQuickViewSheet swipe up >50px opens Edit and swipe down dismisses',
+      (tester) async {
+    var editOpened = false;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => ElevatedButton(
+          onPressed: () => MedicationQuickViewSheet.show(
+            context,
+            prescription: prescription,
+            profiles: profiles,
+            timeSlot: '8:00 AM',
+            onEdit: () => editOpened = true,
+          ),
+          child: const Text('open'),
+        ),
+      ),
+    ));
+
+    // 1. Swipe up past 50px closes Quick View and immediately opens Edit
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Medication'), findsOneWidget);
+
+    await tester.drag(
+      find.byKey(const Key('quick_view_drag_surface')),
+      const Offset(0, -80),
+    );
+    await tester.pumpAndSettle();
+    expect(editOpened, isTrue);
+    expect(find.text('Medication'), findsNothing);
+
+    // 2. Swipe down dismisses Quick View cleanly
+    editOpened = false;
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const Key('quick_view_drag_surface')),
+      const Offset(0, 140),
+    );
+    await tester.pumpAndSettle();
+    expect(editOpened, isFalse);
+    expect(find.text('Medication'), findsNothing);
+  });
+
+  testWidgets('MedicationDetailSheet swipe down dismisses when clean and prompts discard when dirty',
+      (tester) async {
+    await openSheet(tester);
+
+    // Swipe down with no edits -> dismisses cleanly
+    await tester.drag(
+      find.byKey(const Key('detail_sheet_drag_header')),
+      const Offset(0, 140),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Prescription Details'), findsNothing);
+
+    // Reopen, edit name, swipe down -> shows discard confirmation
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Allegra'), 'Allegra D');
+    await tester.pumpAndSettle();
+
+    await tester.drag(
+      find.byKey(const Key('detail_sheet_drag_header')),
+      const Offset(0, 140),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Discard changes?'), findsOneWidget);
+  });
 }

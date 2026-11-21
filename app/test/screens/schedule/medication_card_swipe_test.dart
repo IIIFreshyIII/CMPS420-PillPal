@@ -319,4 +319,144 @@ void main() {
     expect(find.byIcon(CupertinoIcons.clock_fill), findsNothing);
     expect(find.byIcon(CupertinoIcons.forward_fill), findsNothing);
   });
+
+  testWidgets('Press-and-hold opens Quick View while finger is down without double-opening on release (iOS & Android)',
+      (tester) async {
+    for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+      var viewDetailsCount = 0;
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData(platform: platform),
+        home: Scaffold(
+          body: MedicationCard(
+            item: prescription,
+            time: '8:00 AM',
+            isTaken: false,
+            profile: null,
+            onTakeDose: () {},
+            onViewDetails: () => viewDetailsCount++,
+            onSnooze: () {},
+            onSkip: () {},
+            onEdit: () {},
+            onDelete: () {},
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // Press and hold on card center without lifting finger
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('Metformin')),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(viewDetailsCount, 0);
+
+      // Past ~375ms -> fires immediately while finger is STILL DOWN
+      await tester.pump(const Duration(milliseconds: 220));
+      expect(viewDetailsCount, 1);
+
+      // Releasing finger must NOT double-open
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(viewDetailsCount, 1);
+
+      // Allow cooldown timer to clear before next platform iteration
+      await tester.pump(const Duration(milliseconds: 400));
+    }
+  });
+
+  testWidgets('Open swipe action buttons block hold-to-peek and tapping card or check closes pane without firing actions',
+      (tester) async {
+    var viewDetailsCount = 0;
+    var takeDoseCount = 0;
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(platform: TargetPlatform.iOS),
+      home: Scaffold(
+        body: MedicationCard(
+          item: prescription,
+          time: '8:00 AM',
+          isTaken: false,
+          profile: null,
+          onTakeDose: () => takeDoseCount++,
+          onViewDetails: () => viewDetailsCount++,
+          onSnooze: () {},
+          onSkip: () {},
+          onEdit: () {},
+          onDelete: () {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // Swipe right to reveal Snooze/Skip buttons
+    await tester.drag(find.byType(MedicationCard), const Offset(250, 0));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(CupertinoIcons.clock_fill), findsOneWidget);
+
+    // Press-and-hold while pane is open must NOT peek
+    final holdGesture =
+        await tester.startGesture(tester.getCenter(find.text('Metformin')));
+    await tester.pump(const Duration(milliseconds: 450));
+    expect(viewDetailsCount, 0);
+    await holdGesture.up();
+    await tester.pumpAndSettle();
+    expect(viewDetailsCount, 0);
+
+    // Swipe right open again and tap card -> closes pane without opening Quick View
+    await tester.drag(find.byType(MedicationCard), const Offset(250, 0));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(CupertinoIcons.clock_fill), findsOneWidget);
+
+    await tester.tap(find.text('Metformin'));
+    await tester.pumpAndSettle();
+    expect(viewDetailsCount, 0);
+    expect(find.byIcon(CupertinoIcons.clock_fill), findsNothing);
+
+    // Open swipe-left buttons, tap the dose check circle -> closes pane without marking taken
+    await tester.drag(find.byType(MedicationCard), const Offset(-250, 0));
+    await tester.pumpAndSettle();
+    expect(find.byIcon(CupertinoIcons.pencil), findsOneWidget);
+
+    final cardRect = tester.getRect(find.byType(MedicationCard));
+    // Tap near the right edge of the slid card where _DoseCheck sits
+    await tester.tapAt(Offset(cardRect.right - 290, cardRect.center.dy));
+    await tester.pumpAndSettle();
+    expect(takeDoseCount, 0);
+    expect(viewDetailsCount, 0);
+  });
+
+  testWidgets('Active snooze shows snooze badge and flips swipe-right Snooze button to Cancel Snooze',
+      (tester) async {
+    var cancelSnoozeTapped = false;
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(platform: TargetPlatform.iOS),
+      home: Scaffold(
+        body: MedicationCard(
+          item: prescription,
+          time: '8:00 AM',
+          isTaken: false,
+          isSnoozeActive: true,
+          snoozeEndTime: DateTime(2026, 10, 26, 8, 15),
+          profile: null,
+          onTakeDose: () {},
+          onViewDetails: () {},
+          onSnooze: () {},
+          onCancelSnooze: () => cancelSnoozeTapped = true,
+          onSkip: () {},
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Snoozed • 8:15 AM'), findsOneWidget);
+
+    await tester.drag(find.byType(MedicationCard), const Offset(250, 0));
+    await tester.pumpAndSettle();
+
+    expect(find.byIcon(CupertinoIcons.bell_slash_fill), findsOneWidget);
+    await tester.tap(find.byIcon(CupertinoIcons.bell_slash_fill));
+    await tester.pumpAndSettle();
+    expect(cancelSnoozeTapped, isTrue);
+  });
 }

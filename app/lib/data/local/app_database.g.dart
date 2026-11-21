@@ -346,6 +346,37 @@ class $PrescriptionsTable extends Prescriptions
   late final GeneratedColumn<String> dosage = GeneratedColumn<String>(
       'dosage', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _strengthMeta =
+      const VerificationMeta('strength');
+  @override
+  late final GeneratedColumn<String> strength = GeneratedColumn<String>(
+      'strength', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _doseAmountMeta =
+      const VerificationMeta('doseAmount');
+  @override
+  late final GeneratedColumn<String> doseAmount = GeneratedColumn<String>(
+      'dose_amount', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _doseQuantityMeta =
+      const VerificationMeta('doseQuantity');
+  @override
+  late final GeneratedColumn<int> doseQuantity = GeneratedColumn<int>(
+      'dose_quantity', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(1));
+  static const VerificationMeta _formMeta = const VerificationMeta('form');
+  @override
+  late final GeneratedColumn<String> form = GeneratedColumn<String>(
+      'form', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _foodInstructionMeta =
+      const VerificationMeta('foodInstruction');
+  @override
+  late final GeneratedColumn<String> foodInstruction = GeneratedColumn<String>(
+      'food_instruction', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   late final GeneratedColumnWithTypeConverter<List<String>, String>
       reminderTimes = GeneratedColumn<String>(
@@ -389,18 +420,41 @@ class $PrescriptionsTable extends Prescriptions
       defaultConstraints: GeneratedColumn.constraintIsAlways(
           'CHECK ("allow_after_bedtime" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _isAsNeededMeta =
+      const VerificationMeta('isAsNeeded');
+  @override
+  late final GeneratedColumn<bool> isAsNeeded = GeneratedColumn<bool>(
+      'is_as_needed', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("is_as_needed" IN (0, 1))'),
+      defaultValue: const Constant(false));
+  static const VerificationMeta _cooldownMinutesMeta =
+      const VerificationMeta('cooldownMinutes');
+  @override
+  late final GeneratedColumn<int> cooldownMinutes = GeneratedColumn<int>(
+      'cooldown_minutes', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
         profileId,
         name,
         dosage,
+        strength,
+        doseAmount,
+        doseQuantity,
+        form,
+        foodInstruction,
         reminderTimes,
         takenTimes,
         remaining,
         daysSupply,
         refillsRemaining,
-        allowAfterBedtime
+        allowAfterBedtime,
+        isAsNeeded,
+        cooldownMinutes
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -435,6 +489,32 @@ class $PrescriptionsTable extends Prescriptions
     } else if (isInserting) {
       context.missing(_dosageMeta);
     }
+    if (data.containsKey('strength')) {
+      context.handle(_strengthMeta,
+          strength.isAcceptableOrUnknown(data['strength']!, _strengthMeta));
+    }
+    if (data.containsKey('dose_amount')) {
+      context.handle(
+          _doseAmountMeta,
+          doseAmount.isAcceptableOrUnknown(
+              data['dose_amount']!, _doseAmountMeta));
+    }
+    if (data.containsKey('dose_quantity')) {
+      context.handle(
+          _doseQuantityMeta,
+          doseQuantity.isAcceptableOrUnknown(
+              data['dose_quantity']!, _doseQuantityMeta));
+    }
+    if (data.containsKey('form')) {
+      context.handle(
+          _formMeta, form.isAcceptableOrUnknown(data['form']!, _formMeta));
+    }
+    if (data.containsKey('food_instruction')) {
+      context.handle(
+          _foodInstructionMeta,
+          foodInstruction.isAcceptableOrUnknown(
+              data['food_instruction']!, _foodInstructionMeta));
+    }
     if (data.containsKey('remaining')) {
       context.handle(_remainingMeta,
           remaining.isAcceptableOrUnknown(data['remaining']!, _remainingMeta));
@@ -461,6 +541,18 @@ class $PrescriptionsTable extends Prescriptions
           allowAfterBedtime.isAcceptableOrUnknown(
               data['allow_after_bedtime']!, _allowAfterBedtimeMeta));
     }
+    if (data.containsKey('is_as_needed')) {
+      context.handle(
+          _isAsNeededMeta,
+          isAsNeeded.isAcceptableOrUnknown(
+              data['is_as_needed']!, _isAsNeededMeta));
+    }
+    if (data.containsKey('cooldown_minutes')) {
+      context.handle(
+          _cooldownMinutesMeta,
+          cooldownMinutes.isAcceptableOrUnknown(
+              data['cooldown_minutes']!, _cooldownMinutesMeta));
+    }
     return context;
   }
 
@@ -478,6 +570,16 @@ class $PrescriptionsTable extends Prescriptions
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       dosage: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}dosage'])!,
+      strength: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}strength']),
+      doseAmount: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}dose_amount']),
+      doseQuantity: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}dose_quantity'])!,
+      form: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}form']),
+      foodInstruction: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}food_instruction']),
       reminderTimes: $PrescriptionsTable.$converterreminderTimes.fromSql(
           attachedDatabase.typeMapping.read(
               DriftSqlType.string, data['${effectivePrefix}reminder_times'])!),
@@ -492,6 +594,10 @@ class $PrescriptionsTable extends Prescriptions
           .read(DriftSqlType.int, data['${effectivePrefix}refills_remaining'])!,
       allowAfterBedtime: attachedDatabase.typeMapping.read(
           DriftSqlType.bool, data['${effectivePrefix}allow_after_bedtime'])!,
+      isAsNeeded: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_as_needed'])!,
+      cooldownMinutes: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}cooldown_minutes']),
     );
   }
 
@@ -511,23 +617,37 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
   final String profileId;
   final String name;
   final String dosage;
+  final String? strength;
+  final String? doseAmount;
+  final int doseQuantity;
+  final String? form;
+  final String? foodInstruction;
   final List<String> reminderTimes;
   final List<String> takenTimes;
   final int remaining;
   final int daysSupply;
   final int refillsRemaining;
   final bool allowAfterBedtime;
+  final bool isAsNeeded;
+  final int? cooldownMinutes;
   const PrescriptionRow(
       {required this.id,
       required this.profileId,
       required this.name,
       required this.dosage,
+      this.strength,
+      this.doseAmount,
+      required this.doseQuantity,
+      this.form,
+      this.foodInstruction,
       required this.reminderTimes,
       required this.takenTimes,
       required this.remaining,
       required this.daysSupply,
       required this.refillsRemaining,
-      required this.allowAfterBedtime});
+      required this.allowAfterBedtime,
+      required this.isAsNeeded,
+      this.cooldownMinutes});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -535,6 +655,19 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
     map['profile_id'] = Variable<String>(profileId);
     map['name'] = Variable<String>(name);
     map['dosage'] = Variable<String>(dosage);
+    if (!nullToAbsent || strength != null) {
+      map['strength'] = Variable<String>(strength);
+    }
+    if (!nullToAbsent || doseAmount != null) {
+      map['dose_amount'] = Variable<String>(doseAmount);
+    }
+    map['dose_quantity'] = Variable<int>(doseQuantity);
+    if (!nullToAbsent || form != null) {
+      map['form'] = Variable<String>(form);
+    }
+    if (!nullToAbsent || foodInstruction != null) {
+      map['food_instruction'] = Variable<String>(foodInstruction);
+    }
     {
       map['reminder_times'] = Variable<String>(
           $PrescriptionsTable.$converterreminderTimes.toSql(reminderTimes));
@@ -547,6 +680,10 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
     map['days_supply'] = Variable<int>(daysSupply);
     map['refills_remaining'] = Variable<int>(refillsRemaining);
     map['allow_after_bedtime'] = Variable<bool>(allowAfterBedtime);
+    map['is_as_needed'] = Variable<bool>(isAsNeeded);
+    if (!nullToAbsent || cooldownMinutes != null) {
+      map['cooldown_minutes'] = Variable<int>(cooldownMinutes);
+    }
     return map;
   }
 
@@ -556,12 +693,27 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       profileId: Value(profileId),
       name: Value(name),
       dosage: Value(dosage),
+      strength: strength == null && nullToAbsent
+          ? const Value.absent()
+          : Value(strength),
+      doseAmount: doseAmount == null && nullToAbsent
+          ? const Value.absent()
+          : Value(doseAmount),
+      doseQuantity: Value(doseQuantity),
+      form: form == null && nullToAbsent ? const Value.absent() : Value(form),
+      foodInstruction: foodInstruction == null && nullToAbsent
+          ? const Value.absent()
+          : Value(foodInstruction),
       reminderTimes: Value(reminderTimes),
       takenTimes: Value(takenTimes),
       remaining: Value(remaining),
       daysSupply: Value(daysSupply),
       refillsRemaining: Value(refillsRemaining),
       allowAfterBedtime: Value(allowAfterBedtime),
+      isAsNeeded: Value(isAsNeeded),
+      cooldownMinutes: cooldownMinutes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cooldownMinutes),
     );
   }
 
@@ -573,12 +725,19 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       profileId: serializer.fromJson<String>(json['profileId']),
       name: serializer.fromJson<String>(json['name']),
       dosage: serializer.fromJson<String>(json['dosage']),
+      strength: serializer.fromJson<String?>(json['strength']),
+      doseAmount: serializer.fromJson<String?>(json['doseAmount']),
+      doseQuantity: serializer.fromJson<int>(json['doseQuantity']),
+      form: serializer.fromJson<String?>(json['form']),
+      foodInstruction: serializer.fromJson<String?>(json['foodInstruction']),
       reminderTimes: serializer.fromJson<List<String>>(json['reminderTimes']),
       takenTimes: serializer.fromJson<List<String>>(json['takenTimes']),
       remaining: serializer.fromJson<int>(json['remaining']),
       daysSupply: serializer.fromJson<int>(json['daysSupply']),
       refillsRemaining: serializer.fromJson<int>(json['refillsRemaining']),
       allowAfterBedtime: serializer.fromJson<bool>(json['allowAfterBedtime']),
+      isAsNeeded: serializer.fromJson<bool>(json['isAsNeeded']),
+      cooldownMinutes: serializer.fromJson<int?>(json['cooldownMinutes']),
     );
   }
   @override
@@ -589,12 +748,19 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       'profileId': serializer.toJson<String>(profileId),
       'name': serializer.toJson<String>(name),
       'dosage': serializer.toJson<String>(dosage),
+      'strength': serializer.toJson<String?>(strength),
+      'doseAmount': serializer.toJson<String?>(doseAmount),
+      'doseQuantity': serializer.toJson<int>(doseQuantity),
+      'form': serializer.toJson<String?>(form),
+      'foodInstruction': serializer.toJson<String?>(foodInstruction),
       'reminderTimes': serializer.toJson<List<String>>(reminderTimes),
       'takenTimes': serializer.toJson<List<String>>(takenTimes),
       'remaining': serializer.toJson<int>(remaining),
       'daysSupply': serializer.toJson<int>(daysSupply),
       'refillsRemaining': serializer.toJson<int>(refillsRemaining),
       'allowAfterBedtime': serializer.toJson<bool>(allowAfterBedtime),
+      'isAsNeeded': serializer.toJson<bool>(isAsNeeded),
+      'cooldownMinutes': serializer.toJson<int?>(cooldownMinutes),
     };
   }
 
@@ -603,23 +769,41 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           String? profileId,
           String? name,
           String? dosage,
+          Value<String?> strength = const Value.absent(),
+          Value<String?> doseAmount = const Value.absent(),
+          int? doseQuantity,
+          Value<String?> form = const Value.absent(),
+          Value<String?> foodInstruction = const Value.absent(),
           List<String>? reminderTimes,
           List<String>? takenTimes,
           int? remaining,
           int? daysSupply,
           int? refillsRemaining,
-          bool? allowAfterBedtime}) =>
+          bool? allowAfterBedtime,
+          bool? isAsNeeded,
+          Value<int?> cooldownMinutes = const Value.absent()}) =>
       PrescriptionRow(
         id: id ?? this.id,
         profileId: profileId ?? this.profileId,
         name: name ?? this.name,
         dosage: dosage ?? this.dosage,
+        strength: strength.present ? strength.value : this.strength,
+        doseAmount: doseAmount.present ? doseAmount.value : this.doseAmount,
+        doseQuantity: doseQuantity ?? this.doseQuantity,
+        form: form.present ? form.value : this.form,
+        foodInstruction: foodInstruction.present
+            ? foodInstruction.value
+            : this.foodInstruction,
         reminderTimes: reminderTimes ?? this.reminderTimes,
         takenTimes: takenTimes ?? this.takenTimes,
         remaining: remaining ?? this.remaining,
         daysSupply: daysSupply ?? this.daysSupply,
         refillsRemaining: refillsRemaining ?? this.refillsRemaining,
         allowAfterBedtime: allowAfterBedtime ?? this.allowAfterBedtime,
+        isAsNeeded: isAsNeeded ?? this.isAsNeeded,
+        cooldownMinutes: cooldownMinutes.present
+            ? cooldownMinutes.value
+            : this.cooldownMinutes,
       );
   PrescriptionRow copyWithCompanion(PrescriptionsCompanion data) {
     return PrescriptionRow(
@@ -627,6 +811,16 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       profileId: data.profileId.present ? data.profileId.value : this.profileId,
       name: data.name.present ? data.name.value : this.name,
       dosage: data.dosage.present ? data.dosage.value : this.dosage,
+      strength: data.strength.present ? data.strength.value : this.strength,
+      doseAmount:
+          data.doseAmount.present ? data.doseAmount.value : this.doseAmount,
+      doseQuantity: data.doseQuantity.present
+          ? data.doseQuantity.value
+          : this.doseQuantity,
+      form: data.form.present ? data.form.value : this.form,
+      foodInstruction: data.foodInstruction.present
+          ? data.foodInstruction.value
+          : this.foodInstruction,
       reminderTimes: data.reminderTimes.present
           ? data.reminderTimes.value
           : this.reminderTimes,
@@ -641,6 +835,11 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
       allowAfterBedtime: data.allowAfterBedtime.present
           ? data.allowAfterBedtime.value
           : this.allowAfterBedtime,
+      isAsNeeded:
+          data.isAsNeeded.present ? data.isAsNeeded.value : this.isAsNeeded,
+      cooldownMinutes: data.cooldownMinutes.present
+          ? data.cooldownMinutes.value
+          : this.cooldownMinutes,
     );
   }
 
@@ -651,19 +850,42 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           ..write('profileId: $profileId, ')
           ..write('name: $name, ')
           ..write('dosage: $dosage, ')
+          ..write('strength: $strength, ')
+          ..write('doseAmount: $doseAmount, ')
+          ..write('doseQuantity: $doseQuantity, ')
+          ..write('form: $form, ')
+          ..write('foodInstruction: $foodInstruction, ')
           ..write('reminderTimes: $reminderTimes, ')
           ..write('takenTimes: $takenTimes, ')
           ..write('remaining: $remaining, ')
           ..write('daysSupply: $daysSupply, ')
           ..write('refillsRemaining: $refillsRemaining, ')
-          ..write('allowAfterBedtime: $allowAfterBedtime')
+          ..write('allowAfterBedtime: $allowAfterBedtime, ')
+          ..write('isAsNeeded: $isAsNeeded, ')
+          ..write('cooldownMinutes: $cooldownMinutes')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, profileId, name, dosage, reminderTimes,
-      takenTimes, remaining, daysSupply, refillsRemaining, allowAfterBedtime);
+  int get hashCode => Object.hash(
+      id,
+      profileId,
+      name,
+      dosage,
+      strength,
+      doseAmount,
+      doseQuantity,
+      form,
+      foodInstruction,
+      reminderTimes,
+      takenTimes,
+      remaining,
+      daysSupply,
+      refillsRemaining,
+      allowAfterBedtime,
+      isAsNeeded,
+      cooldownMinutes);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -672,12 +894,19 @@ class PrescriptionRow extends DataClass implements Insertable<PrescriptionRow> {
           other.profileId == this.profileId &&
           other.name == this.name &&
           other.dosage == this.dosage &&
+          other.strength == this.strength &&
+          other.doseAmount == this.doseAmount &&
+          other.doseQuantity == this.doseQuantity &&
+          other.form == this.form &&
+          other.foodInstruction == this.foodInstruction &&
           other.reminderTimes == this.reminderTimes &&
           other.takenTimes == this.takenTimes &&
           other.remaining == this.remaining &&
           other.daysSupply == this.daysSupply &&
           other.refillsRemaining == this.refillsRemaining &&
-          other.allowAfterBedtime == this.allowAfterBedtime);
+          other.allowAfterBedtime == this.allowAfterBedtime &&
+          other.isAsNeeded == this.isAsNeeded &&
+          other.cooldownMinutes == this.cooldownMinutes);
 }
 
 class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
@@ -685,24 +914,38 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
   final Value<String> profileId;
   final Value<String> name;
   final Value<String> dosage;
+  final Value<String?> strength;
+  final Value<String?> doseAmount;
+  final Value<int> doseQuantity;
+  final Value<String?> form;
+  final Value<String?> foodInstruction;
   final Value<List<String>> reminderTimes;
   final Value<List<String>> takenTimes;
   final Value<int> remaining;
   final Value<int> daysSupply;
   final Value<int> refillsRemaining;
   final Value<bool> allowAfterBedtime;
+  final Value<bool> isAsNeeded;
+  final Value<int?> cooldownMinutes;
   final Value<int> rowid;
   const PrescriptionsCompanion({
     this.id = const Value.absent(),
     this.profileId = const Value.absent(),
     this.name = const Value.absent(),
     this.dosage = const Value.absent(),
+    this.strength = const Value.absent(),
+    this.doseAmount = const Value.absent(),
+    this.doseQuantity = const Value.absent(),
+    this.form = const Value.absent(),
+    this.foodInstruction = const Value.absent(),
     this.reminderTimes = const Value.absent(),
     this.takenTimes = const Value.absent(),
     this.remaining = const Value.absent(),
     this.daysSupply = const Value.absent(),
     this.refillsRemaining = const Value.absent(),
     this.allowAfterBedtime = const Value.absent(),
+    this.isAsNeeded = const Value.absent(),
+    this.cooldownMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   PrescriptionsCompanion.insert({
@@ -710,12 +953,19 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     required String profileId,
     required String name,
     required String dosage,
+    this.strength = const Value.absent(),
+    this.doseAmount = const Value.absent(),
+    this.doseQuantity = const Value.absent(),
+    this.form = const Value.absent(),
+    this.foodInstruction = const Value.absent(),
     required List<String> reminderTimes,
     required List<String> takenTimes,
     required int remaining,
     required int daysSupply,
     this.refillsRemaining = const Value.absent(),
     this.allowAfterBedtime = const Value.absent(),
+    this.isAsNeeded = const Value.absent(),
+    this.cooldownMinutes = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         profileId = Value(profileId),
@@ -730,12 +980,19 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     Expression<String>? profileId,
     Expression<String>? name,
     Expression<String>? dosage,
+    Expression<String>? strength,
+    Expression<String>? doseAmount,
+    Expression<int>? doseQuantity,
+    Expression<String>? form,
+    Expression<String>? foodInstruction,
     Expression<String>? reminderTimes,
     Expression<String>? takenTimes,
     Expression<int>? remaining,
     Expression<int>? daysSupply,
     Expression<int>? refillsRemaining,
     Expression<bool>? allowAfterBedtime,
+    Expression<bool>? isAsNeeded,
+    Expression<int>? cooldownMinutes,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -743,12 +1000,19 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
       if (profileId != null) 'profile_id': profileId,
       if (name != null) 'name': name,
       if (dosage != null) 'dosage': dosage,
+      if (strength != null) 'strength': strength,
+      if (doseAmount != null) 'dose_amount': doseAmount,
+      if (doseQuantity != null) 'dose_quantity': doseQuantity,
+      if (form != null) 'form': form,
+      if (foodInstruction != null) 'food_instruction': foodInstruction,
       if (reminderTimes != null) 'reminder_times': reminderTimes,
       if (takenTimes != null) 'taken_times': takenTimes,
       if (remaining != null) 'remaining': remaining,
       if (daysSupply != null) 'days_supply': daysSupply,
       if (refillsRemaining != null) 'refills_remaining': refillsRemaining,
       if (allowAfterBedtime != null) 'allow_after_bedtime': allowAfterBedtime,
+      if (isAsNeeded != null) 'is_as_needed': isAsNeeded,
+      if (cooldownMinutes != null) 'cooldown_minutes': cooldownMinutes,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -758,24 +1022,38 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
       Value<String>? profileId,
       Value<String>? name,
       Value<String>? dosage,
+      Value<String?>? strength,
+      Value<String?>? doseAmount,
+      Value<int>? doseQuantity,
+      Value<String?>? form,
+      Value<String?>? foodInstruction,
       Value<List<String>>? reminderTimes,
       Value<List<String>>? takenTimes,
       Value<int>? remaining,
       Value<int>? daysSupply,
       Value<int>? refillsRemaining,
       Value<bool>? allowAfterBedtime,
+      Value<bool>? isAsNeeded,
+      Value<int?>? cooldownMinutes,
       Value<int>? rowid}) {
     return PrescriptionsCompanion(
       id: id ?? this.id,
       profileId: profileId ?? this.profileId,
       name: name ?? this.name,
       dosage: dosage ?? this.dosage,
+      strength: strength ?? this.strength,
+      doseAmount: doseAmount ?? this.doseAmount,
+      doseQuantity: doseQuantity ?? this.doseQuantity,
+      form: form ?? this.form,
+      foodInstruction: foodInstruction ?? this.foodInstruction,
       reminderTimes: reminderTimes ?? this.reminderTimes,
       takenTimes: takenTimes ?? this.takenTimes,
       remaining: remaining ?? this.remaining,
       daysSupply: daysSupply ?? this.daysSupply,
       refillsRemaining: refillsRemaining ?? this.refillsRemaining,
       allowAfterBedtime: allowAfterBedtime ?? this.allowAfterBedtime,
+      isAsNeeded: isAsNeeded ?? this.isAsNeeded,
+      cooldownMinutes: cooldownMinutes ?? this.cooldownMinutes,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -794,6 +1072,21 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     }
     if (dosage.present) {
       map['dosage'] = Variable<String>(dosage.value);
+    }
+    if (strength.present) {
+      map['strength'] = Variable<String>(strength.value);
+    }
+    if (doseAmount.present) {
+      map['dose_amount'] = Variable<String>(doseAmount.value);
+    }
+    if (doseQuantity.present) {
+      map['dose_quantity'] = Variable<int>(doseQuantity.value);
+    }
+    if (form.present) {
+      map['form'] = Variable<String>(form.value);
+    }
+    if (foodInstruction.present) {
+      map['food_instruction'] = Variable<String>(foodInstruction.value);
     }
     if (reminderTimes.present) {
       map['reminder_times'] = Variable<String>($PrescriptionsTable
@@ -816,6 +1109,12 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
     if (allowAfterBedtime.present) {
       map['allow_after_bedtime'] = Variable<bool>(allowAfterBedtime.value);
     }
+    if (isAsNeeded.present) {
+      map['is_as_needed'] = Variable<bool>(isAsNeeded.value);
+    }
+    if (cooldownMinutes.present) {
+      map['cooldown_minutes'] = Variable<int>(cooldownMinutes.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -829,12 +1128,19 @@ class PrescriptionsCompanion extends UpdateCompanion<PrescriptionRow> {
           ..write('profileId: $profileId, ')
           ..write('name: $name, ')
           ..write('dosage: $dosage, ')
+          ..write('strength: $strength, ')
+          ..write('doseAmount: $doseAmount, ')
+          ..write('doseQuantity: $doseQuantity, ')
+          ..write('form: $form, ')
+          ..write('foodInstruction: $foodInstruction, ')
           ..write('reminderTimes: $reminderTimes, ')
           ..write('takenTimes: $takenTimes, ')
           ..write('remaining: $remaining, ')
           ..write('daysSupply: $daysSupply, ')
           ..write('refillsRemaining: $refillsRemaining, ')
           ..write('allowAfterBedtime: $allowAfterBedtime, ')
+          ..write('isAsNeeded: $isAsNeeded, ')
+          ..write('cooldownMinutes: $cooldownMinutes, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1508,12 +1814,19 @@ typedef $$PrescriptionsTableCreateCompanionBuilder = PrescriptionsCompanion
   required String profileId,
   required String name,
   required String dosage,
+  Value<String?> strength,
+  Value<String?> doseAmount,
+  Value<int> doseQuantity,
+  Value<String?> form,
+  Value<String?> foodInstruction,
   required List<String> reminderTimes,
   required List<String> takenTimes,
   required int remaining,
   required int daysSupply,
   Value<int> refillsRemaining,
   Value<bool> allowAfterBedtime,
+  Value<bool> isAsNeeded,
+  Value<int?> cooldownMinutes,
   Value<int> rowid,
 });
 typedef $$PrescriptionsTableUpdateCompanionBuilder = PrescriptionsCompanion
@@ -1522,12 +1835,19 @@ typedef $$PrescriptionsTableUpdateCompanionBuilder = PrescriptionsCompanion
   Value<String> profileId,
   Value<String> name,
   Value<String> dosage,
+  Value<String?> strength,
+  Value<String?> doseAmount,
+  Value<int> doseQuantity,
+  Value<String?> form,
+  Value<String?> foodInstruction,
   Value<List<String>> reminderTimes,
   Value<List<String>> takenTimes,
   Value<int> remaining,
   Value<int> daysSupply,
   Value<int> refillsRemaining,
   Value<bool> allowAfterBedtime,
+  Value<bool> isAsNeeded,
+  Value<int?> cooldownMinutes,
   Value<int> rowid,
 });
 
@@ -1583,6 +1903,22 @@ class $$PrescriptionsTableFilterComposer
   ColumnFilters<String> get dosage => $composableBuilder(
       column: $table.dosage, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<String> get strength => $composableBuilder(
+      column: $table.strength, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get doseAmount => $composableBuilder(
+      column: $table.doseAmount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get doseQuantity => $composableBuilder(
+      column: $table.doseQuantity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get form => $composableBuilder(
+      column: $table.form, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get foodInstruction => $composableBuilder(
+      column: $table.foodInstruction,
+      builder: (column) => ColumnFilters(column));
+
   ColumnWithTypeConverterFilters<List<String>, List<String>, String>
       get reminderTimes => $composableBuilder(
           column: $table.reminderTimes,
@@ -1605,6 +1941,13 @@ class $$PrescriptionsTableFilterComposer
 
   ColumnFilters<bool> get allowAfterBedtime => $composableBuilder(
       column: $table.allowAfterBedtime,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isAsNeeded => $composableBuilder(
+      column: $table.isAsNeeded, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get cooldownMinutes => $composableBuilder(
+      column: $table.cooldownMinutes,
       builder: (column) => ColumnFilters(column));
 
   $$ProfilesTableFilterComposer get profileId {
@@ -1667,6 +2010,23 @@ class $$PrescriptionsTableOrderingComposer
   ColumnOrderings<String> get dosage => $composableBuilder(
       column: $table.dosage, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get strength => $composableBuilder(
+      column: $table.strength, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get doseAmount => $composableBuilder(
+      column: $table.doseAmount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get doseQuantity => $composableBuilder(
+      column: $table.doseQuantity,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get form => $composableBuilder(
+      column: $table.form, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get foodInstruction => $composableBuilder(
+      column: $table.foodInstruction,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get reminderTimes => $composableBuilder(
       column: $table.reminderTimes,
       builder: (column) => ColumnOrderings(column));
@@ -1686,6 +2046,13 @@ class $$PrescriptionsTableOrderingComposer
 
   ColumnOrderings<bool> get allowAfterBedtime => $composableBuilder(
       column: $table.allowAfterBedtime,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isAsNeeded => $composableBuilder(
+      column: $table.isAsNeeded, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get cooldownMinutes => $composableBuilder(
+      column: $table.cooldownMinutes,
       builder: (column) => ColumnOrderings(column));
 
   $$ProfilesTableOrderingComposer get profileId {
@@ -1727,6 +2094,21 @@ class $$PrescriptionsTableAnnotationComposer
   GeneratedColumn<String> get dosage =>
       $composableBuilder(column: $table.dosage, builder: (column) => column);
 
+  GeneratedColumn<String> get strength =>
+      $composableBuilder(column: $table.strength, builder: (column) => column);
+
+  GeneratedColumn<String> get doseAmount => $composableBuilder(
+      column: $table.doseAmount, builder: (column) => column);
+
+  GeneratedColumn<int> get doseQuantity => $composableBuilder(
+      column: $table.doseQuantity, builder: (column) => column);
+
+  GeneratedColumn<String> get form =>
+      $composableBuilder(column: $table.form, builder: (column) => column);
+
+  GeneratedColumn<String> get foodInstruction => $composableBuilder(
+      column: $table.foodInstruction, builder: (column) => column);
+
   GeneratedColumnWithTypeConverter<List<String>, String> get reminderTimes =>
       $composableBuilder(
           column: $table.reminderTimes, builder: (column) => column);
@@ -1746,6 +2128,12 @@ class $$PrescriptionsTableAnnotationComposer
 
   GeneratedColumn<bool> get allowAfterBedtime => $composableBuilder(
       column: $table.allowAfterBedtime, builder: (column) => column);
+
+  GeneratedColumn<bool> get isAsNeeded => $composableBuilder(
+      column: $table.isAsNeeded, builder: (column) => column);
+
+  GeneratedColumn<int> get cooldownMinutes => $composableBuilder(
+      column: $table.cooldownMinutes, builder: (column) => column);
 
   $$ProfilesTableAnnotationComposer get profileId {
     final $$ProfilesTableAnnotationComposer composer = $composerBuilder(
@@ -1816,12 +2204,19 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             Value<String> profileId = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<String> dosage = const Value.absent(),
+            Value<String?> strength = const Value.absent(),
+            Value<String?> doseAmount = const Value.absent(),
+            Value<int> doseQuantity = const Value.absent(),
+            Value<String?> form = const Value.absent(),
+            Value<String?> foodInstruction = const Value.absent(),
             Value<List<String>> reminderTimes = const Value.absent(),
             Value<List<String>> takenTimes = const Value.absent(),
             Value<int> remaining = const Value.absent(),
             Value<int> daysSupply = const Value.absent(),
             Value<int> refillsRemaining = const Value.absent(),
             Value<bool> allowAfterBedtime = const Value.absent(),
+            Value<bool> isAsNeeded = const Value.absent(),
+            Value<int?> cooldownMinutes = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PrescriptionsCompanion(
@@ -1829,12 +2224,19 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             profileId: profileId,
             name: name,
             dosage: dosage,
+            strength: strength,
+            doseAmount: doseAmount,
+            doseQuantity: doseQuantity,
+            form: form,
+            foodInstruction: foodInstruction,
             reminderTimes: reminderTimes,
             takenTimes: takenTimes,
             remaining: remaining,
             daysSupply: daysSupply,
             refillsRemaining: refillsRemaining,
             allowAfterBedtime: allowAfterBedtime,
+            isAsNeeded: isAsNeeded,
+            cooldownMinutes: cooldownMinutes,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -1842,12 +2244,19 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             required String profileId,
             required String name,
             required String dosage,
+            Value<String?> strength = const Value.absent(),
+            Value<String?> doseAmount = const Value.absent(),
+            Value<int> doseQuantity = const Value.absent(),
+            Value<String?> form = const Value.absent(),
+            Value<String?> foodInstruction = const Value.absent(),
             required List<String> reminderTimes,
             required List<String> takenTimes,
             required int remaining,
             required int daysSupply,
             Value<int> refillsRemaining = const Value.absent(),
             Value<bool> allowAfterBedtime = const Value.absent(),
+            Value<bool> isAsNeeded = const Value.absent(),
+            Value<int?> cooldownMinutes = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               PrescriptionsCompanion.insert(
@@ -1855,12 +2264,19 @@ class $$PrescriptionsTableTableManager extends RootTableManager<
             profileId: profileId,
             name: name,
             dosage: dosage,
+            strength: strength,
+            doseAmount: doseAmount,
+            doseQuantity: doseQuantity,
+            form: form,
+            foodInstruction: foodInstruction,
             reminderTimes: reminderTimes,
             takenTimes: takenTimes,
             remaining: remaining,
             daysSupply: daysSupply,
             refillsRemaining: refillsRemaining,
             allowAfterBedtime: allowAfterBedtime,
+            isAsNeeded: isAsNeeded,
+            cooldownMinutes: cooldownMinutes,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

@@ -153,6 +153,16 @@ object LiveReminderManager {
         }
     }
 
+    fun getActiveSnoozes(): Map<String, Long> {
+        val batchId = currentBatchId
+        val endMs = currentSnoozeEndMs
+        val remaining = currentRemainingDoses
+        if (batchId.isNotEmpty() && remaining > 0 && endMs > System.currentTimeMillis()) {
+            return mapOf(batchId to endMs)
+        }
+        return emptyMap()
+    }
+
     private fun renderNotification(context: Context) {
         val count = currentRemainingDoses
         if (count <= 0) {

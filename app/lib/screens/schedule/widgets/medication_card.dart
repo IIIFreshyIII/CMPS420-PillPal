@@ -1,29 +1,40 @@
+import 'dart:async' show Timer;
 import 'dart:io' show Platform;
+
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+
 import '../../../core/theme/pillpal_colors.dart';
-import '../../../presentation/widgets/confetti_burst.dart';
-import '../../../presentation/widgets/pressable.dart';
+import '../../../core/utils/date_formatter.dart';
 import '../../../data/models/prescription.dart';
 import '../../../data/models/profile.dart';
+import '../../../presentation/widgets/confetti_burst.dart';
+import '../../../presentation/widgets/pressable.dart';
 
 /// Individual medication schedule slot card.
-/// On iOS, supports swipe-to-reveal edit (pencil) and delete (trash with
-/// an expanding fixed-height capsule oval and Cupertino confirmation action sheet).
-/// On Android, remains a non-slidable card where tapping opens the detail sheet.
+///
+/// Supports press-and-hold (~375ms) on both iOS and Android to peek into
+/// `MedicationQuickViewSheet` immediately while the finger is still down
+/// (cancelled immediately on scroll/swipe and blocked while swipe actions are
+/// open). On iOS, supports swipe-right for Snooze/Cancel Snooze & Skip and
+/// swipe-left for Edit & Delete; tapping any part of a slid card dismisses the
+/// open action buttons without marking taken or opening Quick View.
 class MedicationCard extends StatefulWidget {
   final Prescription item;
   final String time;
   final bool isTaken;
   final bool isSkipped;
+  final bool isSnoozeActive;
+  final DateTime? snoozeEndTime;
   final Profile? profile;
   final VoidCallback onTakeDose;
   final VoidCallback onViewDetails;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   final VoidCallback? onSnooze;
+  final VoidCallback? onCancelSnooze;
   final VoidCallback? onSkip;
   final GlobalKey? targetKey;
 
@@ -33,12 +44,15 @@ class MedicationCard extends StatefulWidget {
     required this.time,
     required this.isTaken,
     this.isSkipped = false,
+    this.isSnoozeActive = false,
+    this.snoozeEndTime,
     required this.profile,
     required this.onTakeDose,
     required this.onViewDetails,
     this.onEdit,
     this.onDelete,
     this.onSnooze,
+    this.onCancelSnooze,
     this.onSkip,
     this.targetKey,
   });
@@ -50,17 +64,70 @@ class MedicationCard extends StatefulWidget {
 class _MedicationCardState extends State<MedicationCard>
     with SingleTickerProviderStateMixin {
   late final SlidableController _slidableController;
+  final GlobalKey<PressableState> _pressableKey = GlobalKey<PressableState>();
+  Timer? _openGuardTimer;
+  bool _openGuardActive = false;
 
   @override
   void initState() {
     super.initState();
     _slidableController = SlidableController(this);
+    _slidableController.animation.addListener(_onSlidableAnimationChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant MedicationCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isTaken && !oldWidget.isTaken && _isActionPaneOpen) {
+      _slidableController.close();
+    }
   }
 
   @override
   void dispose() {
+    _openGuardTimer?.cancel();
+    _slidableController.animation.removeListener(_onSlidableAnimationChanged);
     _slidableController.dispose();
     super.dispose();
+  }
+
+  bool get _isActionPaneOpen => _slidableController.animation.value > 0.01;
+
+  void _onSlidableAnimationChanged() {
+    if (_slidableController.animation.value > 0.005) {
+      _pressableKey.currentState?.cancelPendingHold();
+    }
+  }
+
+  void _triggerViewDetailsGuarded() {
+    if (_openGuardActive) return;
+    _openGuardActive = true;
+    _openGuardTimer?.cancel();
+    _openGuardTimer = Timer(const Duration(milliseconds: 350), () {
+      _openGuardActive = false;
+    });
+    widget.onViewDetails();
+  }
+
+  void _handleCardTap() {
+    if (_isActionPaneOpen) {
+      _slidableController.close();
+      return;
+    }
+    _triggerViewDetailsGuarded();
+  }
+
+  void _handleCardHold() {
+    if (_isActionPaneOpen) return;
+    _triggerViewDetailsGuarded();
+  }
+
+  void _handleCheckTap() {
+    if (_isActionPaneOpen) {
+      _slidableController.close();
+      return;
+    }
+    widget.onTakeDose();
   }
 
   Future<bool> _showDeleteActionSheet(BuildContext context) async {
@@ -104,6 +171,11 @@ class _MedicationCardState extends State<MedicationCard>
     }
   }
 
+  String _snoozeUntilLabel(DateTime endTime) {
+    final tod = TimeOfDay(hour: endTime.hour, minute: endTime.minute);
+    return 'Snoozed • ${formatTimeOfDayLabel(tod)}';
+  }
+
   Widget _buildCardContent(BuildContext context) {
     final c = context.colors;
     final bool isLow = widget.item.remaining <= 5;
@@ -114,20 +186,30 @@ class _MedicationCardState extends State<MedicationCard>
     final instant = MediaQuery.of(context).disableAnimations;
     final radius = BorderRadius.circular(18);
     final bool isDimmed = widget.isTaken || widget.isSkipped;
+    final bool showSnoozeBadge =
+        widget.isSnoozeActive && !widget.isTaken && !widget.isSkipped;
 
     final content = AnimatedOpacity(
       opacity: isDimmed ? 0.45 : 1.0,
       duration: instant ? Duration.zero : const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
       child: Pressable(
-        onTap: widget.onViewDetails,
+        key: _pressableKey,
+        onTap: _handleCardTap,
+        onHold: _handleCardHold,
+        holdDuration: const Duration(milliseconds: 375),
+        canTriggerHold: () => !_isActionPaneOpen,
         borderRadius: radius,
         rippleColor: c.tealRipple,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: isDimmed ? c.background : c.surface,
           borderRadius: radius,
-          border: Border.all(color: c.borderLight),
+          border: Border.all(
+            color: showSnoozeBadge
+                ? const Color(0xFFF59E0B).withValues(alpha: 0.45)
+                : c.borderLight,
+          ),
           boxShadow: [
             BoxShadow(
               color: c.cardShadow,
@@ -146,7 +228,8 @@ class _MedicationCardState extends State<MedicationCard>
               isTaken: widget.isTaken,
               isSkipped: widget.isSkipped,
               profileColor: widget.profile?.color,
-              onTap: widget.onTakeDose,
+              shouldDismissOnly: () => _isActionPaneOpen,
+              onTap: _handleCheckTap,
               instant: instant,
             ),
           ),
@@ -238,6 +321,46 @@ class _MedicationCardState extends State<MedicationCard>
                           ),
                         ),
                       ),
+                    )
+                  else if (showSnoozeBadge)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Container(
+                        key: ValueKey('snooze_badge_${widget.item.id}_${widget.time}'),
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 2, horizontal: 7),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B).withValues(alpha: 0.14),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color:
+                                const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              CupertinoIcons.clock_fill,
+                              size: 10,
+                              color: Color(0xFFD97706),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.snoozeEndTime != null
+                                  ? _snoozeUntilLabel(widget.snoozeEndTime!)
+                                  : 'Snoozed',
+                              style: const TextStyle(
+                                color: Color(0xFFD97706),
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   const SizedBox(height: 6),
                   Row(
@@ -294,9 +417,15 @@ class _MedicationCardState extends State<MedicationCard>
   Widget build(BuildContext context) {
     final cardContent = _buildCardContent(context);
 
-    final hasStartActions = !widget.isTaken && (widget.onSnooze != null || widget.onSkip != null);
+    final showSnoozeAction = !widget.isTaken &&
+        !widget.isSkipped &&
+        ((widget.isSnoozeActive && widget.onCancelSnooze != null) ||
+            (!widget.isSnoozeActive && widget.onSnooze != null));
+    final showSkipAction = !widget.isTaken && widget.onSkip != null;
+    final hasStartActions = showSnoozeAction || showSkipAction;
     final hasEndActions = widget.onDelete != null || widget.onEdit != null;
-    final isIOS = Theme.of(context).platform == TargetPlatform.iOS || Platform.isIOS;
+    final isIOS =
+        Theme.of(context).platform == TargetPlatform.iOS || Platform.isIOS;
 
     // On non-iOS platforms or if no actions are provided, render plain card.
     if (!isIOS || (!hasStartActions && !hasEndActions)) {
@@ -319,7 +448,7 @@ class _MedicationCardState extends State<MedicationCard>
             key: ValueKey('slidable_${widget.item.id}_${widget.time}'),
             controller: _slidableController,
             groupTag: 'medication_cards',
-            // Swipe Right (startActionPane): Adherence Actions (Snooze, Skip)
+            // Swipe Right (startActionPane): Adherence Actions (Snooze / Cancel Snooze, Skip)
             startActionPane: hasStartActions
                 ? ActionPane(
                     motion: const BehindMotion(),
@@ -332,40 +461,53 @@ class _MedicationCardState extends State<MedicationCard>
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            if (widget.onSnooze != null)
+                            if (showSnoozeAction)
                               GestureDetector(
+                                key: widget.isSnoozeActive
+                                    ? const Key('card_swipe_cancel_snooze')
+                                    : const Key('card_swipe_snooze'),
                                 behavior: HitTestBehavior.opaque,
                                 onTap: () {
                                   _slidableController.close();
-                                  widget.onSnooze?.call();
+                                  if (widget.isSnoozeActive) {
+                                    widget.onCancelSnooze?.call();
+                                  } else {
+                                    widget.onSnooze?.call();
+                                  }
                                 },
                                 child: Container(
                                   width: 44,
                                   height: 44,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFF59E0B),
+                                    color: widget.isSnoozeActive
+                                        ? CupertinoColors.destructiveRed
+                                        : const Color(0xFFF59E0B),
                                     shape: BoxShape.circle,
                                     boxShadow: [
                                       BoxShadow(
-                                        color: const Color(0xFFF59E0B)
+                                        color: (widget.isSnoozeActive
+                                                ? CupertinoColors.destructiveRed
+                                                : const Color(0xFFF59E0B))
                                             .withValues(alpha: 0.25),
                                         blurRadius: 8,
                                         offset: const Offset(0, 3),
                                       ),
                                     ],
                                   ),
-                                  child: const Center(
+                                  child: Center(
                                     child: Icon(
-                                      CupertinoIcons.clock_fill,
+                                      widget.isSnoozeActive
+                                          ? CupertinoIcons.bell_slash_fill
+                                          : CupertinoIcons.clock_fill,
                                       color: CupertinoColors.white,
                                       size: 20,
                                     ),
                                   ),
                                 ),
                               ),
-                            if (widget.onSnooze != null && widget.onSkip != null)
+                            if (showSnoozeAction && showSkipAction)
                               const SizedBox(width: 8),
-                            if (widget.onSkip != null)
+                            if (showSkipAction)
                               GestureDetector(
                                 behavior: HitTestBehavior.opaque,
                                 onTap: () {
@@ -389,7 +531,8 @@ class _MedicationCardState extends State<MedicationCard>
                                   child: Center(
                                     child: Icon(
                                       widget.isSkipped
-                                          ? CupertinoIcons.arrow_counterclockwise
+                                          ? CupertinoIcons
+                                              .arrow_counterclockwise
                                           : CupertinoIcons.forward_fill,
                                       color: CupertinoColors.white,
                                       size: 20,
@@ -576,11 +719,14 @@ class _EndActionPaneContent extends StatelessWidget {
 
 /// The 34px dose check, with a 48x48 touch target (Material minimum). Marking
 /// taken pops the check in with a medium haptic; un-marking just ticks.
+/// When [shouldDismissOnly] returns true (open swipe action buttons), tapping
+/// delegates to [onTap] without haptic celebration so the card simply closes.
 class _DoseCheck extends StatelessWidget {
   const _DoseCheck({
     required this.isTaken,
     this.isSkipped = false,
     required this.profileColor,
+    required this.shouldDismissOnly,
     required this.onTap,
     required this.instant,
   });
@@ -588,11 +734,10 @@ class _DoseCheck extends StatelessWidget {
   final bool isTaken;
   final bool isSkipped;
   final Color? profileColor;
+  final bool Function() shouldDismissOnly;
   final VoidCallback onTap;
   final bool instant;
 
-  /// A tiny burst from the check's centre, in theme colours plus this
-  /// dose's profile colour. ConfettiBurst skips it under "Remove animations".
   void _celebrate(BuildContext context) {
     final box = context.findRenderObject();
     if (box is! RenderBox || !box.hasSize) return;
@@ -643,6 +788,10 @@ class _DoseCheck extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
+        if (shouldDismissOnly()) {
+          onTap();
+          return;
+        }
         if (isTaken || isSkipped) {
           HapticFeedback.selectionClick();
         } else {

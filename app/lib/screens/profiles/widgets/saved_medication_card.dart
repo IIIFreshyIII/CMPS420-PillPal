@@ -138,8 +138,34 @@ class SavedMedicationCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
 
-                  // Scheduled reminder times
-                  if (prescription.reminderTimes.isNotEmpty)
+                  // Scheduled reminder times or As-Needed indicator
+                  if (prescription.isAsNeeded)
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: c.tint,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            prescription.cooldownMinutes != null &&
+                                    prescription.cooldownMinutes! > 0
+                                ? 'As Needed • ${prescription.cooldownMinutes! ~/ 60}h cooldown'
+                                : 'As Needed',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: c.tealDeep,
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (prescription.reminderTimes.isNotEmpty)
                     Wrap(
                       spacing: 6,
                       runSpacing: 4,

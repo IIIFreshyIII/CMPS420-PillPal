@@ -876,4 +876,126 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     }
   });
+
+  testWidgets(
+      'Press-and-hold on Mark All opens submenu with Mark All Taken and Mark All Skipped',
+      (tester) async {
+    List<(String, String)>? skippedTargets;
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: ScheduleScreen(
+          prescriptions: const [
+            Prescription(
+              id: '1',
+              name: 'Allegra',
+              dosage: '10mg',
+              reminderTimes: ['8:00 AM'],
+              daysSupply: 14,
+              remaining: 14,
+              profileId: '1',
+            ),
+            Prescription(
+              id: '2',
+              name: 'Lisinopril',
+              dosage: '20mg',
+              reminderTimes: ['8:00 AM'],
+              daysSupply: 14,
+              remaining: 14,
+              profileId: '1',
+            ),
+          ],
+          profiles: const [
+            Profile(id: '1', name: 'Me', color: Colors.blue, isPrimary: true),
+          ],
+          selectedProfileId: 'all',
+          onSelectProfile: (_) {},
+          onTakeDose: (_, __) {},
+          onSkipAllInSection: (targets) => skippedTargets = targets,
+          onViewMedication: (_) {},
+          onToggleAllCompleted: (_, __) {},
+          onOpenScan: () {},
+          isScanning: false,
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    final markAllBtn = find.byKey(const ValueKey('mark_all_morning'));
+    expect(markAllBtn, findsOneWidget);
+
+    final gesture = await tester.startGesture(tester.getCenter(markAllBtn));
+    await tester.pump(const Duration(milliseconds: 420));
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('mark_all_menu_taken')), findsOneWidget);
+    expect(find.byKey(const Key('mark_all_menu_skipped')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('mark_all_menu_skipped')));
+    await tester.pumpAndSettle();
+
+    expect(skippedTargets, isNotNull);
+    expect(skippedTargets, hasLength(2));
+  });
+
+  testWidgets(
+      'Active batch snooze indicator stays visible while any med in batch is untaken and hides when all are skipped',
+      (tester) async {
+    final futureSnoozeEnd = DateTime.now().add(const Duration(minutes: 15));
+    const meds = [
+      Prescription(
+        id: '1',
+        name: 'Allegra',
+        dosage: '10mg',
+        reminderTimes: ['8:00 AM'],
+        daysSupply: 14,
+        remaining: 14,
+        profileId: '1',
+      ),
+      Prescription(
+        id: '2',
+        name: 'Lisinopril',
+        dosage: '20mg',
+        reminderTimes: ['8:00 AM'],
+        daysSupply: 14,
+        remaining: 14,
+        profileId: '1',
+      ),
+    ];
+
+    Widget buildWithSkipped(Set<String> skipped) {
+      return MaterialApp(
+        home: Scaffold(
+          body: ScheduleScreen(
+            prescriptions: meds,
+            profiles: const [
+              Profile(id: '1', name: 'Me', color: Colors.blue, isPrimary: true),
+            ],
+            selectedProfileId: 'all',
+            onSelectProfile: (_) {},
+            onTakeDose: (_, __) {},
+            skippedSlotKeys: skipped,
+            activeSnoozeEnds: {'batch_08_00': futureSnoozeEnd},
+            onViewMedication: (_) {},
+            onToggleAllCompleted: (_, __) {},
+            onOpenScan: () {},
+            isScanning: false,
+          ),
+        ),
+      );
+    }
+
+    // 1 of 2 skipped -> remaining untaken med still displays snooze badge
+    await tester.pumpWidget(buildWithSkipped({'1_8:00 AM'}));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('snooze_badge_2_8:00 AM')), findsOneWidget);
+    expect(find.byKey(const ValueKey('snooze_badge_1_8:00 AM')), findsNothing);
+
+    // All 2 skipped -> snooze indicator hides across the entire batch
+    await tester.pumpWidget(buildWithSkipped({'1_8:00 AM', '2_8:00 AM'}));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('snooze_badge_2_8:00 AM')), findsNothing);
+    expect(find.byKey(const ValueKey('snooze_badge_1_8:00 AM')), findsNothing);
+  });
 }

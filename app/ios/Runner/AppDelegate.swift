@@ -133,6 +133,8 @@ import UserNotifications
         self.handleUpdateRemainingDoses(args: args, result: result)
       case "dismissActivity":
         self.handleDismissActivity(args: args, result: result)
+      case "getActiveSnoozes":
+        self.handleGetActiveSnoozes(result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -325,6 +327,81 @@ import UserNotifications
         result(nil)
       }
     }
+  }
+
+  /// Returns a map of `batchId -> snoozeEndTimestampMs` for every snooze
+  /// currently active natively (either as an ActivityKit Live Activity or as a
+  /// pending non-repeating snooze notification when Live Activities are off).
+  @available(iOS 16.1, *)
+  private func handleGetActiveSnoozes(result: @escaping FlutterResult) {
+    Task {
+      let now = Date()
+      var active: [String: Int64] = [:]
+
+      for activity in Activity<MedicationLiveActivityAttributes>.activities {
+        let end = activity.contentState.snoozeEndTime
+        if end > now {
+          let batchId = activity.attributes.batchId
+          let endMs = Int64(end.timeIntervalSince1970 * 1000.0)
+          if let existing = active[batchId] {
+            active[batchId] = max(existing, endMs)
+          } else {
+            active[batchId] = endMs
+          }
+        }
+      }
+
+      // Also include any pending one-shot snooze push notifications so
+      // notification-only snoozes (when Live Activities are disabled) stay
+      // intact while natively cancelled notifications are pruned.
+      let pendingRequests = await UNUserNotificationCenter.current().pendingNotificationRequests()
+      for request in pendingRequests {
+        guard
+          let calTrigger = request.trigger as? UNCalendarNotificationTrigger,
+          !calTrigger.repeats,
+          let nextFire = calTrigger.nextTriggerDate(),
+          nextFire > now,
+          let payload = request.content.userInfo["payload"] as? String
+        else { continue }
+
+        if let batchId = Self.batchIdFromTimeSlot(payload),
+           Self.snoozeNotificationIdentifier(forBatchId: batchId) == request.identifier {
+          let endMs = Int64(nextFire.timeIntervalSince1970 * 1000.0)
+          if active[batchId] == nil {
+            active[batchId] = endMs
+          }
+        }
+      }
+
+      await MainActor.run {
+        result(active)
+      }
+    }
+  }
+
+  private static func batchIdFromTimeSlot(_ timeSlot: String) -> String? {
+    let trimmed = timeSlot.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+    let parts = trimmed.split(separator: " ")
+    guard parts.count == 2 else { return nil }
+    let hm = parts[0].split(separator: ":")
+    guard hm.count == 2, var hour = Int(hm[0]), let minute = Int(hm[1]) else { return nil }
+    let period = parts[1]
+    if period == "PM" && hour < 12 {
+      hour += 12
+    } else if period == "AM" && hour == 12 {
+      hour = 0
+    }
+    return String(format: "batch_%02d_%02d", hour, minute)
+  }
+
+  private static func snoozeNotificationIdentifier(forBatchId batchId: String) -> String {
+    let combined = "snooze_slot\u{0000}\(batchId)"
+    var hash: UInt32 = 0x811c9dc5
+    for codeUnit in combined.utf16 {
+      hash ^= UInt32(codeUnit)
+      hash = hash &* 0x01000193
+    }
+    return String(Int(hash & 0x7FFFFFFF))
   }
   #endif
 
